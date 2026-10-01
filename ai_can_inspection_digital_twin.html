@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keyence AI Camera & Lighting Inspection Digital Twin</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js r128 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- OrbitControls -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    /* CRT Scanline effect for Vision Terminal */
+    .scanlines {
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.35) 50%
+      ), linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.03),
+        rgba(0, 255, 0, 0.01),
+        rgba(0, 0, 255, 0.03)
+      );
+      background-size: 100% 3px, 6px 100%;
+      pointer-events: none;
+    }
+    /* Industrial pulse effect */
+    @keyframes rejectFlash {
+      0%, 100% { background-color: rgba(239, 68, 68, 0.15); }
+      50% { background-color: rgba(239, 68, 68, 0.5); }
+    }
+    .reject-active {
+      animation: rejectFlash 0.3s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen flex flex-col">
+
+  <!-- Top Navigation & System Status Bar -->
+  <header class="h-14 border-b border-slate-800 bg-slate-900/90 px-4 flex items-center justify-between z-20 shrink-0 backdrop-blur">
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2">
+        <span class="w-3.5 h-3.5 rounded-full bg-emerald-500 animate-pulse inline-block shadow-[0_0_8px_#10b981]"></span>
+        <h1 class="text-base font-bold tracking-tight text-white flex items-center gap-2">
+          <span>AI Camera / Lighting Design</span>
+          <span class="text-xs px-2 py-0.5 rounded bg-blue-900/60 border border-blue-500/40 text-blue-300 font-mono">Pre-Module 2 Infeed</span>
+        </h1>
+      </div>
+      <div class="hidden md:flex items-center gap-2 text-xs text-slate-400 border-l border-slate-700/60 pl-3">
+        <span>Sensor: <b class="text-slate-200">Keyence VS-C320MX (12 MP, 62 FPS)</b></span>
+        <span>•</span>
+        <span>Light: <b class="text-slate-200">CA-DRM5X Multispectrum</b></span>
+      </div>
+    </div>
+
+    <!-- Quick Telemetry & Action Buttons -->
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-4 bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800 text-xs font-mono">
+        <div>
+          <span class="text-slate-500">SPEED:</span>
+          <span id="header-cpm" class="text-emerald-400 font-bold ml-1">120 CPM</span>
+        </div>
+        <div class="border-l border-slate-800 pl-3">
+          <span class="text-slate-500">PASS:</span>
+          <span id="header-pass" class="text-emerald-400 font-bold ml-1">0</span>
+        </div>
+        <div class="border-l border-slate-800 pl-3">
+          <span class="text-slate-500">REJECT:</span>
+          <span id="header-reject" class="text-rose-400 font-bold ml-1">0</span>
+        </div>
+        <div class="border-l border-slate-800 pl-3">
+          <span class="text-slate-500">YIELD:</span>
+          <span id="header-yield" class="text-cyan-400 font-bold ml-1">100%</span>
+        </div>
+      </div>
+
+      <button id="btn-sound-toggle" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition text-xs flex items-center gap-1.5 border border-slate-700" title="Toggle Pneumatics & Conveyor Audio">
+        <svg id="sound-icon-on" class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+        <svg id="sound-icon-off" class="w-4 h-4 text-slate-500 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>
+        <span class="hidden sm:inline">Audio</span>
+      </button>
+
+      <button id="btn-pause-sim" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition text-xs flex items-center gap-1.5 shadow-md shadow-indigo-900/40">
+        <svg id="play-pause-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span id="play-pause-label">Pause Line</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Application Body -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- LEFT / CENTER: Interactive 3D Viewport -->
+    <div class="relative flex-1 bg-slate-950 flex flex-col">
+      <!-- 3D Canvas Container -->
+      <div id="canvas-container" class="w-full h-full relative cursor-grab active:cursor-grabbing"></div>
+
+      <!-- Camera View Preset Bar -->
+      <div class="absolute top-4 left-4 z-10 flex gap-1.5 bg-slate-900/85 backdrop-blur border border-slate-700/70 p-1.5 rounded-xl shadow-xl">
+        <button class="view-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-600 text-white shadow-sm" data-view="isometric">Isometric</button>
+        <button class="view-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-300 hover:bg-slate-800" data-view="side">Side View (3m Height)</button>
+        <button class="view-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-300 hover:bg-slate-800" data-view="top">Top View (Flow)</button>
+        <button class="view-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-300 hover:bg-slate-800" data-view="camera">AI Camera POV</button>
+      </div>
+
+      <!-- 3D Overlays & Legend -->
+      <div class="absolute bottom-4 left-4 z-10 flex flex-wrap gap-2 pointer-events-none">
+        <div class="bg-slate-900/90 backdrop-blur border border-slate-800 rounded-lg p-2.5 text-xs text-slate-300 shadow-lg pointer-events-auto flex items-center gap-3">
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded bg-blue-500 shadow-[0_0_8px_#3b82f6]"></span>
+            <span>Multispectrum Beam</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded bg-red-500 shadow-[0_0_8px_#ef4444]"></span>
+            <span>Air Shot Rejector</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded bg-amber-400"></span>
+            <span>Keyence VS Camera</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded bg-emerald-500"></span>
+            <span>Passed Can</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Air Puff Trigger Notification Banner -->
+      <div id="rejector-burst-alert" class="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-full bg-rose-600/90 text-white text-xs font-bold tracking-wider uppercase border border-rose-400 shadow-2xl flex items-center gap-2 opacity-0 transition-opacity duration-150 pointer-events-none">
+        <span class="w-2 h-2 rounded-full bg-white animate-ping"></span>
+        <span>AIR SHOT REJECTION ACTIVATED (CAM SIGNAL)</span>
+      </div>
+    </div>
+
+    <!-- RIGHT: Industrial AI Inspection & Telemetry Station (400px fixed / responsive) -->
+    <aside class="w-96 lg:w-[420px] bg-slate-900/95 border-l border-slate-800 flex flex-col z-20 shrink-0 overflow-y-auto">
+      
+      <!-- Keyence Vision Terminal Display -->
+      <div class="p-3.5 border-b border-slate-800 bg-slate-950/60">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono font-bold text-cyan-400 tracking-wide uppercase">AI Camera Inspection Feed</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">LIVE 62 FPS</span>
+          </div>
+          <span id="inspection-status-pill" class="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">PASS</span>
+        </div>
+
+        <!-- Simulated Monochrome Vision Sensor Screen -->
+        <div class="relative w-full aspect-square rounded-xl bg-black border border-slate-800 overflow-hidden shadow-inner flex items-center justify-center">
+          <canvas id="vision-canvas" width="360" height="360" class="w-full h-full object-contain"></canvas>
+          <div class="absolute inset-0 scanlines"></div>
+
+          <!-- OSD Overlay (On Screen Display) -->
+          <div class="absolute top-2 left-2 text-[10px] font-mono text-cyan-300/90 bg-black/60 px-1.5 py-0.5 rounded backdrop-blur">
+            KEYENCE VS-C320MX<br>
+            ROI: 66.0mm FLANGE CHIME<br>
+            SPECTRAL: 405nm / 525nm
+          </div>
+
+          <div id="vision-result-badge" class="absolute bottom-2 right-2 text-xs font-mono font-bold px-2.5 py-1 rounded bg-emerald-600/80 text-white border border-emerald-400 backdrop-blur">
+            STATUS: PASS
+          </div>
+
+          <!-- Inspection Crosshairs Overlay -->
+          <div class="absolute inset-0 pointer-events-none flex items-center justify-center opacity-40">
+            <div class="w-full h-[1px] bg-cyan-400"></div>
+            <div class="h-full w-[1px] bg-cyan-400 absolute"></div>
+            <div id="vision-ring" class="w-48 h-48 rounded-full border border-dashed border-cyan-400 absolute"></div>
+          </div>
+        </div>
+
+        <!-- Vision Diagnostics Readout -->
+        <div class="mt-2.5 grid grid-cols-3 gap-1.5 text-center font-mono text-[11px]">
+          <div class="bg-slate-900 border border-slate-800/80 p-1.5 rounded-lg">
+            <div class="text-slate-500 text-[10px]">ROUNDNESS</div>
+            <div id="diag-roundness" class="text-cyan-400 font-bold">0.998</div>
+          </div>
+          <div class="bg-slate-900 border border-slate-800/80 p-1.5 rounded-lg">
+            <div class="text-slate-500 text-[10px]">DIAMETER</div>
+            <div id="diag-diameter" class="text-emerald-400 font-bold">66.02 mm</div>
+          </div>
+          <div class="bg-slate-900 border border-slate-800/80 p-1.5 rounded-lg">
+            <div class="text-slate-500 text-[10px]">DEFECT CODE</div>
+            <div id="diag-defect-code" class="text-slate-300 font-bold">NONE</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Defect Injection Controls -->
+      <div class="p-3.5 border-b border-slate-800">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            Defect Injection (Schematic Specs)
+          </span>
+          <span class="text-[10px] text-slate-500">Inject Next Can</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5 text-xs">
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="dent">
+            <span>Dent / Damage</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="upsideDown">
+            <span>Upside Down</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="onSide">
+            <span>On Side</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="tilted">
+            <span>Tilted</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="outOfRound">
+            <span>Out of Round</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="crackSplit">
+            <span>Crack / Split</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="tear">
+            <span>Tear Flange</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+          <button class="inject-btn px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left font-medium transition flex items-center justify-between" data-defect="missingEnd">
+            <span>Missing / Open</span>
+            <span class="text-[10px] px-1 py-0.5 bg-rose-950 text-rose-400 rounded">FAIL</span>
+          </button>
+        </div>
+
+        <!-- Automatic Random Defect Frequency -->
+        <div class="mt-3 bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+          <div class="flex justify-between items-center text-xs mb-1.5">
+            <span class="text-slate-400">Random Defect Rate:</span>
+            <span id="rate-value" class="font-mono text-cyan-400 font-bold">15%</span>
+          </div>
+          <input id="defect-rate-slider" type="range" min="0" max="60" value="15" class="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+        </div>
+      </div>
+
+      <!-- Line Hardware & Dimensional Specifications -->
+      <div class="p-3.5 border-b border-slate-800 space-y-3">
+        <div class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+          <span>Can Dimensions (Standard 202)</span>
+          <span class="text-[10px] text-slate-500">Outer Ø 66.0 mm</span>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2">
+          <button class="height-preset-btn px-2 py-1.5 rounded bg-blue-600 text-white font-mono text-xs font-bold text-center border border-blue-400" data-height="122.7">
+            122.7 mm
+            <div class="text-[9px] font-normal opacity-80">Standard</div>
+          </button>
+          <button class="height-preset-btn px-2 py-1.5 rounded bg-slate-800 text-slate-300 font-mono text-xs font-bold text-center border border-slate-700 hover:bg-slate-700" data-height="157.2">
+            157.2 mm
+            <div class="text-[9px] font-normal opacity-80">Tall</div>
+          </button>
+          <button class="height-preset-btn px-2 py-1.5 rounded bg-slate-800 text-slate-300 font-mono text-xs font-bold text-center border border-slate-700 hover:bg-slate-700" data-height="182.6">
+            182.6 mm
+            <div class="text-[9px] font-normal opacity-80">Jumbo</div>
+          </button>
+        </div>
+
+        <!-- Conveyor Speed Controller -->
+        <div class="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+          <div class="flex justify-between items-center text-xs mb-1.5">
+            <span class="text-slate-400">Infeed Conveyor Speed:</span>
+            <span id="speed-label" class="font-mono text-emerald-400 font-bold">120 Cans / Min</span>
+          </div>
+          <input id="speed-slider" type="range" min="30" max="300" step="10" value="120" class="w-full accent-emerald-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+        </div>
+      </div>
+
+      <!-- Realtime Statistics & Defect Counter Breakdown -->
+      <div class="p-3.5 flex-1 space-y-2">
+        <div class="flex items-center justify-between text-xs font-bold text-slate-300 uppercase tracking-wider">
+          <span>Defect Classification Pareto</span>
+          <button id="btn-reset-stats" class="text-[10px] text-cyan-400 hover:underline">Reset Counter</button>
+        </div>
+
+        <div id="defect-pareto-list" class="space-y-1 text-xs font-mono">
+          <!-- Populated dynamically via JS -->
+        </div>
+      </div>
+
+      <!-- Schematic Footnote Information -->
+      <div class="p-3 border-t border-slate-800 bg-slate-950/70 text-[10px] text-slate-500 flex flex-col gap-1">
+        <div class="flex justify-between">
+          <span>Elevation: 9 ft 10 in (3.00 m) Ground to Belt</span>
+          <span>Flange: 56.4 / 52.4 mm</span>
+        </div>
+        <div>Reject Action: Solenoid Air Shot to Defect Bin (Downstream Cam Sync)</div>
+      </div>
+
+    </aside>
+  </div>
+
+  <script>
+    // Simulation & Hardware State
+    const CONFIG = {
+      conveyorSpeed: 120, // Cans per minute (PPM)
+      randomDefectRate: 0.15, // 15% defects
+      canDiameter: 66.0, // mm
+      canHeight: 122.7, // mm
+      elevationMeters: 3.00,
+      soundEnabled: true,
+      paused: false,
+      nextInjectDefect: null,
+      beltLength: 22,
+      beltWidth: 2.2,
+      cameraInspectX: 0.0,
+      airShotRejectX: 4.8 // Rejector located downstream after the AI camera
+    };
+
+    // Defect Catalog Definitions matching schematic
+    const DEFECT_TYPES = {
+      PROPER: { id: 'proper', name: 'Properly Oriented', isDefect: false, code: 'PASS' },
+      DENT: { id: 'dent', name: 'Dent / Damage', isDefect: true, code: 'ERR_DENT' },
+      UPSIDE_DOWN: { id: 'upsideDown', name: 'Upside Down', isDefect: true, code: 'ERR_ORIENTATION' },
+      ON_SIDE: { id: 'onSide', name: 'On Side', isDefect: true, code: 'ERR_TOPOLOGY' },
+      TILTED: { id: 'tilted', name: 'Tilted', isDefect: true, code: 'ERR_TILT' },
+      OUT_OF_ROUND: { id: 'outOfRound', name: 'Out of Round', isDefect: true, code: 'ERR_ROUNDNESS' },
+      CRACK_SPLIT: { id: 'crackSplit', name: 'Crack / Split', isDefect: true, code: 'ERR_CRACK' },
+      TEAR: { id: 'tear', name: 'Tear Flange', isDefect: true, code: 'ERR_TEAR' },
+      MISSING_END: { id: 'missingEnd', name: 'Missing / Open End', isDefect: true, code: 'ERR_OPEN_END' }
+    };
+
+    // Metrics Counters
+    const stats = {
+      inspected: 0,
+      passed: 0,
+      rejected: 0,
+      breakdown: {
+        dent: 0,
+        upsideDown: 0,
+        onSide: 0,
+        tilted: 0,
+        outOfRound: 0,
+        crackSplit: 0,
+        tear: 0,
+        missingEnd: 0
+      }
+    };
+
+    // Web Audio Synthesizer (Pneumatic air blast, inspection strobe beep, conveyor hum)
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.humNode = null;
+        this.humGain = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          this.ctx = new AudioContext();
+          this.startHum();
+        } else if (this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      startHum() {
+        if (!this.ctx || !CONFIG.soundEnabled) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const filter = this.ctx.createBiquadFilter();
+
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(45, this.ctx.currentTime); // Low conveyor motor rumble
+
+          filter.type = 'lowpass';
+          filter.frequency.setValueAtTime(140, this.ctx.currentTime);
+
+          gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+
+          osc.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          osc.start();
+          this.humNode = osc;
+          this.humGain = gain;
+        } catch(e) {}
+      }
+
+      playAirBlast() {
+        if (!this.ctx || !CONFIG.soundEnabled) return;
+        try {
+          // White noise buffer for pneumatic air ejection
+          const bufferSize = this.ctx.sampleRate * 0.22; // 220ms blast
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1;
+          }
+
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(1200, this.ctx.currentTime);
+          filter.Q.setValueAtTime(1.5, this.ctx.currentTime);
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.45, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.22);
+
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+
+          noise.start();
+        } catch(e) {}
+      }
+
+      playCameraStrobe() {
+        if (!this.ctx || !CONFIG.soundEnabled) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(1800, this.ctx.currentTime);
+          gain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.0001, this.ctx.currentTime + 0.04);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.04);
+        } catch(e) {}
+      }
+    }
+
+    const soundEngine = new SoundEngine();
+
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x090d16);
+    scene.fog = new THREE.FogExp2(0x090d16, 0.025);
+
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+    camera.position.set(0, 7.5, 14.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02; // Prevent going beneath floor
+    controls.target.set(0, 2.2, 0);
+
+    // Primary Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const overheadLight = new THREE.DirectionalLight(0xffffff, 0.85);
+    overheadLight.position.set(5, 12, 6);
+    overheadLight.castShadow = true;
+    overheadLight.shadow.mapSize.width = 2048;
+    overheadLight.shadow.mapSize.height = 2048;
+    overheadLight.shadow.camera.near = 0.5;
+    overheadLight.shadow.camera.far = 30;
+    overheadLight.shadow.bias = -0.0005;
+    const d = 14;
+    overheadLight.shadow.camera.left = -d;
+    overheadLight.shadow.camera.right = d;
+    overheadLight.shadow.camera.top = d;
+    overheadLight.shadow.camera.bottom = -d;
+    scene.add(overheadLight);
+
+    const fillBlue = new THREE.DirectionalLight(0x38bdf8, 0.35);
+    fillBlue.position.set(-6, 4, -4);
+    scene.add(fillBlue);
+
+    // Reusable Materials
+    const aluminumMat = new THREE.MeshStandardMaterial({
+      color: 0xcfd8dc,
+      metalness: 0.85,
+      roughness: 0.25
+    });
+
+    const blackAnodizedMat = new THREE.MeshStandardMaterial({
+      color: 0x1f2937,
+      metalness: 0.5,
+      roughness: 0.4
+    });
+
+    const beltMat = new THREE.MeshStandardMaterial({
+      color: 0x059669, // Industrial green belt as shown in schematic
+      roughness: 0.7,
+      metalness: 0.1
+    });
+
+    const rejectorRedMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626,
+      roughness: 0.3,
+      metalness: 0.3
+    });
+
+    // Floor Grid & Ground
+    const gridHelper = new THREE.GridHelper(40, 40, 0x1e293b, 0x0f172a);
+    gridHelper.position.y = 0;
+    scene.add(gridHelper);
+
+    // Floor shadow receiver
+    const floorGeo = new THREE.PlaneGeometry(60, 60);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x090d16, roughness: 0.95 });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    // 1. Conveyor Assembly (Elevated at 3.00m scale, we normalize 3.00m to 2.4 units)
+    const conveyorGroup = new THREE.Group();
+    scene.add(conveyorGroup);
+
+    const BELT_Y = 2.4; // Elevation
+    const BELT_LEN = 19;
+    const BELT_W = 1.3;
+
+    // Green Belt
+    const beltGeo = new THREE.BoxGeometry(BELT_LEN, 0.1, BELT_W);
+    const beltMesh = new THREE.Mesh(beltGeo, beltMat);
+    beltMesh.position.set(0, BELT_Y, 0);
+    beltMesh.receiveShadow = true;
+    conveyorGroup.add(beltMesh);
+
+    // Conveyor Aluminum Extrusion Side Rails
+    const sideRailGeo = new THREE.BoxGeometry(BELT_LEN + 0.4, 0.35, 0.12);
+    const leftRail = new THREE.Mesh(sideRailGeo, aluminumMat);
+    leftRail.position.set(0, BELT_Y + 0.12, BELT_W / 2 + 0.08);
+    leftRail.castShadow = true;
+    conveyorGroup.add(leftRail);
+
+    const rightRail = new THREE.Mesh(sideRailGeo, aluminumMat);
+    rightRail.position.set(0, BELT_Y + 0.12, -BELT_W / 2 - 0.08);
+    rightRail.castShadow = true;
+    conveyorGroup.add(rightRail);
+
+    // Support Legs & Leveling Feet (as shown in drawing)
+    const legPositions = [-7.5, -2.5, 2.5, 7.5];
+    legPositions.forEach(lx => {
+      const legGeo = new THREE.CylinderGeometry(0.08, 0.08, BELT_Y);
+      const legLeft = new THREE.Mesh(legGeo, aluminumMat);
+      legLeft.position.set(lx, BELT_Y / 2, BELT_W / 2 - 0.05);
+      legLeft.castShadow = true;
+      conveyorGroup.add(legLeft);
+
+      const legRight = new THREE.Mesh(legGeo, aluminumMat);
+      legRight.position.set(lx, BELT_Y / 2, -BELT_W / 2 + 0.05);
+      legRight.castShadow = true;
+      conveyorGroup.add(legRight);
+
+      // Foot pads
+      const footGeo = new THREE.CylinderGeometry(0.2, 0.22, 0.08, 16);
+      const footLeft = new THREE.Mesh(footGeo, blackAnodizedMat);
+      footLeft.position.set(lx, 0.04, BELT_W / 2 - 0.05);
+      conveyorGroup.add(footLeft);
+
+      const footRight = new THREE.Mesh(footGeo, blackAnodizedMat);
+      footRight.position.set(lx, 0.04, -BELT_W / 2 + 0.05);
+      conveyorGroup.add(footRight);
+    });
+
+    // 2. Inspection Station Gantry (Aluminum Arch Rig)
+    const gantryGroup = new THREE.Group();
+    scene.add(gantryGroup);
+
+    const archColGeo = new THREE.BoxGeometry(0.18, 3.2, 0.18);
+    const archCol1 = new THREE.Mesh(archColGeo, aluminumMat);
+    archCol1.position.set(-2.0, BELT_Y + 1.6, -BELT_W / 2 - 0.25);
+    gantryGroup.add(archCol1);
+
+    const archCol2 = new THREE.Mesh(archColGeo, aluminumMat);
+    archCol2.position.set(2.0, BELT_Y + 1.6, -BELT_W / 2 - 0.25);
+    gantryGroup.add(archCol2);
+
+    const archBeamGeo = new THREE.BoxGeometry(4.2, 0.18, 0.18);
+    const archTopBeam = new THREE.Mesh(archBeamGeo, aluminumMat);
+    archTopBeam.position.set(0, BELT_Y + 3.2, -BELT_W / 2 - 0.25);
+    gantryGroup.add(archTopBeam);
+
+    // Cantilever Crossbar over line
+    const cantileverGeo = new THREE.BoxGeometry(0.16, 0.16, 1.8);
+    const cantilever = new THREE.Mesh(cantileverGeo, aluminumMat);
+    cantilever.position.set(0, BELT_Y + 3.2, 0);
+    gantryGroup.add(cantilever);
+
+    // 3. Keyence VS-C320MX AI Camera (Overhead Mount)
+    const camHousingGeo = new THREE.BoxGeometry(0.65, 0.75, 0.65);
+    const keyenceCamera = new THREE.Mesh(camHousingGeo, blackAnodizedMat);
+    keyenceCamera.position.set(0, BELT_Y + 2.65, 0);
+    keyenceCamera.castShadow = true;
+    gantryGroup.add(keyenceCamera);
+
+    // Keyence Red Accent Stripe & Lens
+    const stripeGeo = new THREE.BoxGeometry(0.66, 0.08, 0.66);
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const redStripe = new THREE.Mesh(stripeGeo, stripeMat);
+    redStripe.position.set(0, BELT_Y + 2.75, 0);
+    gantryGroup.add(redStripe);
+
+    const lensGeo = new THREE.CylinderGeometry(0.2, 0.24, 0.35, 24);
+    const lens = new THREE.Mesh(lensGeo, blackAnodizedMat);
+    lens.position.set(0, BELT_Y + 2.2, 0);
+    gantryGroup.add(lens);
+
+    // AI Status Indicator LED on camera
+    const ledGeo = new THREE.SphereGeometry(0.06, 16, 16);
+    const ledMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+    const camLed = new THREE.Mesh(ledGeo, ledMat);
+    camLed.position.set(0, BELT_Y + 2.85, 0.34);
+    gantryGroup.add(camLed);
+
+    // 4. Multispectrum Lighting Canopy (Keyence CA-DRM5X Angled Light Bars)
+    // Left Angled Light
+    const lightBarGeo = new THREE.BoxGeometry(0.15, 0.1, 1.2);
+    const lightBarLeft = new THREE.Mesh(lightBarGeo, blackAnodizedMat);
+    lightBarLeft.position.set(-1.45, BELT_Y + 2.25, 0);
+    lightBarLeft.rotation.z = -Math.PI / 4.2;
+    gantryGroup.add(lightBarLeft);
+
+    // Right Angled Light
+    const lightBarRight = new THREE.Mesh(lightBarGeo, blackAnodizedMat);
+    lightBarRight.position.set(1.45, BELT_Y + 2.25, 0);
+    lightBarRight.rotation.z = Math.PI / 4.2;
+    gantryGroup.add(lightBarRight);
+
+    // Volumetric Multispectrum Beam Cones (Cyan/Blue glowing cones)
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    const beamConeGeo = new THREE.ConeGeometry(0.9, 1.8, 24, 1, true);
+    
+    // Left light cone
+    const beamLeft = new THREE.Mesh(beamConeGeo, coneMat);
+    beamLeft.position.set(-0.85, BELT_Y + 1.4, 0);
+    beamLeft.rotation.z = -Math.PI / 5.5;
+    gantryGroup.add(beamLeft);
+
+    // Center direct beam cone
+    const beamCenter = new THREE.Mesh(beamConeGeo, coneMat);
+    beamCenter.position.set(0, BELT_Y + 1.3, 0);
+    gantryGroup.add(beamCenter);
+
+    // Right light cone
+    const beamRight = new THREE.Mesh(beamConeGeo, coneMat);
+    beamRight.position.set(0.85, BELT_Y + 1.4, 0);
+    beamRight.rotation.z = Math.PI / 5.5;
+    gantryGroup.add(beamRight);
+
+    // Strobe point light for illumination snapshot
+    const strobeLight = new THREE.PointLight(0x38bdf8, 2.0, 5);
+    strobeLight.position.set(0, BELT_Y + 2.0, 0);
+    scene.add(strobeLight);
+
+    // 5. Air Shot Rejector Assembly (Mounted DOWNSTREAM after AI Camera)
+    const rejectorGroup = new THREE.Group();
+    rejectorGroup.position.set(CONFIG.airShotRejectX, BELT_Y + 0.7, 0);
+    scene.add(rejectorGroup);
+
+    // Rejector Body
+    const rejBoxGeo = new THREE.BoxGeometry(0.4, 0.45, 0.4);
+    const rejBody = new THREE.Mesh(rejBoxGeo, rejectorRedMat);
+    rejBody.position.set(0, 0, -BELT_W / 2 - 0.25);
+    rejectorGroup.add(rejBody);
+
+    // Nozzle aiming at can line
+    const nozzleGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.35, 16);
+    const nozzle = new THREE.Mesh(nozzleGeo, blackAnodizedMat);
+    nozzle.rotation.x = Math.PI / 2;
+    nozzle.position.set(0, 0, -BELT_W / 2 + 0.02);
+    rejectorGroup.add(nozzle);
+
+    // Pneumatic Blue Hose (Keyence CA-DO5MX Cable / Air Supply)
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0.25, -BELT_W / 2 - 0.25),
+      new THREE.Vector3(0.4, 0.7, -BELT_W / 2 - 0.3),
+      new THREE.Vector3(0.8, 0.3, -BELT_W / 2 - 0.1),
+      new THREE.Vector3(1.1, -0.2, -BELT_W / 2 - 0.05)
+    ]);
+    const hoseGeo = new THREE.TubeGeometry(curve, 20, 0.035, 8, false);
+    const hoseMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.5 });
+    const hose = new THREE.Mesh(hoseGeo, hoseMat);
+    rejectorGroup.add(hose);
+
+    // 6. Blue Reject Collection Bin (Mounted under conveyor at downstream rejector point)
+    const binGeo = new THREE.CylinderGeometry(0.9, 0.7, 1.2, 24);
+    const binMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.4 });
+    const rejectBin = new THREE.Mesh(binGeo, binMat);
+    rejectBin.position.set(CONFIG.airShotRejectX, 0.6, BELT_W / 2 + 1.1);
+    rejectBin.castShadow = true;
+    rejectBin.receiveShadow = true;
+    scene.add(rejectBin);
+
+    // Label on bin
+    const binRimGeo = new THREE.TorusGeometry(0.9, 0.05, 8, 24);
+    const binRim = new THREE.Mesh(binRimGeo, blackAnodizedMat);
+    binRim.rotation.x = Math.PI / 2;
+    binRim.position.set(CONFIG.airShotRejectX, 1.2, BELT_W / 2 + 1.1);
+    scene.add(binRim);
+
+    // Direction Flow Arrow on Floor
+    const arrowHelper = new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(-4, 0.02, 1.8),
+      8,
+      0x38bdf8,
+      0.6,
+      0.4
+    );
+    scene.add(arrowHelper);
+
+    // Air Blast Particle Shockwave
+    const particleCount = 60;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleVelocities = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      particlePositions[i * 3 + 0] = CONFIG.airShotRejectX;
+      particlePositions[i * 3 + 1] = BELT_Y + 0.6;
+      particlePositions[i * 3 + 2] = -BELT_W / 2;
+      particleVelocities.push(new THREE.Vector3(
+        (Math.random() - 0.5) * 0.1,
+        (Math.random() - 0.5) * 0.1,
+        Math.random() * 0.6 + 0.4
+      ));
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+
+    const particleMat = new THREE.PointsMaterial({
+      color: 0xffffff,
+      size: 0.18,
+      transparent: true,
+      opacity: 0.0
+    });
+    const airParticles = new THREE.Points(particleGeo, particleMat);
+    scene.add(airParticles);
+
+    let airBlastTimer = 0;
+
+    function triggerAirShotEffect() {
+      airBlastTimer = 1.0;
+      particleMat.opacity = 0.9;
+      // Reset positions to nozzle mouth
+      const pos = particleGeo.attributes.position.array;
+      for (let i = 0; i < particleCount; i++) {
+        pos[i * 3 + 0] = CONFIG.airShotRejectX + (Math.random() - 0.5) * 0.1;
+        pos[i * 3 + 1] = BELT_Y + 0.6 + (Math.random() - 0.5) * 0.1;
+        pos[i * 3 + 2] = -BELT_W / 2 + 0.1;
+      }
+      particleGeo.attributes.position.needsUpdate = true;
+
+      // Audio
+      soundEngine.playAirBlast();
+
+      // UI Banner
+      const banner = document.getElementById('rejector-burst-alert');
+      banner.style.opacity = '1';
+      setTimeout(() => { banner.style.opacity = '0'; }, 600);
+    }
+
+    // Realistic Aluminum Can Materials
+    const aluminumCanMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      metalness: 0.95,
+      roughness: 0.22
+    });
+
+    const canLidMat = new THREE.MeshStandardMaterial({
+      color: 0xcfd8dc,
+      metalness: 0.9,
+      roughness: 0.35
+    });
+
+    const defectHighlightMat = new THREE.MeshStandardMaterial({
+      color: 0xef4444,
+      metalness: 0.8,
+      roughness: 0.3
+    });
+
+    function createCanMesh(defectType, heightMm) {
+      const canGroup = new THREE.Group();
+
+      // Normalized scale: standard 122.7mm height is ~1.1 Three.js units, diameter 66mm is ~0.6 units
+      const radius = 0.30;
+      const height = (heightMm / 122.7) * 1.08;
+
+      let bodyGeo;
+
+      if (defectType === DEFECT_TYPES.OUT_OF_ROUND) {
+        // Deformed non-circular cross section
+        bodyGeo = new THREE.CylinderGeometry(radius * 1.25, radius * 0.75, height, 32);
+      } else if (defectType === DEFECT_TYPES.DENT) {
+        // Dented cylinder with inwards displaced vertices
+        bodyGeo = new THREE.CylinderGeometry(radius, radius, height, 32, 16);
+        const pos = bodyGeo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const y = pos.getY(i);
+          const x = pos.getX(i);
+          const z = pos.getZ(i);
+          // Dent in middle height on positive Z side
+          if (Math.abs(y) < height * 0.3 && z > radius * 0.4) {
+            pos.setZ(i, z - 0.12 * (1 - Math.abs(y) / (height * 0.3)));
+          }
+        }
+        bodyGeo.computeVertexNormals();
+      } else if (defectType === DEFECT_TYPES.CRACK_SPLIT) {
+        bodyGeo = new THREE.CylinderGeometry(radius, radius, height, 32, 8);
+      } else {
+        bodyGeo = new THREE.CylinderGeometry(radius, radius, height, 32);
+      }
+
+      const bodyMesh = new THREE.Mesh(bodyGeo, defectType.isDefect ? aluminumCanMat : aluminumCanMat);
+      bodyMesh.castShadow = true;
+      bodyMesh.receiveShadow = true;
+      canGroup.add(bodyMesh);
+
+      // Chime Rim / Flange at top (Industry Standard 202 Flange)
+      const flangeGeo = new THREE.TorusGeometry(radius * 0.94, 0.02, 12, 32);
+      const flangeMesh = new THREE.Mesh(flangeGeo, canLidMat);
+      flangeMesh.rotation.x = Math.PI / 2;
+      flangeMesh.position.y = height / 2;
+      canGroup.add(flangeMesh);
+
+      // Lid Pull Tab plate
+      const lidPlateGeo = new THREE.CircleGeometry(radius * 0.88, 32);
+      const lidMesh = new THREE.Mesh(lidPlateGeo, canLidMat);
+      lidMesh.rotation.x = -Math.PI / 2;
+      lidMesh.position.y = height / 2 - 0.02;
+      canGroup.add(lidMesh);
+
+      // Crack / Tear visual marker if applicable
+      if (defectType === DEFECT_TYPES.CRACK_SPLIT || defectType === DEFECT_TYPES.TEAR) {
+        const tearGeo = new THREE.BoxGeometry(0.04, height * 0.45, 0.08);
+        const tearMesh = new THREE.Mesh(tearGeo, new THREE.MeshBasicMaterial({ color: 0x111827 }));
+        tearMesh.position.set(radius * 0.98, height * 0.1, 0);
+        canGroup.add(tearMesh);
+      }
+
+      if (defectType === DEFECT_TYPES.MISSING_END) {
+        lidMesh.visible = false; // Hollow open body
+        flangeMesh.material = defectHighlightMat;
+      }
+
+      // Handle orientation defects
+      if (defectType === DEFECT_TYPES.UPSIDE_DOWN) {
+        canGroup.rotation.z = Math.PI; // Inverted
+      } else if (defectType === DEFECT_TYPES.ON_SIDE) {
+        canGroup.rotation.z = Math.PI / 2; // Rolling on side
+        canGroup.position.y = radius;
+      } else if (defectType === DEFECT_TYPES.TILTED) {
+        canGroup.rotation.z = 0.38; // Tilted 22 degrees
+        canGroup.rotation.x = 0.15;
+      }
+
+      return {
+        mesh: canGroup,
+        height: height,
+        radius: radius,
+        defect: defectType
+      };
+    }
+
+    const activeCans = [];
+    let lastSpawnTime = 0;
+
+    function spawnCan() {
+      // Determine defect
+      let chosenDefect = DEFECT_TYPES.PROPER;
+
+      if (CONFIG.nextInjectDefect) {
+        chosenDefect = CONFIG.nextInjectDefect;
+        CONFIG.nextInjectDefect = null; // Consume injection
+      } else if (Math.random() < CONFIG.randomDefectRate) {
+        const defectKeys = Object.keys(DEFECT_TYPES).filter(k => DEFECT_TYPES[k].isDefect);
+        const randKey = defectKeys[Math.floor(Math.random() * defectKeys.length)];
+        chosenDefect = DEFECT_TYPES[randKey];
+      }
+
+      const canObj = createCanMesh(chosenDefect, CONFIG.canHeight);
+      canObj.mesh.position.set(-BELT_LEN / 2 - 0.5, BELT_Y + canObj.height / 2 + 0.06, 0);
+      
+      // On side can adjustment
+      if (chosenDefect === DEFECT_TYPES.ON_SIDE) {
+        canObj.mesh.position.y = BELT_Y + canObj.radius + 0.04;
+      }
+
+      scene.add(canObj.mesh);
+
+      activeCans.push({
+        ...canObj,
+        inspected: false,
+        rejected: false,
+        falling: false,
+        velocity: new THREE.Vector3(0, 0, 0),
+        angularVelocity: new THREE.Vector3(0, 0, 0)
+      });
+    }
+
+    const visionCanvas = document.getElementById('vision-canvas');
+    const vCtx = visionCanvas.getContext('2d');
+
+    function renderVisionSensor(can) {
+      const w = visionCanvas.width;
+      const h = visionCanvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      // Dark industrial sensor backdrop
+      vCtx.fillStyle = '#060a11';
+      vCtx.fillRect(0, 0, w, h);
+
+      // Draw inspection circle overlay / reticle
+      vCtx.strokeStyle = '#0284c7';
+      vCtx.lineWidth = 1;
+      vCtx.setLineDash([4, 4]);
+      vCtx.beginPath();
+      vCtx.arc(cx, cy, 115, 0, Math.PI * 2);
+      vCtx.stroke();
+      vCtx.setLineDash([]);
+
+      if (!can) {
+        vCtx.fillStyle = '#38bdf8';
+        vCtx.font = '12px "JetBrains Mono"';
+        vCtx.textAlign = 'center';
+        vCtx.fillText('WAITING FOR CAN INFEED...', cx, cy);
+        return;
+      }
+
+      const defect = can.defect;
+      const isPass = !defect.isDefect;
+
+      // Simulate high contrast monochrome Keyence image
+      vCtx.save();
+      vCtx.translate(cx, cy);
+
+      if (defect === DEFECT_TYPES.ON_SIDE) {
+        // Elongated horizontal profile visible from top
+        vCtx.fillStyle = '#94a3b8';
+        vCtx.beginPath();
+        vCtx.roundRect(-100, -45, 200, 90, 8);
+        vCtx.fill();
+        vCtx.strokeStyle = '#ef4444';
+        vCtx.lineWidth = 2.5;
+        vCtx.stroke();
+      } else if (defect === DEFECT_TYPES.TILTED) {
+        // Elliptical distorted shape
+        vCtx.beginPath();
+        vCtx.ellipse(0, 0, 110, 68, 0.4, 0, Math.PI * 2);
+        vCtx.fillStyle = '#cbd5e1';
+        vCtx.fill();
+        vCtx.strokeStyle = '#ef4444';
+        vCtx.lineWidth = 2.5;
+        vCtx.stroke();
+      } else if (defect === DEFECT_TYPES.OUT_OF_ROUND) {
+        // Oval deformity
+        vCtx.beginPath();
+        vCtx.ellipse(0, 0, 124, 88, 0, 0, Math.PI * 2);
+        vCtx.fillStyle = '#cbd5e1';
+        vCtx.fill();
+        vCtx.strokeStyle = '#ef4444';
+        vCtx.lineWidth = 2.5;
+        vCtx.stroke();
+      } else {
+        // Standard circle chime
+        vCtx.beginPath();
+        vCtx.arc(0, 0, 102, 0, Math.PI * 2);
+        vCtx.fillStyle = '#cbd5e1';
+        vCtx.fill();
+
+        // Inner rim (56.4mm / 52.4mm flange)
+        vCtx.beginPath();
+        vCtx.arc(0, 0, 86, 0, Math.PI * 2);
+        vCtx.strokeStyle = '#64748b';
+        vCtx.lineWidth = 4;
+        vCtx.stroke();
+
+        if (defect === DEFECT_TYPES.UPSIDE_DOWN) {
+          // Bottom dome profile (no pull tab, visible dome ring)
+          vCtx.beginPath();
+          vCtx.arc(0, 0, 50, 0, Math.PI * 2);
+          vCtx.fillStyle = '#94a3b8';
+          vCtx.fill();
+          vCtx.strokeStyle = '#ef4444';
+          vCtx.stroke();
+        } else if (defect === DEFECT_TYPES.MISSING_END) {
+          // Dark empty cavity
+          vCtx.beginPath();
+          vCtx.arc(0, 0, 84, 0, Math.PI * 2);
+          vCtx.fillStyle = '#0f172a';
+          vCtx.fill();
+        } else {
+          // Normal pull tab outline
+          vCtx.fillStyle = '#64748b';
+          vCtx.beginPath();
+          vCtx.roundRect(-16, -34, 32, 58, 6);
+          vCtx.fill();
+          // Pull rivet
+          vCtx.fillStyle = '#334155';
+          vCtx.beginPath();
+          vCtx.arc(0, -6, 5, 0, Math.PI * 2);
+          vCtx.fill();
+        }
+
+        // Dent or Crack markers
+        if (defect === DEFECT_TYPES.DENT) {
+          vCtx.fillStyle = '#0f172a';
+          vCtx.beginPath();
+          vCtx.arc(70, 0, 22, 0, Math.PI * 2);
+          vCtx.fill();
+          vCtx.strokeStyle = '#ef4444';
+          vCtx.stroke();
+        } else if (defect === DEFECT_TYPES.CRACK_SPLIT || defect === DEFECT_TYPES.TEAR) {
+          vCtx.strokeStyle = '#ef4444';
+          vCtx.lineWidth = 3;
+          vCtx.beginPath();
+          vCtx.moveTo(85, -20);
+          vCtx.lineTo(105, 5);
+          vCtx.lineTo(92, 28);
+          vCtx.stroke();
+        }
+      }
+
+      vCtx.restore();
+
+      // Inspection bounding box & markers
+      vCtx.strokeStyle = isPass ? '#10b981' : '#ef4444';
+      vCtx.lineWidth = 2;
+      vCtx.strokeRect(30, 30, w - 60, h - 60);
+
+      // AI Recognition Score
+      vCtx.fillStyle = isPass ? '#10b981' : '#ef4444';
+      vCtx.font = 'bold 12px "JetBrains Mono"';
+      vCtx.fillText(isPass ? 'OK [PASS]' : `REJECT: ${defect.name}`, 36, 50);
+
+      // Update Diagnostic Readouts
+      document.getElementById('diag-roundness').innerText = isPass ? '0.998' : (defect === DEFECT_TYPES.OUT_OF_ROUND ? '0.712' : '0.840');
+      document.getElementById('diag-roundness').className = isPass ? 'text-cyan-400 font-bold' : 'text-rose-400 font-bold';
+
+      document.getElementById('diag-diameter').innerText = isPass ? '66.02 mm' : (defect === DEFECT_TYPES.OUT_OF_ROUND ? '74.15 mm' : '65.88 mm');
+      document.getElementById('diag-defect-code').innerText = isPass ? 'NONE' : defect.code;
+      document.getElementById('diag-defect-code').className = isPass ? 'text-slate-300 font-bold' : 'text-rose-400 font-bold';
+
+      const statusPill = document.getElementById('inspection-status-pill');
+      statusPill.innerText = isPass ? 'PASS' : 'FAIL';
+      statusPill.className = isPass 
+        ? 'text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+        : 'text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+
+      const resultBadge = document.getElementById('vision-result-badge');
+      resultBadge.innerText = isPass ? 'STATUS: PASS' : `DEFECT: ${defect.code}`;
+      resultBadge.className = isPass
+        ? 'absolute bottom-2 right-2 text-xs font-mono font-bold px-2.5 py-1 rounded bg-emerald-600/80 text-white border border-emerald-400 backdrop-blur'
+        : 'absolute bottom-2 right-2 text-xs font-mono font-bold px-2.5 py-1 rounded bg-rose-600/80 text-white border border-rose-400 backdrop-blur';
+    }
+
+    let lastFrameTime = performance.now();
+
+    function updateSimulation(dt) {
+      if (CONFIG.paused) return;
+
+      // Conveyor linear speed in Three.js units per second
+      // 120 CPM ~ 2 cans/sec. With 2.5 unit spacing, speed is ~5 units/sec.
+      const beltLinearSpeed = (CONFIG.conveyorSpeed / 60) * 2.4;
+
+      // Spawn timing
+      const spawnInterval = 60 / CONFIG.conveyorSpeed;
+      lastSpawnTime += dt;
+      if (lastSpawnTime >= spawnInterval) {
+        spawnCan();
+        lastSpawnTime = 0;
+      }
+
+      // Air blast timer decay
+      if (airBlastTimer > 0) {
+        airBlastTimer -= dt * 2.5;
+        particleMat.opacity = Math.max(0, airBlastTimer);
+        const pos = particleGeo.attributes.position.array;
+        for (let i = 0; i < particleCount; i++) {
+          pos[i * 3 + 0] += particleVelocities[i].x * dt * 8;
+          pos[i * 3 + 1] += particleVelocities[i].y * dt * 8;
+          pos[i * 3 + 2] += particleVelocities[i].z * dt * 18;
+        }
+        particleGeo.attributes.position.needsUpdate = true;
+      }
+
+      // Update all cans
+      for (let i = activeCans.length - 1; i >= 0; i--) {
+        const can = activeCans[i];
+
+        if (!can.falling) {
+          // Moving along belt (flow left to right: from -X to +X)
+          can.mesh.position.x += beltLinearSpeed * dt;
+
+          // 1. First Station: Camera Inspection Point (X = 0.0)
+          if (!can.inspected && can.mesh.position.x >= CONFIG.cameraInspectX - 0.25) {
+            can.inspected = true;
+            stats.inspected++;
+
+            // Trigger AI camera strobe effect & sound
+            soundEngine.playCameraStrobe();
+            strobeLight.intensity = 5.0;
+            setTimeout(() => { strobeLight.intensity = 2.0; }, 60);
+
+            // Update 2D Vision Terminal
+            renderVisionSensor(can);
+
+            if (can.defect.isDefect) {
+              stats.rejected++;
+              stats.breakdown[can.defect.id] = (stats.breakdown[can.defect.id] || 0) + 1;
+              camLed.material.color.setHex(0xef4444); // Red LED
+            } else {
+              stats.passed++;
+              camLed.material.color.setHex(0x10b981); // Green LED
+            }
+            updateStatsUI();
+          }
+
+          // 2. Second Station: Downstream Air Shot Rejector (X = 4.8)
+          // Defective can travels past camera and gets ejected when aligned with downstream nozzle
+          if (can.defect.isDefect && !can.rejected && can.mesh.position.x >= CONFIG.airShotRejectX) {
+            can.rejected = true;
+            can.falling = true;
+
+            // Trigger physical blast impulse pushing can off belt into bin (+Z direction)
+            can.velocity.set(0.6, 2.8, 6.2);
+            can.angularVelocity.set(
+              (Math.random() - 0.5) * 12,
+              (Math.random() - 0.5) * 8,
+              Math.random() * 10
+            );
+
+            triggerAirShotEffect();
+          }
+
+          // Passed cans reaching end of line
+          if (can.mesh.position.x > BELT_LEN / 2 + 1) {
+            scene.remove(can.mesh);
+            activeCans.splice(i, 1);
+            continue;
+          }
+        } else {
+          // Can has been rejected by air blast! Simulate ballistic flight into blue bin
+          can.velocity.y -= 19.8 * dt; // Gravity
+          can.mesh.position.x += can.velocity.x * dt;
+          can.mesh.position.y += can.velocity.y * dt;
+          can.mesh.position.z += can.velocity.z * dt;
+
+          can.mesh.rotation.x += can.angularVelocity.x * dt;
+          can.mesh.rotation.y += can.angularVelocity.y * dt;
+          can.mesh.rotation.z += can.angularVelocity.z * dt;
+
+          // Floor/Bin impact
+          if (can.mesh.position.y < 0.3) {
+            scene.remove(can.mesh);
+            activeCans.splice(i, 1);
+          }
+        }
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const now = performance.now();
+      const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
+      lastFrameTime = now;
+
+      updateSimulation(dt);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function updateStatsUI() {
+      document.getElementById('header-pass').innerText = stats.passed;
+      document.getElementById('header-reject').innerText = stats.rejected;
+      const yieldPct = stats.inspected > 0 ? ((stats.passed / stats.inspected) * 100).toFixed(1) : '100.0';
+      document.getElementById('header-yield').innerText = `${yieldPct}%`;
+
+      // Pareto breakdown list
+      const paretoContainer = document.getElementById('defect-pareto-list');
+      const defectKeys = Object.keys(DEFECT_TYPES).filter(k => DEFECT_TYPES[k].isDefect);
+
+      let html = '';
+      defectKeys.forEach(k => {
+        const item = DEFECT_TYPES[k];
+        const count = stats.breakdown[item.id] || 0;
+        const pct = stats.rejected > 0 ? ((count / stats.rejected) * 100).toFixed(0) : '0';
+        html += `
+          <div class="flex items-center justify-between py-1 border-b border-slate-800/60">
+            <span class="text-slate-400">${item.name}</span>
+            <div class="flex items-center gap-2">
+              <div class="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full bg-rose-500 rounded-full" style="width: ${pct}%"></div>
+              </div>
+              <span class="text-rose-400 font-bold w-6 text-right">${count}</span>
+            </div>
+          </div>
+        `;
+      });
+      paretoContainer.innerHTML = html;
+    }
+
+    // Defect Injection Buttons
+    document.querySelectorAll('.inject-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        soundEngine.init();
+        const defectKey = btn.dataset.defect;
+        // Match defect catalog
+        const match = Object.values(DEFECT_TYPES).find(d => d.id === defectKey);
+        if (match) {
+          CONFIG.nextInjectDefect = match;
+          btn.classList.add('ring-2', 'ring-amber-400');
+          setTimeout(() => btn.classList.remove('ring-2', 'ring-amber-400'), 500);
+        }
+      });
+    });
+
+    // Conveyor Speed Slider
+    const speedSlider = document.getElementById('speed-slider');
+    speedSlider.addEventListener('input', (e) => {
+      CONFIG.conveyorSpeed = parseInt(e.target.value);
+      document.getElementById('speed-label').innerText = `${CONFIG.conveyorSpeed} Cans / Min`;
+      document.getElementById('header-cpm').innerText = `${CONFIG.conveyorSpeed} CPM`;
+    });
+
+    // Random Defect Rate Slider
+    const defectRateSlider = document.getElementById('defect-rate-slider');
+    defectRateSlider.addEventListener('input', (e) => {
+      CONFIG.randomDefectRate = parseInt(e.target.value) / 100;
+      document.getElementById('rate-value').innerText = `${e.target.value}%`;
+    });
+
+    // Height Preset Buttons
+    document.querySelectorAll('.height-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.height-preset-btn').forEach(b => {
+          b.className = 'height-preset-btn px-2 py-1.5 rounded bg-slate-800 text-slate-300 font-mono text-xs font-bold text-center border border-slate-700 hover:bg-slate-700';
+        });
+        btn.className = 'height-preset-btn px-2 py-1.5 rounded bg-blue-600 text-white font-mono text-xs font-bold text-center border border-blue-400';
+        CONFIG.canHeight = parseFloat(btn.dataset.height);
+      });
+    });
+
+    // Pause / Resume Toggle
+    const pauseBtn = document.getElementById('btn-pause-sim');
+    pauseBtn.addEventListener('click', () => {
+      CONFIG.paused = !CONFIG.paused;
+      document.getElementById('play-pause-label').innerText = CONFIG.paused ? 'Resume Line' : 'Pause Line';
+      pauseBtn.className = CONFIG.paused
+        ? 'px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition text-xs flex items-center gap-1.5 shadow-md shadow-emerald-900/40'
+        : 'px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition text-xs flex items-center gap-1.5 shadow-md shadow-indigo-900/40';
+    });
+
+    // Audio Toggle
+    const soundBtn = document.getElementById('btn-sound-toggle');
+    soundBtn.addEventListener('click', () => {
+      CONFIG.soundEnabled = !CONFIG.soundEnabled;
+      soundEngine.init();
+      document.getElementById('sound-icon-on').classList.toggle('hidden', !CONFIG.soundEnabled);
+      document.getElementById('sound-icon-off').classList.toggle('hidden', CONFIG.soundEnabled);
+    });
+
+    // Reset Counters
+    document.getElementById('btn-reset-stats').addEventListener('click', () => {
+      stats.inspected = 0;
+      stats.passed = 0;
+      stats.rejected = 0;
+      Object.keys(stats.breakdown).forEach(k => stats.breakdown[k] = 0);
+      updateStatsUI();
+    });
+
+    // Camera View Presets
+    document.querySelectorAll('.view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.view-btn').forEach(b => {
+          b.className = 'view-btn px-2.5 py-1 text-xs font-medium rounded-lg text-slate-300 hover:bg-slate-800';
+        });
+        btn.className = 'view-btn px-2.5 py-1 text-xs font-medium rounded-lg bg-blue-600 text-white shadow-sm';
+
+        const view = btn.dataset.view;
+        if (view === 'isometric') {
+          gsapMoveCamera(0, 7.5, 14.5, 0, 2.2, 0);
+        } else if (view === 'side') {
+          // Exact elevation side profile from diagram
+          gsapMoveCamera(0, 3.2, 11, 0, 3.0, 0);
+        } else if (view === 'top') {
+          // Top View (Flip Station)
+          gsapMoveCamera(0, 15, 0.01, 0, 2.2, 0);
+        } else if (view === 'camera') {
+          // Keyence Lens Eye POV looking straight down at the can
+          gsapMoveCamera(0, BELT_Y + 2.1, 0.01, 0, BELT_Y, 0);
+        }
+      });
+    });
+
+    // Smooth camera interpolation helper
+    function gsapMoveCamera(tx, ty, tz, lookX, lookY, lookZ) {
+      const startPos = camera.position.clone();
+      const endPos = new THREE.Vector3(tx, ty, tz);
+      const startTarget = controls.target.clone();
+      const endTarget = new THREE.Vector3(lookX, lookY, lookZ);
+      let progress = 0;
+
+      function step() {
+        progress += 0.06;
+        if (progress <= 1) {
+          camera.position.lerpVectors(startPos, endPos, progress);
+          controls.target.lerpVectors(startTarget, endTarget, progress);
+          controls.update();
+          requestAnimationFrame(step);
+        } else {
+          camera.position.copy(endPos);
+          controls.target.copy(endTarget);
+          controls.update();
+        }
+      }
+      step();
+    }
+
+    // Window Resize Handling
+    window.addEventListener('resize', () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    });
+
+    // Initializations
+    window.onload = function() {
+      updateStatsUI();
+      renderVisionSensor(null);
+      animate();
+    };
+
+    // Global click listener to unlock Web Audio on first gesture
+    window.addEventListener('click', () => {
+      soundEngine.init();
+    }, { once: true });
+  </script>
+</body>
+</html>
