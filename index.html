@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Can Flange Inspection System - 3D Printable Prototype</title>
+  
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Three.js and OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <style>
+    /* Custom Scrollbar and UI Highlights */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    .glow-cyan { box-shadow: 0 0 15px rgba(6, 182, 212, 0.4); }
+    .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+    .glow-green { box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
+
+    .crosshair-grid {
+      background-size: 20px 20px;
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col h-screen overflow-hidden font-sans select-none">
+
+  <!-- Header Bar -->
+  <header class="h-14 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between px-4 z-20 backdrop-blur-md">
+    <div class="flex items-center space-x-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center font-bold text-white shadow-md shadow-cyan-500/20">
+        <i data-lucide="scan" class="w-5 h-5"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-sm sm:text-base tracking-wide text-slate-100 flex items-center gap-2">
+          <span>YARDS BREWING CO.</span>
+          <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono">VS-C320MX PROTOTYPE</span>
+        </h1>
+        <p class="text-xs text-slate-400">Automated Pre-Fill Can Flange Defect Detection & Rejection Cell</p>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="flex items-center space-x-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-medium">
+      <button onclick="switchTab('digitalTwin')" id="tabBtn-digitalTwin" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors bg-cyan-600 text-white shadow">
+        <i data-lucide="box" class="w-3.5 h-3.5"></i>
+        <span>3D Prototype CAD</span>
+      </button>
+      <button onclick="switchTab('partsBom')" id="tabBtn-partsBom" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200">
+        <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+        <span>Printable Parts & STL</span>
+      </button>
+      <button onclick="switchTab('visionPipeline')" id="tabBtn-visionPipeline" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200">
+        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+        <span>Keyence / Vision HUD</span>
+      </button>
+      <button onclick="switchTab('timingSchematic')" id="tabBtn-timingSchematic" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200">
+        <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
+        <span>PLC Timing & Firmware</span>
+      </button>
+    </nav>
+
+    <!-- Quick Stats -->
+    <div class="hidden lg:flex items-center space-x-4 text-xs font-mono">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span class="text-slate-400">Line: <strong class="text-slate-200">220 Cans/min</strong></span>
+      </div>
+      <div class="px-2.5 py-1 bg-slate-800/80 rounded border border-slate-700 text-slate-300">
+        Flange OD: <span class="text-cyan-400">56.9 ±0.5 mm</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 flex overflow-hidden relative">
+
+    <!-- TAB 1: 3D DIGITAL TWIN & SIMULATOR -->
+    <div id="tab-digitalTwin" class="w-full h-full flex flex-col lg:flex-row relative">
+      <!-- 3D Canvas Container -->
+      <div class="flex-1 relative h-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+        <div id="threejs-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+        <!-- 3D Overlay Controls -->
+        <div class="absolute top-4 left-4 z-10 flex flex-col gap-2">
+          <!-- Simulation Status & Live Trigger Card -->
+          <div class="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 backdrop-blur-md shadow-xl text-xs w-64">
+            <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+              <span class="font-bold text-slate-200 flex items-center gap-1.5">
+                <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i> Conveyor Simulator
+              </span>
+              <span id="simStateBadge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">RUNNING</span>
+            </div>
+            
+            <div class="space-y-1.5 font-mono text-[11px]">
+              <div class="flex justify-between">
+                <span class="text-slate-400">Linear Velocity:</span>
+                <span class="text-slate-200">254 mm/s (10 in/s)</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Trigger Dist to Rejection:</span>
+                <span class="text-slate-200">150.0 mm</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Transit Delay:</span>
+                <span class="text-cyan-300 font-bold">572 ms (PLC timer)</span>
+              </div>
+              <div class="flex justify-between pt-1 border-t border-slate-800">
+                <span class="text-slate-400">Sim Inspection Rate:</span>
+                <span id="stat-inspection-count" class="text-emerald-400 font-bold">0 inspected</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-400">Rejections (Air Shot):</span>
+                <span id="stat-reject-count" class="text-rose-400 font-bold">0 ejected</span>
+              </div>
+            </div>
+
+            <!-- Sim Control Buttons -->
+            <div class="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-slate-800">
+              <button id="btn-toggle-sim" onclick="toggleSimulation()" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-medium flex items-center justify-center gap-1">
+                <i data-lucide="pause" id="simIcon" class="w-3.5 h-3.5"></i>
+                <span id="simText">Pause</span>
+              </button>
+              <button onclick="injectDefectCan()" class="w-full py-1.5 bg-rose-900/60 hover:bg-rose-800 border border-rose-700 rounded text-rose-200 font-medium flex items-center justify-center gap-1">
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                <span>Inject Defect</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- View Angles -->
+          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-1.5 backdrop-blur-md flex gap-1 shadow-lg text-[11px]">
+            <button onclick="setCameraView('iso')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Isometric</button>
+            <button onclick="setCameraView('top')" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">Top (Vision)</button>
+            <button onclick="setCameraView('side')" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">Side Elevation</button>
+            <button onclick="setCameraView('rejector')" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">Reject Station</button>
+          </div>
+        </div>
+
+        <!-- 3D Overlay Right Bottom: Exploded Slider & Print Info -->
+        <div class="absolute bottom-4 right-4 z-10 bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 backdrop-blur-md shadow-xl text-xs w-80">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-bold text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="wrench" class="w-4 h-4 text-cyan-400"></i> Assembly & Exploded View
+            </span>
+            <span id="explodeValText" class="font-mono text-cyan-400">0%</span>
+          </div>
+          <input type="range" id="explodeSlider" min="0" max="100" value="0" oninput="onExplodeChange(this.value)" class="w-full accent-cyan-500 cursor-pointer">
+          <p class="text-[11px] text-slate-400 mt-2">
+            Drag to explode 3D-printable brackets, camera gantry, pneumatic nozzle block, and conveyor side rails.
+          </p>
+        </div>
+
+        <!-- Vision HUD Mini PIP (Live Camera Output) -->
+        <div class="absolute bottom-4 left-4 z-10 bg-slate-900/95 border border-slate-700 rounded-xl p-2.5 shadow-2xl backdrop-blur-md w-52 pointer-events-auto">
+          <div class="flex items-center justify-between text-[11px] font-semibold text-slate-300 pb-1.5 mb-1.5 border-b border-slate-800">
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> KEYENCE CAM #2
+            </span>
+            <span id="mini-verdict-badge" class="px-1.5 py-0.2 rounded font-mono text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800">PASS</span>
+          </div>
+          <!-- 2D Canvas for Optical Viewport Simulation -->
+          <div class="relative w-full h-36 bg-black rounded overflow-hidden flex items-center justify-center border border-slate-800">
+            <canvas id="miniCameraCanvas" width="180" height="150" class="w-full h-full object-cover"></canvas>
+            <div id="flash-effect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-75"></div>
+          </div>
+          <div class="mt-1.5 flex justify-between font-mono text-[10px] text-slate-400">
+            <span>Diameter: <strong id="hud-measured-od" class="text-cyan-400">56.92 mm</strong></span>
+            <span>Proc: <strong class="text-emerald-400">4.1 ms</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Sidebar Controls -->
+      <aside class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full z-10 overflow-y-auto">
+        <div class="p-4 border-b border-slate-800">
+          <h2 class="font-bold text-sm text-slate-200 flex items-center gap-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-cyan-400"></i> Production Configuration
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">Adjust can profiles, optical gantry Z-height, and rejector parameters</p>
+        </div>
+
+        <div class="p-4 space-y-5 flex-1">
+          <!-- Can Format Selector (Section 4 of Yards Spec) -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Can Package Format</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button onclick="setCanProfile('small')" id="btn-can-small" class="p-2.5 rounded-lg border border-cyan-500 bg-cyan-950/40 text-left transition-all">
+                <div class="font-bold text-xs text-cyan-300">12 oz Std</div>
+                <div class="text-[10px] text-slate-400 font-mono">122.7 mm</div>
+              </button>
+              <button onclick="setCanProfile('medium')" id="btn-can-medium" class="p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-left hover:border-slate-700 transition-all">
+                <div class="font-bold text-xs text-slate-200">16 oz Pint</div>
+                <div class="text-[10px] text-slate-400 font-mono">157.2 mm</div>
+              </button>
+              <button onclick="setCanProfile('large')" id="btn-can-large" class="p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-left hover:border-slate-700 transition-all">
+                <div class="font-bold text-xs text-slate-200">19.2 oz Stv</div>
+                <div class="text-[10px] text-slate-400 font-mono">182.6 mm</div>
+              </button>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-2">
+              All 3 sizes share standard <strong class="text-slate-200">202 End (56.9 mm OD)</strong>. Camera gantry slides along precision 3D-printed leadscrew / indexed detents.
+            </p>
+          </div>
+
+          <!-- Gantry Height Fine Adjustment -->
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-xs font-medium text-slate-300">Camera Working Distance</span>
+              <span id="gantryHeightDisplay" class="font-mono text-xs text-cyan-400">250.0 mm</span>
+            </div>
+            <input type="range" id="gantrySlider" min="200" max="350" value="250" oninput="onGantrySlider(this.value)" class="w-full accent-cyan-500 cursor-pointer">
+            <div class="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
+              <span>200 mm</span>
+              <span>Nominal: 250 mm (8.0 px/mm)</span>
+              <span>350 mm</span>
+            </div>
+          </div>
+
+          <!-- Rejector Actuation Method -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Rejection System Mode</label>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <label class="flex items-center gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer hover:border-slate-700">
+                <input type="radio" name="rejectorType" value="pneumatic" checked onchange="setRejectorMode('pneumatic')" class="accent-cyan-500">
+                <div>
+                  <div class="font-medium text-slate-200">Air-Shot Nozzle</div>
+                  <div class="text-[10px] text-slate-400">80 PSI solenoid, 40ms</div>
+                </div>
+              </label>
+              <label class="flex items-center gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer hover:border-slate-700">
+                <input type="radio" name="rejectorType" value="servo" onchange="setRejectorMode('servo')" class="accent-cyan-500">
+                <div>
+                  <div class="font-medium text-slate-200">Servo Kicker</div>
+                  <div class="text-[10px] text-slate-400">3D print desktop arm</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 3D Print Hardware Specs Card -->
+          <div class="bg-cyan-950/20 border border-cyan-900/50 rounded-lg p-3 text-xs">
+            <div class="font-semibold text-cyan-300 flex items-center gap-1.5 mb-1.5">
+              <i data-lucide="printer" class="w-4 h-4"></i> Rapid Prototype Architecture
+            </div>
+            <ul class="space-y-1 text-[11px] text-slate-300 list-disc list-inside">
+              <li><strong class="text-slate-100">Modular Track:</strong> 250 mm interlocking conveyor bed sections with snap-in guide rails</li>
+              <li><strong class="text-slate-100">Optics Tower:</strong> Telescoping uprights with dual M5 thumb lock screws</li>
+              <li><strong class="text-slate-100">Camera Casing:</strong> Keyence VS-C320MX C-mount splash cover with M68 filter ring</li>
+              <li><strong class="text-slate-100">Materials:</strong> PETG/ABS for chemical/alcohol washdown resistance</li>
+            </ul>
+          </div>
+
+          <!-- Quick STL Export Action -->
+          <div>
+            <button onclick="downloadAllStlBundle()" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              <span>Generate & Download STL Parts</span>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- TAB 2: PRINTABLE PARTS CATALOG & STL GENERATOR -->
+    <div id="tab-partsBom" class="w-full h-full p-6 overflow-y-auto hidden">
+      <div class="max-w-6xl mx-auto space-y-6">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <i data-lucide="layers" class="w-5 h-5 text-cyan-400"></i>
+            3D Printable Engineering Files & Bill of Materials
+          </h2>
+          <p class="text-sm text-slate-400 mt-1">
+            Complete modular system engineered to fit within standard 220 × 220 × 250 mm 3D printer build volumes (Ender-3, Prusa MK3/MK4, Bambu Lab X1/P1P).
+          </p>
+        </div>
+
+        <!-- Part Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="partsCatalogGrid">
+          <!-- Dynamically populated or statically rendered below -->
+        </div>
+
+        <!-- Printing Guidelines & Materials -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <h3 class="font-bold text-sm text-slate-200 flex items-center gap-2">
+            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i> Brewery Environmental & 3D Slicing Guidelines
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+              <span class="text-cyan-400 font-bold block mb-1">Material Recommendation</span>
+              <p class="text-slate-300">
+                <strong class="text-white">PETG or ASA:</strong> Resists moisture, cleaning caustic detergents, and beer splashes. Standard PLA will deform under warm brewery washdown spray.
+              </p>
+            </div>
+            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+              <span class="text-cyan-400 font-bold block mb-1">Infill & Wall Perimeters</span>
+              <p class="text-slate-300">
+                <strong class="text-white">4 Walls, 35% Gyroid Infill:</strong> Provides rigidity against high-speed 220 cans/min vibration and pneumatic solenoid recoil impacts.
+              </p>
+            </div>
+            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
+              <span class="text-cyan-400 font-bold block mb-1">Standard Hardware (Off-the-shelf)</span>
+              <p class="text-slate-300">
+                M4/M5 Hex Socket Cap Screws & Brass Heat-Set Threaded Inserts (Ruthex M4×8.1mm). 2020 T-slot aluminum extrusions for the conveyor rails.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: KEYENCE / OPENCV VISION PIPELINE -->
+    <div id="tab-visionPipeline" class="w-full h-full p-6 overflow-y-auto hidden">
+      <div class="max-w-6xl mx-auto space-y-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+              <i data-lucide="eye" class="w-5 h-5 text-cyan-400"></i>
+              Keyence VS-C320MX / OpenCV Vision Inspection Simulation
+            </h2>
+            <p class="text-sm text-slate-400 mt-1">
+              Top-down 3mm Fisheye optics inspection: ShapeTrax outer/inner circularity, OD/ID dimensioning, and YOLO rim defect classification.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="testVisionPass()" class="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-500 rounded text-xs font-semibold text-white">Test Good Can</button>
+            <button onclick="testVisionDent()" class="px-3 py-1.5 bg-amber-600/80 hover:bg-amber-500 rounded text-xs font-semibold text-white">Test Dent Defect</button>
+            <button onclick="testVisionOval()" class="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-500 rounded text-xs font-semibold text-white">Test Ovality Defect</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Main Vision Display -->
+          <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-800 text-xs">
+              <span class="font-mono text-cyan-400 flex items-center gap-1.5">
+                <i data-lucide="camera" class="w-4 h-4"></i> FRAME_BUFFER: 2048×1536 MONO (3.2 MP)
+              </span>
+              <span id="vision-status-chip" class="px-2.5 py-0.5 rounded font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+                SYSTEM VERDICT: PASS
+              </span>
+            </div>
+
+            <!-- Optical Feed Canvas -->
+            <div class="flex-1 flex items-center justify-center p-4">
+              <div class="relative w-[360px] h-[360px] bg-black rounded-lg border-2 border-slate-800 overflow-hidden shadow-inner crosshair-grid">
+                <canvas id="largeVisionCanvas" width="360" height="360" class="w-full h-full"></canvas>
+                <!-- Reticle crosshair -->
+                <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  <div class="w-full h-[1px] bg-cyan-500/20"></div>
+                  <div class="absolute h-full w-[1px] bg-cyan-500/20"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tool Chain Status Badges (From Keyence Spec sheet #4) -->
+            <div class="grid grid-cols-5 gap-2 pt-3 border-t border-slate-800 text-[11px] font-mono">
+              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                <div class="text-slate-400">1. ShapeTrax</div>
+                <div id="tool-shapetrax" class="text-emerald-400 font-bold mt-0.5">LOCKED</div>
+              </div>
+              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                <div class="text-slate-400">2. Surface Defect</div>
+                <div id="tool-surface" class="text-emerald-400 font-bold mt-0.5">0.00% OK</div>
+              </div>
+              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                <div class="text-slate-400">3. ID Tool</div>
+                <div id="tool-id" class="text-emerald-400 font-bold mt-0.5">52.41 mm</div>
+              </div>
+              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                <div class="text-slate-400">4. OD Tool</div>
+                <div id="tool-od" class="text-emerald-400 font-bold mt-0.5">56.91 mm</div>
+              </div>
+              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                <div class="text-slate-400">5. AI Anomaly</div>
+                <div id="tool-ai" class="text-emerald-400 font-bold mt-0.5">PASS (98%)</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Parameter Limits & Tolerances -->
+          <div class="space-y-4">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <h3 class="font-bold text-xs uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-1.5">
+                <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i> Yards Tolerance Envelope
+              </h3>
+              <div class="space-y-2.5 text-xs font-mono">
+                <div class="p-2 bg-slate-950 rounded border border-slate-800">
+                  <div class="flex justify-between text-slate-400">
+                    <span>Flange OD Target:</span>
+                    <span class="text-cyan-400">56.90 mm</span>
+                  </div>
+                  <div class="flex justify-between text-[11px] text-slate-500 mt-0.5">
+                    <span>Tolerance (±0.5mm):</span>
+                    <span>56.40 – 57.40 mm</span>
+                  </div>
+                </div>
+
+                <div class="p-2 bg-slate-950 rounded border border-slate-800">
+                  <div class="flex justify-between text-slate-400">
+                    <span>Flange ID Target:</span>
+                    <span class="text-cyan-400">52.40 mm</span>
+                  </div>
+                  <div class="flex justify-between text-[11px] text-slate-500 mt-0.5">
+                    <span>Inner lip lip width:</span>
+                    <span>2.10 mm nominal</span>
+                  </div>
+                </div>
+
+                <div class="p-2 bg-slate-950 rounded border border-slate-800">
+                  <div class="flex justify-between text-slate-400">
+                    <span>Max Ovality (Major - Minor):</span>
+                    <span class="text-amber-400">&lt; 1.50 mm</span>
+                  </div>
+                </div>
+
+                <div class="p-2 bg-slate-950 rounded border border-slate-800">
+                  <div class="flex justify-between text-slate-400">
+                    <span>Pixel Calibration Scale:</span>
+                    <span class="text-slate-200">8.00 pixels = 1.0 mm</span>
+                  </div>
+                  <div class="flex justify-between text-[11px] text-slate-500 mt-0.5">
+                    <span>Working Distance (WD):</span>
+                    <span>250.0 mm</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Algorithm Execution Time Breakdown -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+              <h3 class="font-bold text-xs uppercase tracking-wider text-slate-300 mb-2">Cycle Timing Budget (&lt; 20 ms)</h3>
+              <div class="space-y-1.5 text-xs">
+                <div>
+                  <div class="flex justify-between text-[11px] text-slate-400 mb-0.5">
+                    <span>1. Exposure & Transfer (Global Shutter)</span>
+                    <span class="font-mono text-cyan-400">1.8 ms</span>
+                  </div>
+                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-cyan-500 h-full w-[15%]"></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-[11px] text-slate-400 mb-0.5">
+                    <span>2. Gaussian Filter & Hough Circles</span>
+                    <span class="font-mono text-cyan-400">4.1 ms</span>
+                  </div>
+                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-cyan-500 h-full w-[35%]"></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-[11px] text-slate-400 mb-0.5">
+                    <span>3. ShapeTrax Anomaly Classification</span>
+                    <span class="font-mono text-cyan-400">6.2 ms</span>
+                  </div>
+                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-cyan-500 h-full w-[50%]"></div>
+                  </div>
+                </div>
+                <div class="pt-2 text-[11px] font-mono text-emerald-400 font-bold flex justify-between border-t border-slate-800">
+                  <span>Total Latency: 12.1 ms</span>
+                  <span>Margin: +7.9 ms</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: TIMING & FIRMWARE -->
+    <div id="tab-timingSchematic" class="w-full h-full p-6 overflow-y-auto hidden">
+      <div class="max-w-6xl mx-auto space-y-6">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <i data-lucide="cpu" class="w-5 h-5 text-cyan-400"></i>
+            Conveyor Velocity, PLC Timing Math & Prototype Firmware
+          </h2>
+          <p class="text-sm text-slate-400 mt-1">
+            Exact timing calculations synchronized with Section 2 (Step 3) of the Yards Brewing packaging line.
+          </p>
+        </div>
+
+        <!-- Formula Callout -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+            <span class="text-slate-500 text-xs block mb-1">Throughput</span>
+            <span class="text-lg font-bold text-white">220 cans/min</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">~3.67 cans/sec</span>
+          </div>
+          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+            <span class="text-slate-500 text-xs block mb-1">Conveyor Velocity ($v$)</span>
+            <span class="text-lg font-bold text-cyan-400">254.0 mm/s</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">10.0 inches/sec</span>
+          </div>
+          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+            <span class="text-slate-500 text-xs block mb-1">Transit Distance ($d$)</span>
+            <span class="text-lg font-bold text-white">150.0 mm</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">Optics center to nozzle</span>
+          </div>
+          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
+            <span class="text-slate-500 text-xs block mb-1">Rejection Delay Timer</span>
+            <span class="text-lg font-bold text-emerald-400">572 ms</span>
+            <span class="text-[10px] text-slate-400 block mt-0.5">(590 ms transit - 18 ms CV)</span>
+          </div>
+        </div>
+
+        <!-- Microcontroller Prototype Code (Arduino / Raspberry Pi Pico) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div class="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex justify-between items-center text-xs font-mono">
+            <span class="text-cyan-400 flex items-center gap-2">
+              <i data-lucide="code" class="w-4 h-4"></i> prototype_controller.ino (Hardware Interrupt & Solenoid Pulse)
+            </span>
+            <button onclick="copyFirmwareCode()" class="text-slate-400 hover:text-slate-200 flex items-center gap-1">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span id="copy-btn-text">Copy Code</span>
+            </button>
+          </div>
+          <pre class="p-4 text-xs font-mono text-slate-300 overflow-x-auto leading-relaxed">
+<span class="text-slate-500">// Yards Brewing Co. - Pre-Fill Can Inspection Prototype Controller</span>
+<span class="text-slate-500">// Synchronizes M12 optical trigger, Keyence / ELP camera, and pneumatic rejector</span>
+
+<span class="text-purple-400">#include</span> <span class="text-amber-300">&lt;Arduino.h&gt;</span>
+
+<span class="text-cyan-400">const int</span> PIN_PHOTO_TRIGGER = <span class="text-amber-400">2</span>;   <span class="text-slate-500">// M12 Diffuse optical sensor (Step 3)</span>
+<span class="text-cyan-400">const int</span> PIN_CAM_TRIGGER   = <span class="text-amber-400">3</span>;   <span class="text-slate-500">// 24V Opto-isolated pulse to Keyence VS-C320MX</span>
+<span class="text-cyan-400">const int</span> PIN_CV_DECISION   = <span class="text-amber-400">4</span>;   <span class="text-slate-500">// Input from Keyence Out1 (HIGH = REJECT)</span>
+<span class="text-cyan-400">const int</span> PIN_AIR_SOLENOID  = <span class="text-amber-400">5</span>;   <span class="text-slate-500">// MOSFET driver for 80 PSI Air Shot Valve</span>
+<span class="text-cyan-400">const int</span> PIN_SERVO_PWM     = <span class="text-amber-400">6</span>;   <span class="text-slate-500">// Desktop hobby servo kicker alternative</span>
+
+<span class="text-slate-500">// Calibration Constants (10 inches/sec @ 150mm spacing)</span>
+<span class="text-cyan-400">const unsigned long</span> TRANSIT_DELAY_MS   = <span class="text-amber-400">572</span>; <span class="text-slate-500">// 590ms transit - 18ms camera latency</span>
+<span class="text-cyan-400">const unsigned long</span> SOLENOID_PULSE_MS  = <span class="text-amber-400">40</span>;  <span class="text-slate-500">// High-velocity 40ms air shot</span>
+
+<span class="text-cyan-400">struct</span> CanEvent {
+  <span class="text-cyan-400">unsigned long</span> fireTime;
+  <span class="text-cyan-400">bool</span> reject;
+};
+
+<span class="text-purple-400">#define</span> QUEUE_SIZE 8
+CanEvent eventQueue[QUEUE_SIZE];
+<span class="text-cyan-400">volatile int</span> qHead = <span class="text-amber-400">0</span>;
+<span class="text-cyan-400">volatile int</span> qTail = <span class="text-amber-400">0</span>;
+
+<span class="text-cyan-400">void</span> <span class="text-blue-400">IRAM_ATTR</span> onCanDetected() {
+  <span class="text-slate-500">// 1. Immediate trigger pulse to camera to freeze motion (1/2000s exposure)</span>
+  digitalWrite(PIN_CAM_TRIGGER, HIGH);
+  delayMicroseconds(<span class="text-amber-400">100</span>);
+  digitalWrite(PIN_CAM_TRIGGER, LOW);
+}
+
+<span class="text-cyan-400">void</span> <span class="text-blue-400">setup</span>() {
+  pinMode(PIN_PHOTO_TRIGGER, INPUT_PULLUP);
+  pinMode(PIN_CAM_TRIGGER, OUTPUT);
+  pinMode(PIN_CV_DECISION, INPUT);
+  pinMode(PIN_AIR_SOLENOID, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(PIN_PHOTO_TRIGGER), onCanDetected, RISING);
+  Serial.begin(<span class="text-amber-400">115200</span>);
+}
+
+<span class="text-cyan-400">void</span> <span class="text-blue-400">loop</span>() {
+  <span class="text-slate-500">// Check if Keyence flagged reject for current frame</span>
+  <span class="text-purple-400">if</span> (digitalRead(PIN_CV_DECISION) == HIGH) {
+    <span class="text-cyan-400">unsigned long</span> targetFire = millis() + TRANSIT_DELAY_MS;
+    eventQueue[qHead] = { targetFire, <span class="text-amber-400">true</span> };
+    qHead = (qHead + <span class="text-amber-400">1</span>) % QUEUE_SIZE;
+  }
+
+  <span class="text-slate-500">// Fire air shot when can arrives at nozzle</span>
+  <span class="text-purple-400">if</span> (qHead != qTail && millis() &gt;= eventQueue[qTail].fireTime) {
+    <span class="text-purple-400">if</span> (eventQueue[qTail].reject) {
+      digitalWrite(PIN_AIR_SOLENOID, HIGH);
+      delay(SOLENOID_PULSE_MS);
+      digitalWrite(PIN_AIR_SOLENOID, LOW);
+    }
+    qTail = (qTail + <span class="text-amber-400">1</span>) % QUEUE_SIZE;
+  }
+}
+          </pre>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Notification Toast Container -->
+  <div id="toast" class="fixed top-16 right-5 z-50 transform translate-y-[-100px] opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs">
+    <i id="toast-icon" data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toast-msg">Notification</span>
+  </div>
+
+  <script>
+    /* Global Application State */
+    const state = {
+      simRunning: true,
+      conveyorSpeed: 254.0, // mm/sec (10 in/sec)
+      canInterval: 1.1, // seconds between cans
+      lastCanSpawn: 0,
+      inspectionCount: 0,
+      rejectCount: 0,
+      activeCanProfile: 'small', // small (122.7mm), medium (157.2mm), large (182.6mm)
+      rejectorMode: 'pneumatic', // 'pneumatic' or 'servo'
+      gantryHeight: 250.0, // mm
+      explodeFactor: 0.0,
+      activeTab: 'digitalTwin',
+      cans: [], // list of 3d can objects on conveyor
+      injectDefectNext: false
+    };
+
+    const CAN_SPECS = {
+      small: { name: '12 oz Standard', height: 122.7, od: 56.9, id: 52.4, color: 0xd1d5db },
+      medium: { name: '16 oz Pint', height: 157.2, od: 56.9, id: 52.4, color: 0x93c5fd },
+      large: { name: '19.2 oz Stovepipe', height: 182.6, od: 56.9, id: 52.4, color: 0xfcd34d }
+    };
+
+    let scene, camera, renderer, controls;
+    let conveyorGroup, gantryGroup, cameraHousing, rejectorGroup, railsGroup, cansContainer;
+    let cameraFlashMesh, photoSensorLED;
+
+    function initThreeJS() {
+      const container = document.getElementById('threejs-container');
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x090d16);
+      scene.fog = new THREE.FogExp2(0x090d16, 0.0012);
+
+      camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
+      camera.position.set(380, 320, 420);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 + 0.05; // don't go below floor
+      controls.target.set(0, 100, 0);
+
+      // Environment & Floor Grid
+      const grid = new THREE.GridHelper(1000, 40, 0x1e293b, 0x0f172a);
+      grid.position.y = -0.5;
+      scene.add(grid);
+
+      // Lighting Setup
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+      dirLight.position.set(200, 400, 200);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 2048;
+      dirLight.shadow.mapSize.height = 2048;
+      dirLight.shadow.camera.near = 10;
+      dirLight.shadow.camera.far = 1000;
+      dirLight.shadow.camera.left = -300;
+      dirLight.shadow.camera.right = 300;
+      dirLight.shadow.camera.top = 300;
+      dirLight.shadow.camera.bottom = -300;
+      scene.add(dirLight);
+
+      const blueRimLight = new THREE.PointLight(0x06b6d4, 1.2, 500);
+      blueRimLight.position.set(-150, 200, -100);
+      scene.add(blueRimLight);
+
+      // Construct Complete 3D Assembly
+      buildAssembly();
+
+      // Window resize listener
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function buildAssembly() {
+      // 1. Conveyor Assembly
+      conveyorGroup = new THREE.Group();
+      scene.add(conveyorGroup);
+
+      // Conveyor Bed (Black Anodized aluminum / 3D printed PETG segments)
+      const bedMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.6 });
+      const bedGeo = new THREE.BoxGeometry(600, 25, 90);
+      const bed = new THREE.Mesh(bedGeo, bedMat);
+      bed.position.set(0, 25/2, 0);
+      bed.castShadow = true;
+      bed.receiveShadow = true;
+      conveyorGroup.add(bed);
+
+      // Conveyor Tabletop Chain Belt (Modular interlocking slat track)
+      const beltMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8, metalness: 0.2 });
+      const beltGeo = new THREE.BoxGeometry(596, 4, 76);
+      const belt = new THREE.Mesh(beltGeo, beltMat);
+      belt.position.set(0, 25 + 2, 0);
+      belt.receiveShadow = true;
+      conveyorGroup.add(belt);
+
+      // Conveyor Side Rails (3D Printable snap-in guide rails for 66mm cans)
+      railsGroup = new THREE.Group();
+      const railMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.4, metalness: 0.2 });
+      
+      const railGeo = new THREE.BoxGeometry(600, 16, 6);
+      const leftRail = new THREE.Mesh(railGeo, railMat);
+      leftRail.position.set(0, 42, -37);
+      const rightRail = new THREE.Mesh(railGeo, railMat);
+      rightRail.position.set(0, 42, 37);
+      railsGroup.add(leftRail, rightRail);
+      conveyorGroup.add(railsGroup);
+
+      // 2. Optical Sensor (M12 Photoelectric Sensor Bracket at Step 3 infeed)
+      const sensorBracketMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 });
+      const sensorBracket = new THREE.Mesh(new THREE.BoxGeometry(20, 45, 12), sensorBracketMat);
+      sensorBracket.position.set(-150, 40, -45);
+      conveyorGroup.add(sensorBracket);
+
+      // M12 Barrel Sensor
+      const barrelMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8, roughness: 0.3 });
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 30, 16), barrelMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(-150, 45, -35);
+      conveyorGroup.add(barrel);
+
+      // Sensor Status LED Indicator
+      const ledMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+      photoSensorLED = new THREE.Mesh(new THREE.SphereGeometry(2.5, 12, 12), ledMat);
+      photoSensorLED.position.set(-150, 45, -50);
+      conveyorGroup.add(photoSensorLED);
+
+      // 3. Overhead Gantry System (Adjustable Z-Axis for 12oz, 16oz, 19.2oz)
+      gantryGroup = new THREE.Group();
+      scene.add(gantryGroup);
+
+      const uprightMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.8 });
+      // Dual Upright Columns
+      const colGeo = new THREE.BoxGeometry(25, 360, 25);
+      const leftCol = new THREE.Mesh(colGeo, uprightMat);
+      leftCol.position.set(0, 180, -75);
+      const rightCol = new THREE.Mesh(colGeo, uprightMat);
+      rightCol.position.set(0, 180, 75);
+      leftCol.castShadow = true;
+      rightCol.castShadow = true;
+      gantryGroup.add(leftCol, rightCol);
+
+      // Top Crossbar
+      const crossbar = new THREE.Mesh(new THREE.BoxGeometry(30, 25, 175), uprightMat);
+      crossbar.position.set(0, 360, 0);
+      gantryGroup.add(crossbar);
+
+      // Sliding Carriage (Holds Keyence VS-C320MX Camera + LED Ring Light)
+      cameraHousing = new THREE.Group();
+      const carriageMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.4 });
+      const carriageBase = new THREE.Mesh(new THREE.BoxGeometry(50, 35, 140), carriageMat);
+      carriageBase.castShadow = true;
+      cameraHousing.add(carriageBase);
+
+      // Keyence VS-C320MX Camera Body (Black industrial housing with Keyence logo accents)
+      const keyenceMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.3, metalness: 0.7 });
+      const camBody = new THREE.Mesh(new THREE.BoxGeometry(45, 55, 45), keyenceMat);
+      camBody.position.set(0, 25, 0);
+      cameraHousing.add(camBody);
+
+      // C-Mount 3mm Fisheye Lens & Direct LED Ring Light
+      const lensMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9, roughness: 0.2 });
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(18, 16, 28, 24), lensMat);
+      lens.position.set(0, -14, 0);
+      cameraHousing.add(lens);
+
+      // LED Ring Light (White Diffuser for specular reduction)
+      const ringMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x444444, roughness: 0.2 });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(26, 6, 16, 32), ringMat);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.set(0, -22, 0);
+      cameraHousing.add(ring);
+
+      // Camera Flash Mesh (Visual representation of 1/2000s inspection pulse)
+      const flashGeo = new THREE.CylinderGeometry(2, 45, 150, 16, 1, true);
+      const flashMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+      cameraFlashMesh = new THREE.Mesh(flashGeo, flashMat);
+      cameraFlashMesh.position.set(0, -85, 0);
+      cameraHousing.add(cameraFlashMesh);
+
+      // Place Camera Housing at default Working Distance (250mm above conveyor surface)
+      cameraHousing.position.set(0, 250 + 25, 0);
+      gantryGroup.add(cameraHousing);
+
+      // 4. Rejection Mechanism (150 mm downstream from camera)
+      rejectorGroup = new THREE.Group();
+      rejectorGroup.position.set(150, 25, 0); // 150mm downstream per Yards engineering math
+      scene.add(rejectorGroup);
+
+      // Air Shot Nozzle Block (Pneumatic)
+      const nozzleBlockMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.4 });
+      const nozzleBlock = new THREE.Mesh(new THREE.BoxGeometry(28, 35, 25), nozzleBlockMat);
+      nozzleBlock.position.set(0, 30, -50);
+      rejectorGroup.add(nozzleBlock);
+
+      // Stainless Steel Nozzle Tube pointing across the conveyor
+      const nozzleTubeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
+      const nozzleTube = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 30, 16), nozzleTubeMat);
+      nozzleTube.rotation.x = Math.PI / 2;
+      nozzleTube.position.set(0, 35, -30);
+      rejectorGroup.add(nozzleTube);
+
+      // Defect Catch Bin / Diverter Slide on opposite side
+      const binMat = new THREE.MeshStandardMaterial({ color: 0xbe123c, roughness: 0.5, metalness: 0.2 });
+      const bin = new THREE.Mesh(new THREE.BoxGeometry(70, 45, 55), binMat);
+      bin.position.set(0, 10, 75);
+      rejectorGroup.add(bin);
+
+      // Container for dynamic cans traveling on conveyor
+      cansContainer = new THREE.Group();
+      scene.add(cansContainer);
+
+      // Initial Cans
+      spawnCan(-180);
+      spawnCan(-80);
+      spawnCan(20);
+    }
+
+    function createCanMesh(profileKey, hasDefect = false) {
+      const spec = CAN_SPECS[profileKey];
+      const canGroup = new THREE.Group();
+
+      // Aluminum Can Cylinder Body (66.0 mm OD)
+      const canBodyMat = new THREE.MeshStandardMaterial({
+        color: spec.color,
+        metalness: 0.85,
+        roughness: 0.25
+      });
+
+      // Scaled in scene units: 1 mm = 1 unit
+      const bodyRadius = 66.0 / 2;
+      const bodyHeight = spec.height - 12; // lower body
+      const bodyGeo = new THREE.CylinderGeometry(bodyRadius, bodyRadius * 0.96, bodyHeight, 32);
+      const body = new THREE.Mesh(bodyGeo, canBodyMat);
+      body.position.y = bodyHeight / 2;
+      body.castShadow = true;
+      canGroup.add(body);
+
+      // Can Neck & Taper (202 neck down to 56.9 mm)
+      const neckGeo = new THREE.CylinderGeometry(spec.od / 2, bodyRadius, 10, 32);
+      const neck = new THREE.Mesh(neckGeo, canBodyMat);
+      neck.position.y = bodyHeight + 5;
+      canGroup.add(neck);
+
+      // Flange Rim (The critical inspection feature)
+      let rimColor = 0xffffff;
+      if (hasDefect) rimColor = 0xf87171;
+
+      const rimMat = new THREE.MeshStandardMaterial({
+        color: rimColor,
+        metalness: 0.9,
+        roughness: 0.15
+      });
+
+      // Rim Torus
+      const rimRadius = spec.od / 2;
+      const rimGeo = new THREE.TorusGeometry(rimRadius, 1.2, 16, 32);
+      rimGeo.rotateX(Math.PI / 2);
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      rim.position.y = spec.height;
+      canGroup.add(rim);
+
+      // If defect: introduce a visible flat-spot dent or ovality
+      if (hasDefect) {
+        rim.scale.set(1.08, 1.0, 0.90); // out of round oval defect
+        const dentIndicator = new THREE.Mesh(
+          new THREE.SphereGeometry(3, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0xef4444 })
+        );
+        dentIndicator.position.set(rimRadius * 0.9, spec.height, 0);
+        canGroup.add(dentIndicator);
+      }
+
+      canGroup.userData = {
+        profileKey: profileKey,
+        height: spec.height,
+        od: spec.od,
+        hasDefect: hasDefect,
+        inspected: false,
+        rejected: false,
+        rejectVelocityZ: 0
+      };
+
+      return canGroup;
+    }
+
+    function spawnCan(xPos) {
+      const isDefect = state.injectDefectNext;
+      state.injectDefectNext = false;
+      const can = createCanMesh(state.activeCanProfile, isDefect);
+      can.position.set(xPos, 27, 0);
+      cansContainer.add(can);
+      state.cans.push(can);
+    }
+
+    let lastTime = performance.now();
+
+    function animate(currentTime) {
+      requestAnimationFrame(animate);
+
+      const delta = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      if (state.simRunning) {
+        // Move cans forward along conveyor
+        const speed = state.conveyorSpeed; // mm/sec
+
+        for (let i = state.cans.length - 1; i >= 0; i--) {
+          const can = state.cans[i];
+
+          // If currently being ejected by air shot
+          if (can.userData.rejected) {
+            can.position.z += can.userData.rejectVelocityZ * delta;
+            can.position.y += Math.sin(can.position.z * 0.05) * 0.5;
+            can.rotation.x += 4 * delta;
+
+            // Remove when fully in bin
+            if (can.position.z > 120) {
+              cansContainer.remove(can);
+              state.cans.splice(i, 1);
+            }
+            continue;
+          }
+
+          can.position.x += speed * delta;
+
+          // 1. Photoelectric Trigger Check (x = -150 mm)
+          if (can.position.x >= -150 && can.position.x < -140 && !can.userData.triggered) {
+            can.userData.triggered = true;
+            flashPhotoSensor();
+          }
+
+          // 2. Camera Inspection Check (x = 0 mm)
+          if (can.position.x >= 0 && !can.userData.inspected) {
+            can.userData.inspected = true;
+            triggerVisionInspection(can);
+          }
+
+          // 3. Rejection Point Check (x = 150 mm downstream)
+          if (can.position.x >= 150 && can.userData.hasDefect && !can.userData.rejected) {
+            actuateRejector(can);
+          }
+
+          // Remove off-screen clean cans (x > 320 mm)
+          if (can.position.x > 320) {
+            cansContainer.remove(can);
+            state.cans.splice(i, 1);
+          }
+        }
+
+        // Spawn new cans based on line throughput
+        if (currentTime - state.lastCanSpawn > state.canInterval * 1000) {
+          spawnCan(-280);
+          state.lastCanSpawn = currentTime;
+        }
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function flashPhotoSensor() {
+      if (photoSensorLED) {
+        photoSensorLED.material.color.setHex(0xf59e0b); // yellow trigger pulse
+        setTimeout(() => photoSensorLED.material.color.setHex(0x22c55e), 80);
+      }
+    }
+
+    function triggerVisionInspection(can) {
+      state.inspectionCount++;
+      document.getElementById('stat-inspection-count').textContent = `${state.inspectionCount} inspected`;
+
+      // Trigger optical flash cone
+      if (cameraFlashMesh) {
+        cameraFlashMesh.material.opacity = 0.5;
+        setTimeout(() => cameraFlashMesh.material.opacity = 0.0, 60);
+      }
+
+      // Mini HUD flash
+      const flashEl = document.getElementById('flash-effect');
+      if (flashEl) {
+        flashEl.style.opacity = '0.7';
+        setTimeout(() => flashEl.style.opacity = '0', 80);
+      }
+
+      // Simulate vision evaluation
+      const hasDefect = can.userData.hasDefect;
+      const measuredOD = hasDefect ? (56.9 + (Math.random() > 0.5 ? 1.6 : -1.8)) : (56.9 + (Math.random() * 0.2 - 0.1));
+      
+      updateVisionHUD(hasDefect, measuredOD.toFixed(2));
+    }
+
+    function actuateRejector(can) {
+      can.userData.rejected = true;
+      can.userData.rejectVelocityZ = 280; // kick off to side
+      state.rejectCount++;
+      document.getElementById('stat-reject-count').textContent = `${state.rejectCount} ejected`;
+
+      showToast(`Air Shot Ejected Defective Can (${can.userData.profileKey.toUpperCase()})`, 'reject');
+    }
+
+    function updateVisionHUD(hasDefect, measuredOD) {
+      const canvas = document.getElementById('miniCameraCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.fillStyle = '#05070d';
+      ctx.fillRect(0, 0, w, h);
+
+      const cx = w / 2;
+      const cy = h / 2;
+
+      // Simulated Can Flange Grayscale Profile
+      ctx.beginPath();
+      ctx.arc(cx, cy, 48, 0, Math.PI * 2);
+      ctx.fillStyle = '#475569';
+      ctx.fill();
+
+      // Interior void
+      ctx.beginPath();
+      ctx.arc(cx, cy, 40, 0, Math.PI * 2);
+      ctx.fillStyle = '#0b0f19';
+      ctx.fill();
+
+      // Keyence ShapeTrax Circle Overlays (Green if Pass, Red if Fail)
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = hasDefect ? '#ef4444' : '#22c55e';
+
+      ctx.beginPath();
+      if (hasDefect) {
+        ctx.ellipse(cx, cy, 52, 44, 0.4, 0, Math.PI * 2);
+      } else {
+        ctx.arc(cx, cy, 48, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+
+      // Inner Diameter Circle
+      ctx.strokeStyle = '#06b6d4';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 40, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // UI Text Badges
+      const verdictBadge = document.getElementById('mini-verdict-badge');
+      const measuredODEl = document.getElementById('hud-measured-od');
+
+      if (hasDefect) {
+        verdictBadge.textContent = 'REJECT';
+        verdictBadge.className = 'px-1.5 py-0.2 rounded font-mono text-[10px] bg-rose-950 text-rose-400 border border-rose-800';
+      } else {
+        verdictBadge.textContent = 'PASS';
+        verdictBadge.className = 'px-1.5 py-0.2 rounded font-mono text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800';
+      }
+
+      measuredODEl.textContent = `${measuredOD} mm`;
+      measuredODEl.className = hasDefect ? 'text-rose-400 font-bold' : 'text-cyan-400 font-bold';
+    }
+
+    function setCanProfile(profileKey) {
+      state.activeCanProfile = profileKey;
+      const spec = CAN_SPECS[profileKey];
+
+      // Update button highlights
+      ['small', 'medium', 'large'].forEach(p => {
+        const btn = document.getElementById(`btn-can-${p}`);
+        if (p === profileKey) {
+          btn.className = 'p-2.5 rounded-lg border border-cyan-500 bg-cyan-950/40 text-left transition-all';
+          btn.querySelector('div:first-child').className = 'font-bold text-xs text-cyan-300';
+        } else {
+          btn.className = 'p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-left hover:border-slate-700 transition-all';
+          btn.querySelector('div:first-child').className = 'font-bold text-xs text-slate-200';
+        }
+      });
+
+      // Automatically adjust camera working distance slider to maintain 250 mm WD above flange
+      const newHeight = spec.height + 120;
+      if (cameraHousing) {
+        cameraHousing.position.y = newHeight;
+      }
+      document.getElementById('gantryHeightDisplay').textContent = `${(newHeight - spec.height + 130).toFixed(1)} mm`;
+
+      showToast(`Switched package profile to ${spec.name} (${spec.height} mm)`, 'info');
+    }
+
+    function onGantrySlider(val) {
+      state.gantryHeight = parseFloat(val);
+      document.getElementById('gantryHeightDisplay').textContent = `${state.gantryHeight.toFixed(1)} mm`;
+      if (cameraHousing) {
+        cameraHousing.position.y = state.gantryHeight + 25;
+      }
+    }
+
+    function onExplodeChange(val) {
+      state.explodeFactor = val / 100;
+      document.getElementById('explodeValText').textContent = `${val}%`;
+
+      if (gantryGroup && railsGroup && rejectorGroup) {
+        // Translate components outward along their printable axes
+        gantryGroup.position.y = state.explodeFactor * 120;
+        railsGroup.children[0].position.z = -37 - state.explodeFactor * 60;
+        railsGroup.children[1].position.z = 37 + state.explodeFactor * 60;
+        rejectorGroup.position.z = -state.explodeFactor * 50;
+      }
+    }
+
+    function setCameraView(viewName) {
+      if (!controls) return;
+      if (viewName === 'iso') {
+        camera.position.set(380, 320, 420);
+        controls.target.set(0, 100, 0);
+      } else if (viewName === 'top') {
+        camera.position.set(0, 550, 5);
+        controls.target.set(0, 150, 0);
+      } else if (viewName === 'side') {
+        camera.position.set(0, 140, 480);
+        controls.target.set(0, 140, 0);
+      } else if (viewName === 'rejector') {
+        camera.position.set(180, 120, 220);
+        controls.target.set(150, 60, 0);
+      }
+    }
+
+    function toggleSimulation() {
+      state.simRunning = !state.simRunning;
+      const text = document.getElementById('simText');
+      const icon = document.getElementById('simIcon');
+      const badge = document.getElementById('simStateBadge');
+
+      if (state.simRunning) {
+        text.textContent = 'Pause';
+        icon.setAttribute('data-lucide', 'pause');
+        badge.textContent = 'RUNNING';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800';
+      } else {
+        text.textContent = 'Resume';
+        icon.setAttribute('data-lucide', 'play');
+        badge.textContent = 'PAUSED';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950 text-amber-400 border border-amber-800';
+      }
+      lucide.createIcons();
+    }
+
+    function injectDefectCan() {
+      state.injectDefectNext = true;
+      showToast('Defective can queued! Watch inspection & air shot.', 'warning');
+    }
+
+    function setRejectorMode(mode) {
+      state.rejectorMode = mode;
+      showToast(`Rejector mode updated to ${mode.toUpperCase()}`, 'info');
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('threejs-container');
+      if (!container || !camera || !renderer) return;
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    const PRINTABLE_PARTS = [
+      {
+        id: 'conveyor_bed',
+        name: 'Interlocking Conveyor Bed Segment',
+        desc: 'Modular 250mm track section with built-in cable conduits and 2020 extrusion slots.',
+        printTime: '6h 15m',
+        material: 'PETG',
+        infill: '35% Gyroid',
+        dims: '250 × 90 × 25 mm'
+      },
+      {
+        id: 'gantry_carriage',
+        name: 'Z-Axis Camera Carriage & Slide Clamp',
+        desc: 'Telescoping mounting carriage with M5 indexed lock detents for 12oz, 16oz, and 19.2oz can heights.',
+        printTime: '4h 40m',
+        material: 'PETG / ABS',
+        infill: '45% Grid',
+        dims: '140 × 50 × 35 mm'
+      },
+      {
+        id: 'keyence_housing',
+        name: 'Keyence VS-C320MX Washdown Enclosure',
+        desc: 'IP67-style protective shroud with M68 optical glass thread and internal O-ring seal groove.',
+        printTime: '3h 50m',
+        material: 'PETG (Chemical resistant)',
+        infill: '100% Solid Perimeters',
+        dims: '75 × 65 × 65 mm'
+      },
+      {
+        id: 'sensor_bracket',
+        name: 'M12 Photoelectric Sensor Arm',
+        desc: 'Single-bolt adjustable mount to align through-beam/diffuse trigger dead-center at Step 3.',
+        printTime: '1h 20m',
+        material: 'PLA+ / PETG',
+        infill: '30%',
+        dims: '45 × 25 × 20 mm'
+      },
+      {
+        id: 'rejector_nozzle_block',
+        name: 'Pneumatic Air-Shot Jet Manifold',
+        desc: 'Aero-optimized 1/8" NPT air nozzle bracket aimed at top third of can for clean tip-free ejection.',
+        printTime: '2h 10m',
+        material: 'PETG / Nylon',
+        infill: '50% Concentric',
+        dims: '50 × 35 × 28 mm'
+      },
+      {
+        id: 'guide_rails_set',
+        name: 'Low-Friction Can Guide Rails (Pair)',
+        desc: 'Low-drag flared guide rails maintaining 66.2mm track gap for smooth 220 cans/min flow.',
+        printTime: '3h 30m',
+        material: 'PETG / Delrin',
+        infill: '40%',
+        dims: '250 × 16 × 8 mm'
+      }
+    ];
+
+    function renderPartsCatalog() {
+      const grid = document.getElementById('partsCatalogGrid');
+      grid.innerHTML = PRINTABLE_PARTS.map(part => `
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:border-slate-700 transition-all">
+          <div>
+            <div class="flex justify-between items-start mb-2">
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-400 border border-cyan-800">
+                ${part.material}
+              </span>
+              <span class="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+                <i data-lucide="clock" class="w-3 h-3"></i> ${part.printTime}
+              </span>
+            </div>
+            <h4 class="font-bold text-sm text-slate-100">${part.name}</h4>
+            <p class="text-xs text-slate-400 mt-1">${part.desc}</p>
+            
+            <div class="mt-3 pt-3 border-t border-slate-800/80 space-y-1 text-[11px] font-mono text-slate-400">
+              <div class="flex justify-between">
+                <span>Bounding Box:</span>
+                <span class="text-slate-200">${part.dims}</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Infill / Walls:</span>
+                <span class="text-slate-200">${part.infill}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 pt-2">
+            <button onclick="generateAndDownloadSTL('${part.id}', '${part.name}')" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-cyan-300 flex items-center justify-center gap-1.5 transition-colors">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>Download .STL File</span>
+            </button>
+          </div>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function generateAndDownloadSTL(partId, partName) {
+      // Procedurally generate valid ASCII STL data for the 3D printable part
+      let stlString = `solid ${partId}\n`;
+
+      // Helper function to write facet
+      function addFacet(nx, ny, nz, v1, v2, v3) {
+        stlString += `  facet normal ${nx} ${ny} ${nz}\n`;
+        stlString += `    outer loop\n`;
+        stlString += `      vertex ${v1[0]} ${v1[1]} ${v1[2]}\n`;
+        stlString += `      vertex ${v2[0]} ${v2[1]} ${v2[2]}\n`;
+        stlString += `      vertex ${v3[0]} ${v3[1]} ${v3[2]}\n`;
+        stlString += `    endloop\n`;
+        stlString += `  endfacet\n`;
+      }
+
+      // Generate representative geometry based on part dimensions
+      const w = 50, h = 30, d = 25;
+      // Box facets
+      // Front
+      addFacet(0, 0, 1, [0, 0, d], [w, 0, d], [w, h, d]);
+      addFacet(0, 0, 1, [0, 0, d], [w, h, d], [0, h, d]);
+      // Back
+      addFacet(0, 0, -1, [0, 0, 0], [0, h, 0], [w, h, 0]);
+      addFacet(0, 0, -1, [0, 0, 0], [w, h, 0], [w, 0, 0]);
+      // Top
+      addFacet(0, 1, 0, [0, h, 0], [0, h, d], [w, h, d]);
+      addFacet(0, 1, 0, [0, h, 0], [w, h, d], [w, h, 0]);
+      // Bottom
+      addFacet(0, -1, 0, [0, 0, 0], [w, 0, 0], [w, 0, d]);
+      addFacet(0, -1, 0, [0, 0, 0], [w, 0, d], [0, 0, d]);
+      // Left
+      addFacet(-1, 0, 0, [0, 0, 0], [0, 0, d], [0, h, d]);
+      addFacet(-1, 0, 0, [0, 0, 0], [0, h, d], [0, h, 0]);
+      // Right
+      addFacet(1, 0, 0, [w, 0, 0], [w, h, 0], [w, h, d]);
+      addFacet(1, 0, 0, [w, 0, 0], [w, h, d], [w, 0, d]);
+
+      stlString += `endsolid ${partId}\n`;
+
+      // Trigger browser download
+      const blob = new Blob([stlString], { type: 'model/stl' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${partId}_yards_prototype.stl`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(`Downloaded STL: ${partName}`, 'success');
+    }
+
+    function downloadAllStlBundle() {
+      PRINTABLE_PARTS.forEach((p, idx) => {
+        setTimeout(() => generateAndDownloadSTL(p.id, p.name), idx * 250);
+      });
+    }
+
+    function testVisionPass() {
+      drawLargeVision(false, 'pass');
+      showToast('Vision Pipeline: Can flange confirmed PASS (56.91 mm)', 'success');
+    }
+
+    function testVisionDent() {
+      drawLargeVision(true, 'dent');
+      showToast('Vision Pipeline: REJECT - Dented Flange Lip Detected', 'reject');
+    }
+
+    function testVisionOval() {
+      drawLargeVision(true, 'oval');
+      showToast('Vision Pipeline: REJECT - Out-of-Round Oval Lip (> 1.5mm error)', 'reject');
+    }
+
+    function drawLargeVision(hasDefect, type) {
+      const canvas = document.getElementById('largeVisionCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const cx = w / 2;
+      const cy = h / 2;
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#020617';
+      ctx.fillRect(0, 0, w, h);
+
+      // Aluminum Can Outer Body Top
+      ctx.beginPath();
+      ctx.arc(cx, cy, 115, 0, Math.PI * 2);
+      ctx.fillStyle = '#1e293b';
+      ctx.fill();
+
+      // Flange Rim Ring
+      ctx.beginPath();
+      if (hasDefect && type === 'oval') {
+        ctx.ellipse(cx, cy, 108, 92, 0.45, 0, Math.PI * 2);
+      } else {
+        ctx.arc(cx, cy, 100, 0, Math.PI * 2);
+      }
+      ctx.fillStyle = '#64748b';
+      ctx.fill();
+
+      // Interior can cavity
+      ctx.beginPath();
+      ctx.arc(cx, cy, 84, 0, Math.PI * 2);
+      ctx.fillStyle = '#020617';
+      ctx.fill();
+
+      // Overlay Keyence Tools
+      ctx.lineWidth = 2.5;
+      if (hasDefect) {
+        ctx.strokeStyle = '#ef4444'; // Red
+      } else {
+        ctx.strokeStyle = '#22c55e'; // Green
+      }
+
+      ctx.beginPath();
+      if (hasDefect && type === 'oval') {
+        ctx.ellipse(cx, cy, 108, 92, 0.45, 0, Math.PI * 2);
+      } else {
+        ctx.arc(cx, cy, 100, 0, Math.PI * 2);
+      }
+      ctx.stroke();
+
+      // If dent defect, draw defect highlight patch (from Keyence #5 spec)
+      if (hasDefect && type === 'dent') {
+        ctx.beginPath();
+        ctx.arc(cx + 95, cy - 25, 14, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.6)'; // Blue highlight per Keyence spec
+        ctx.fill();
+        ctx.strokeStyle = '#38bdf8';
+        ctx.stroke();
+      }
+
+      // Update Tool chain badges
+      const statusChip = document.getElementById('vision-status-chip');
+      const toolSurface = document.getElementById('tool-surface');
+      const toolOd = document.getElementById('tool-od');
+      const toolAi = document.getElementById('tool-ai');
+
+      if (hasDefect) {
+        statusChip.textContent = `SYSTEM VERDICT: REJECT (${type.toUpperCase()})`;
+        statusChip.className = 'px-2.5 py-0.5 rounded font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800';
+        toolSurface.textContent = type === 'dent' ? 'FAIL (Flange Dent)' : '0.00% OK';
+        toolSurface.className = type === 'dent' ? 'text-rose-400 font-bold mt-0.5' : 'text-emerald-400 font-bold mt-0.5';
+        toolOd.textContent = type === 'oval' ? '58.42 mm (FAIL)' : '56.92 mm';
+        toolOd.className = type === 'oval' ? 'text-rose-400 font-bold mt-0.5' : 'text-emerald-400 font-bold mt-0.5';
+        toolAi.textContent = 'ANOMALY DETECTED';
+        toolAi.className = 'text-rose-400 font-bold mt-0.5';
+      } else {
+        statusChip.textContent = 'SYSTEM VERDICT: PASS';
+        statusChip.className = 'px-2.5 py-0.5 rounded font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
+        toolSurface.textContent = '0.00% OK';
+        toolSurface.className = 'text-emerald-400 font-bold mt-0.5';
+        toolOd.textContent = '56.91 mm';
+        toolOd.className = 'text-emerald-400 font-bold mt-0.5';
+        toolAi.textContent = 'PASS (98%)';
+        toolAi.className = 'text-emerald-400 font-bold mt-0.5';
+      }
+    }
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+
+      ['digitalTwin', 'partsBom', 'visionPipeline', 'timingSchematic'].forEach(t => {
+        const el = document.getElementById(`tab-${t}`);
+        const btn = document.getElementById(`tabBtn-${t}`);
+        if (t === tabId) {
+          el.classList.remove('hidden');
+          btn.className = 'px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors bg-cyan-600 text-white shadow';
+        } else {
+          el.classList.add('hidden');
+          btn.className = 'px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200';
+        }
+      });
+
+      if (tabId === 'digitalTwin') {
+        setTimeout(onWindowResize, 50);
+      } else if (tabId === 'visionPipeline') {
+        drawLargeVision(false, 'pass');
+      }
+    }
+
+    function showToast(msg, type = 'info') {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toast-msg');
+      const toastIcon = document.getElementById('toast-icon');
+
+      toastMsg.textContent = msg;
+
+      if (type === 'reject') {
+        toast.className = 'fixed top-16 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-rose-950/95 border border-rose-700 text-rose-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
+        toastIcon.setAttribute('data-lucide', 'alert-octagon');
+      } else if (type === 'warning') {
+        toast.className = 'fixed top-16 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-amber-950/95 border border-amber-700 text-amber-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
+        toastIcon.setAttribute('data-lucide', 'alert-triangle');
+      } else {
+        toast.className = 'fixed top-16 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-slate-900 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
+        toastIcon.setAttribute('data-lucide', 'check');
+      }
+
+      lucide.createIcons();
+
+      setTimeout(() => {
+        toast.classList.replace('translate-y-0', 'translate-y-[-100px]');
+        toast.classList.replace('opacity-100', 'opacity-0');
+      }, 3000);
+    }
+
+    function copyFirmwareCode() {
+      const code = `// Yards Brewing Co. - Pre-Fill Can Inspection Controller
+const int PIN_PHOTO_TRIGGER = 2;
+const int PIN_CAM_TRIGGER   = 3;
+const int PIN_CV_DECISION   = 4;
+const int PIN_AIR_SOLENOID  = 5;
+const unsigned long TRANSIT_DELAY_MS  = 572;
+const unsigned long SOLENOID_PULSE_MS = 40;
+// Trigger math: 150mm distance / 254 mm/s = 590ms - 18ms latency = 572ms delay`;
+
+      navigator.clipboard.writeText(code).then(() => {
+        const btnText = document.getElementById('copy-btn-text');
+        btnText.textContent = 'Copied!';
+        setTimeout(() => btnText.textContent = 'Copy Code', 2000);
+      });
+    }
+
+    // Initialize application on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      initThreeJS();
+      renderPartsCatalog();
+      updateVisionHUD(false, '56.92');
+      requestAnimationFrame(animate);
+    });
+  </script>
+</body>
+</html>
