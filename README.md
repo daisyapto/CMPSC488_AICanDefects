@@ -1,5 +1,9 @@
 # Yard's Brewing Company AI Camera Inspection System
 
+## Prototype
+
+https://daisyapto.github.io/CMPSC488_AICanDefects/
+
 ## Project Overview
 
 This project focuses on developing a **low-cost AI camera inspection solution** for **Yard's Brewing Company** to automatically **detect and reject defective cans** on the production line.
