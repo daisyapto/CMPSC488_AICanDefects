@@ -40,7 +40,7 @@ cam_list.Clear()
 system.ReleaseInstance()
 cv2.destroyAllWindows()"""
 
-#Test script 2
+"""#Test script 2
 import PySpin
 
 # Create a system pointer
@@ -55,7 +55,7 @@ print(f"Found {num_cameras} camera(s):")
 for cam in num_cameras:
     camera = cam.GetCamera()
     print(f"Camera: ({camera.GetSerialNumber()})")
-    camera.Disable()
+    camera.Disable()"""
 
 """ Test script 3
 
@@ -81,3 +81,87 @@ if cam_list:
             print("Image grabbed")
         else:
             print("Grab failed")"""
+
+"""#Test script 4
+
+import PySpin
+
+system = PySpin.System.GetInstance()
+cam_list = system.GetCameras()
+
+print("Number of cameras detected:", cam_list.GetSize())
+
+for i, cam in enumerate(cam_list):
+    nodemap_tldevice = cam.GetTLDeviceNodeMap()
+
+    serial_node = PySpin.CStringPtr(
+        nodemap_tldevice.GetNode("DeviceSerialNumber")
+    )
+
+    model_node = PySpin.CStringPtr(
+        nodemap_tldevice.GetNode("DeviceModelName")
+    )
+
+    ip_node = PySpin.CStringPtr(
+        nodemap_tldevice.GetNode("GevCurrentIPAddress")
+    )
+
+    print(f"\nCamera Index: {i}")
+    print("Model:", model_node.GetValue())
+    print("Serial:", serial_node.GetValue())
+
+cam_list.Clear()
+system.ReleaseInstance()"""
+
+"""#Test script 5
+import cv2
+import numpy as np
+
+img = np.zeros((500,500), dtype=np.uint8)
+
+cv2.imshow("Test", img)
+cv2.waitKey(0)"""
+
+import PySpin
+import cv2
+
+system = PySpin.System.GetInstance()
+cam_list = system.GetCameras()
+
+print("Cameras found:", cam_list.GetSize())
+
+cam = cam_list[0]
+
+cam.Init()
+cam.BeginAcquisition()
+
+cv2.namedWindow("Live", cv2.WINDOW_NORMAL)
+
+try:
+    while True:
+
+        image = cam.GetNextImage(5000)
+
+        if image.IsIncomplete():
+            image.Release()
+            continue
+
+        img = image.GetNDArray()
+
+        cv2.imshow("Live", img)
+
+        image.Release()
+
+        if cv2.waitKey(1) == 27:  # ESC
+            break
+
+finally:
+    cam.EndAcquisition()
+    cam.DeInit()
+
+    del cam
+
+    cam_list.Clear()
+    system.ReleaseInstance()
+
+    cv2.destroyAllWindows()

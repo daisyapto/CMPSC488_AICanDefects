@@ -20,7 +20,9 @@ def get_camera_by_serial(serial):
 
 
 # Get the first camera
-cam = get_camera_by_serial("")
+system = PySpin.System.GetInstance()
+cams = system.GetCameras()
+cam = cams.GetByIndex(0)
 print(cam)
 
 # Initialize
@@ -46,11 +48,8 @@ while True:
 
     frame = frame.GetNDArray()
 
-    # Create grayscale frame
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
     # blur to blue the image to see the lines more clearly
-    blur = cv2.GaussianBlur(gray, (9, 9), 0)
+    blur = cv2.GaussianBlur(frame, (9, 9), 0)
 
     # Canny creates binary image of the blurred image, extracting the white areas as distinctive lines
     edges = cv2.Canny(blur, 100, 200)
@@ -95,7 +94,7 @@ while True:
             radius = int(radius)
 
             cv2.circle(
-                gray,
+                frame,
                 center,
                 radius,
                 (0, 255, 0),
@@ -120,7 +119,7 @@ while True:
             )
 
             cv2.putText(
-                gray,
+                frame,
                 f"Circularity: {circularity_percent:.1f}%",
                 (20, 40),
                 cv2.FONT_HERSHEY_SIMPLEX,
@@ -130,7 +129,7 @@ while True:
             )
 
             cv2.putText(
-                gray,
+                frame,
                 f"Perfection: {perfection:.1f}%",
                 (20, 80),
                 cv2.FONT_HERSHEY_SIMPLEX,
@@ -143,7 +142,7 @@ while True:
         # Finds circle-like objects within a canny image, even when the circle is not complete
         # Used to be compared to true edge
         # Difference between perfect circle detected and true edge shows the defects
-        gray2 = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        gray2 = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
         gray3 = gray2.copy()
 
         circles = cv2.HoughCircles(
@@ -358,6 +357,6 @@ while True:
 cam.EndAcquisition()
 cam.DeInit()
 del cam
-cam_list.Clear()
+cams.Clear()
 system.ReleaseInstance()
 cv2.destroyAllWindows()
