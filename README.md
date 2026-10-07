@@ -92,6 +92,23 @@ Some early OpenCV tools and experiments were initially tested here before being 
 
 ---
 
+### `module1.py`
+
+The edgeDetection.py adapted to work with PySpin/Spinnaker library to connect to Teledyne GigE Nano Genie (budget solution) camera.
+
+Its primary purpose is to establish communication with the **Teledyne GigE Camera**, open a live camera feed, run image processing, and reach an output. **NOT YET WORKING**
+
+Some OpenCV tools are initially tested here but they need further adaption with thresholds and testing to ensure a working budget solution.
+
+---
+
+### `module2.py`
+
+The sample test script(s) to connect to Teledyne GigE Nano Genie (budget solution) camera with a live camera feed.
+
+---
+
+
 ## Current Development Direction
 
 The project is currently exploring two primary inspection approaches:
