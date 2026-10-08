@@ -2,10 +2,9 @@
 
 ## Prototype
 
-- Hosted prototype (index.html) https://daisyapto.github.io/CMPSC488_AICanDefects/
-- Revised: Production_Line_Version_2.html
+- Hosted prototype (Eric) (index.html -- version 3) https://daisyapto.github.io/CMPSC488_AICanDefects/
 - Another version (Andrew): ai_can_inspection_digital_twin.html
-- Another version (Anatoly): https://claude.ai/artifact/BxyQSkamwSX2wwCwPMMYHa
+- Another version (Anatoly): Inspect_Simulator.html
 
 ## Project Overview
 
