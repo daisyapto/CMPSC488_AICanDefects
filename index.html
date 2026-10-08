@@ -45,6 +45,58 @@
         linear-gradient(to right, rgba(6, 182, 212, 0.08) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(6, 182, 212, 0.08) 1px, transparent 1px);
     }
+
+    input[type=range].cyan-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type=range].cyan-slider:focus {
+      outline: none;
+    }
+    input[type=range].cyan-slider::-webkit-slider-runnable-track {
+      height: 6px;
+      border-radius: 9999px;
+      background: linear-gradient(to right, #06b6d4 var(--track-fill, 33.3%), #2a3447 var(--track-fill, 33.3%));
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    input[type=range].cyan-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 18px;
+      width: 18px;
+      border-radius: 50%;
+      background: #06b6d4;
+      margin-top: -6px;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.6);
+      border: 2px solid #082f49;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    input[type=range].cyan-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      box-shadow: 0 0 16px rgba(6, 182, 212, 0.85);
+    }
+    input[type=range].cyan-slider::-moz-range-track {
+      height: 6px;
+      border-radius: 9999px;
+      background: #2a3447;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    input[type=range].cyan-slider::-moz-range-progress {
+      height: 6px;
+      border-radius: 9999px;
+      background: #06b6d4;
+    }
+    input[type=range].cyan-slider::-moz-range-thumb {
+      height: 18px;
+      width: 18px;
+      border-radius: 50%;
+      background: #06b6d4;
+      border: 2px solid #082f49;
+    }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 flex flex-col h-screen overflow-hidden font-sans select-none">
@@ -214,33 +266,68 @@
         </div>
       </div>
 
-      <!-- Bottom-Center: Yards Packaging Format & Explode Strip (Non-overlapping & responsive) -->
-      <div class="absolute bottom-4 left-auto right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-20 bg-slate-900/95 border border-slate-700/80 rounded-2xl px-3 py-2 backdrop-blur-md shadow-2xl flex flex-wrap items-center gap-2 sm:gap-3 text-xs max-w-[calc(100vw-1.5rem)]">
-        <div class="flex items-center gap-1.5 sm:gap-2">
-          <span class="text-slate-400 font-medium text-[10px] sm:text-[11px] uppercase tracking-wider">Format:</span>
-          <div class="flex gap-1">
-            <button onclick="setCanProfile('small')" id="btn-can-small" class="px-2 py-1 rounded-lg border border-amber-500 bg-amber-950/40 text-amber-300 font-bold transition-all text-xs flex items-center gap-1">
-              <span>12 oz</span>
-              <span class="font-mono text-[10px] text-slate-400 hidden md:inline">122.7mm</span>
-            </button>
-            <button onclick="setCanProfile('medium')" id="btn-can-medium" class="px-2 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1">
-              <span>16 oz</span>
-              <span class="font-mono text-[10px] text-slate-400 hidden md:inline">157.2mm</span>
-            </button>
-            <button onclick="setCanProfile('large')" id="btn-can-large" class="px-2 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1">
-              <span>19.2 oz</span>
-              <span class="font-mono text-[10px] text-slate-400 hidden md:inline">182.6mm</span>
-            </button>
+      <!-- Bottom-Center: Camera Working Distance Slider + Yards Packaging Format & Explode Strip -->
+      <div class="absolute bottom-4 left-auto right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-20 flex flex-col items-center gap-2 max-w-[calc(100vw-1.5rem)]">
+        
+        <!-- Camera Working Distance Slider Card -->
+        <div class="bg-slate-900/95 border border-slate-700/80 rounded-2xl p-3 sm:px-4 sm:py-3 shadow-2xl backdrop-blur-md w-72 sm:w-80 transition-all">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="font-bold text-slate-100 text-xs sm:text-sm tracking-tight flex items-center gap-1.5">
+              <span>Camera Working Distance</span>
+            </span>
+            <span id="wd-slider-val" class="font-mono font-bold text-xs sm:text-sm text-cyan-400">250.0 mm</span>
+          </div>
+
+          <div class="relative flex items-center my-1">
+            <input 
+              type="range" 
+              id="wdRangeInput" 
+              min="200" 
+              max="350" 
+              step="1" 
+              value="250" 
+              oninput="onWorkingDistanceChange(this.value)" 
+              class="cyan-slider"
+              style="--track-fill: 33.3%;"
+            >
+          </div>
+
+          <div class="flex justify-between text-[10px] font-mono text-slate-500 mt-1">
+            <span>200 mm</span>
+            <span class="text-slate-400">Nominal: 250 mm (8.0 px/mm)</span>
+            <span>350 mm</span>
           </div>
         </div>
 
-        <div class="h-4 w-[1px] bg-slate-700 hidden sm:block"></div>
+        <!-- Yards Packaging Format & Explode Strip -->
+        <div class="bg-slate-900/95 border border-slate-700/80 rounded-2xl px-3 py-2 backdrop-blur-md shadow-2xl flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-xs w-full">
+          <div class="flex items-center gap-1.5 sm:gap-2">
+            <span class="text-slate-400 font-medium text-[10px] sm:text-[11px] uppercase tracking-wider">Format:</span>
+            <div class="flex gap-1">
+              <button onclick="setCanProfile('small')" id="btn-can-small" class="px-2 py-1 rounded-lg border border-amber-500 bg-amber-950/40 text-amber-300 font-bold transition-all text-xs flex items-center gap-1">
+                <span>12 oz</span>
+                <span class="font-mono text-[10px] text-slate-400 hidden md:inline">122.7mm</span>
+              </button>
+              <button onclick="setCanProfile('medium')" id="btn-can-medium" class="px-2 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1">
+                <span>16 oz</span>
+                <span class="font-mono text-[10px] text-slate-400 hidden md:inline">157.2mm</span>
+              </button>
+              <button onclick="setCanProfile('large')" id="btn-can-large" class="px-2 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1">
+                <span>19.2 oz</span>
+                <span class="font-mono text-[10px] text-slate-400 hidden md:inline">182.6mm</span>
+              </button>
+            </div>
+          </div>
 
-        <div class="flex items-center gap-1.5">
-          <span class="text-slate-400 font-medium text-[10px] sm:text-[11px]">Exploded:</span>
-          <input type="range" id="explodeSlider" min="0" max="100" value="0" oninput="onExplodeChange(this.value)" class="w-14 sm:w-16 accent-amber-500 cursor-pointer">
-          <span id="explodeValText" class="font-mono text-amber-400 text-xs w-6">0%</span>
+          <div class="h-4 w-[1px] bg-slate-700 hidden sm:block"></div>
+
+          <div class="flex items-center gap-1.5">
+            <span class="text-slate-400 font-medium text-[10px] sm:text-[11px]">Exploded:</span>
+            <input type="range" id="explodeSlider" min="0" max="100" value="0" oninput="onExplodeChange(this.value)" class="w-14 sm:w-16 accent-amber-500 cursor-pointer">
+            <span id="explodeValText" class="font-mono text-amber-400 text-xs w-6">0%</span>
+          </div>
         </div>
+
       </div>
     </section>
 
@@ -375,12 +462,12 @@
 
                 <div class="flex justify-between px-2">
                   <span class="text-slate-400">Pixel Calibration Scale:</span>
-                  <span class="text-slate-200">8.00 pixels = 1.0 mm</span>
+                  <span id="hud-pixel-calib" class="text-slate-200">8.00 pixels = 1.0 mm</span>
                 </div>
 
                 <div class="flex justify-between px-2">
                   <span class="text-slate-400">Working Distance (WD):</span>
-                  <span class="text-slate-200">250.0 mm</span>
+                  <span id="env-working-dist" class="text-cyan-400 font-bold">250.0 mm</span>
                 </div>
               </div>
             </div>
@@ -707,7 +794,7 @@
       rejectCount: 0,
       passedCount: 0,
       activeCanProfile: 'small', // small (122.7mm), medium (157.2mm), large (182.6mm)
-      gantryHeight: 250.0, // mm Working Distance
+      workingDistance: 250.0, // mm Working Distance (200 - 350 mm)
       explodeFactor: 0.0,
       showDimensions: true,
       specsDrawerOpen: false,
@@ -727,7 +814,7 @@
 
     let scene, camera, renderer, controls;
     let conveyorGroup, gantryGroup, cameraHousing, rejectorGroup, railsGroup, cansContainer;
-    let cameraFlashMesh, photoSensorLED, dimensionsGroup;
+    let cameraFlashMesh, photoSensorLED, dimensionsGroup, wdDimensionLine, wdDimensionLabel;
 
     function createYardsPlaqueTexture() {
       const canvas = document.createElement('canvas');
@@ -961,10 +1048,10 @@
       dimensionsGroup.add(distLabel);
 
       // 3. Working Distance
-      dimensionsGroup.add(makeDimLine(new THREE.Vector3(-45, 125, 0), new THREE.Vector3(-45, 250, 0), 0x22c55e));
-      const wdLabel = makeTextSprite('WD: 250.0 mm', '#22c55e');
-      wdLabel.position.set(-65, 187, 10);
-      dimensionsGroup.add(wdLabel);
+      wdDimensionLine = makeDimLine(new THREE.Vector3(-45, 125, 0), new THREE.Vector3(-45, 275, 0), 0x22c55e);
+      wdDimensionLabel = makeTextSprite('WD: 250.0 mm', '#22c55e');
+      wdDimensionLabel.position.set(-65, 200, 10);
+      dimensionsGroup.add(wdDimensionLine, wdDimensionLabel);
     }
 
     function createCanMesh(profileKey, hasDefect = false, defectType = 'dent') {
@@ -1462,6 +1549,56 @@
       showToast(`Selected Vision Tool ${idx}: ${['ShapeTrax3A', 'Rule-Based Surface Defect', 'ID Tool', 'OD Tool', 'AI Anomaly Check'][idx - 1]}`, 'info');
     }
 
+    function updateCameraGantryHeight() {
+      const spec = CAN_SPECS[state.activeCanProfile];
+      const canRimY = 27 + spec.height; // Conveyor bed top (27mm) + can height
+      const targetCamY = canRimY + (state.workingDistance - 100);
+
+      if (cameraHousing) {
+        cameraHousing.position.y = targetCamY;
+      }
+
+      // Update 3D Dimension Line & Sprite
+      if (wdDimensionLine && wdDimensionLabel && dimensionsGroup) {
+        dimensionsGroup.remove(wdDimensionLine);
+        const p1 = new THREE.Vector3(-45, canRimY, 0);
+        const p2 = new THREE.Vector3(-45, canRimY + state.workingDistance, 0);
+        const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        wdDimensionLine = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2 }));
+        dimensionsGroup.add(wdDimensionLine);
+
+        wdDimensionLabel.position.set(-65, canRimY + state.workingDistance / 2, 10);
+      }
+    }
+
+    function onWorkingDistanceChange(val) {
+      const wd = parseFloat(val);
+      state.workingDistance = wd;
+
+      const sliderVal = document.getElementById('wd-slider-val');
+      if (sliderVal) sliderVal.textContent = `${wd.toFixed(1)} mm`;
+
+      const input = document.getElementById('wdRangeInput');
+      if (input) {
+        const percent = ((wd - 200) / (350 - 200)) * 100;
+        input.style.setProperty('--track-fill', `${percent}%`);
+      }
+
+      // Update 3D Gantry Height
+      updateCameraGantryHeight();
+
+      // Recalculate optical scale factor (Nominal 250mm -> 8.00 px/mm)
+      const pxScale = ((250.0 / wd) * 8.00).toFixed(2);
+      const statWd = document.getElementById('stat-wd');
+      if (statWd) statWd.textContent = `${wd.toFixed(1)} mm`;
+
+      const envWd = document.getElementById('env-working-dist');
+      if (envWd) envWd.textContent = `${wd.toFixed(1)} mm`;
+
+      const calibEl = document.getElementById('hud-pixel-calib');
+      if (calibEl) calibEl.textContent = `${pxScale} pixels = 1.0 mm`;
+    }
+
     function setCanProfile(profileKey) {
       state.activeCanProfile = profileKey;
       const spec = CAN_SPECS[profileKey];
@@ -1469,15 +1606,14 @@
       ['small', 'medium', 'large'].forEach(p => {
         const btn = document.getElementById(`btn-can-${p}`);
         if (p === profileKey) {
-          btn.className = 'px-2.5 py-1 rounded-lg border border-amber-500 bg-amber-950/40 text-amber-300 font-bold transition-all text-xs flex items-center gap-1';
+          btn.className = 'px-2 py-1 rounded-lg border border-amber-500 bg-amber-950/40 text-amber-300 font-bold transition-all text-xs flex items-center gap-1';
         } else {
-          btn.className = 'px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1';
+          btn.className = 'px-2 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1';
         }
       });
 
-      const newHeight = spec.height + 120;
-      if (cameraHousing) cameraHousing.position.y = newHeight;
-      document.getElementById('stat-wd').textContent = `250.0 mm (${spec.name.split(' ')[0]})`;
+      updateCameraGantryHeight();
+      document.getElementById('stat-wd').textContent = `${state.workingDistance.toFixed(1)} mm (${spec.name.split(' ')[0]})`;
       showToast(`Package format changed to Yards ${spec.name}`, 'info');
     }
 
@@ -1633,6 +1769,7 @@
       initThreeJS();
       renderVisionCanvas('miniCameraCanvas', false, 'none');
       renderVisionCanvas('fullCameraCanvas', false, 'none');
+      updateCameraGantryHeight();
       requestAnimationFrame(animate);
     });
   </script>
