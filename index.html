@@ -3,10 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Can Flange Inspection System - 3D Printable Prototype</title>
+  <title>Yards Brewing Co. | Pre-Fill Can Flange Defect Inspection Cell</title>
   
-  <!-- Tailwind CSS & Lucide Icons -->
+  <!-- SEO & GitHub Pages Meta Tags -->
+  <meta name="description" content="Yards Brewing Company automated pre-fill can inspection cell digital twin prototype using Keyence VS-C320MX smart camera, OpenCV vision algorithms, and pneumatic rejector.">
+  <meta name="author" content="Eric Sosa-Villar - IT/CMPSC Capstone">
+
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Three.js and OrbitControls -->
@@ -14,616 +20,744 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 
   <style>
-    /* Custom Scrollbar and UI Highlights */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+    :root {
+      --yards-cream: #f4eedb;
+      --yards-gold: #c5a059;
+      --yards-dark: #231f20;
+      --yards-navy: #091322;
+    }
 
-    .glow-cyan { box-shadow: 0 0 15px rgba(6, 182, 212, 0.4); }
-    .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
-    .glow-green { box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070e1b; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
 
     .crosshair-grid {
-      background-size: 20px 20px;
+      background-size: 24px 24px;
       background-image: 
-        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+        linear-gradient(to right, rgba(197, 160, 89, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(197, 160, 89, 0.08) 1px, transparent 1px);
+    }
+
+    .reticle-grid {
+      background-size: 30px 30px;
+      background-image: 
+        linear-gradient(to right, rgba(6, 182, 212, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(6, 182, 212, 0.08) 1px, transparent 1px);
     }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-100 flex flex-col h-screen overflow-hidden font-sans select-none">
 
-  <!-- Header Bar -->
-  <header class="h-14 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between px-4 z-20 backdrop-blur-md">
-    <div class="flex items-center space-x-3">
-      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center font-bold text-white shadow-md shadow-cyan-500/20">
-        <i data-lucide="scan" class="w-5 h-5"></i>
+  <!-- Top Navigation & Brand Header -->
+  <header class="h-16 bg-slate-900/95 border-b border-slate-800 flex items-center justify-between px-3 sm:px-6 z-30 backdrop-blur-md flex-shrink-0">
+    <div class="flex items-center space-x-3.5">
+      <!-- Authentic Yards Brewing Company Vector Cartouche Logo -->
+      <div class="h-10 w-28 sm:w-32 flex-shrink-0 flex items-center justify-center cursor-pointer" onclick="switchTab('tab-cad')">
+        <svg viewBox="0 0 400 160" class="w-full h-full drop-shadow-md">
+          <path d="M 40 10 L 360 10 C 365 10, 370 15, 370 20 C 370 32, 382 44, 394 44 C 397 44, 400 47, 400 50 L 400 110 C 400 113, 397 116, 394 116 C 382 116, 370 128, 370 140 C 370 145, 365 150, 360 150 L 40 150 C 35 150, 30 145, 30 140 C 30 128, 18 116, 6 116 C 3 116, 0 113, 0 110 L 0 50 C 0 47, 3 44, 6 44 C 18 44, 30 32, 30 20 C 30 15, 35 10, 40 10 Z" fill="#231f20"/>
+          <path d="M 44 18 L 356 18 C 360 18, 362 21, 362 24 C 362 36, 374 48, 386 48 C 389 48, 392 51, 392 54 L 392 106 C 392 109, 389 112, 386 112 C 374 112, 362 124, 362 136 C 362 139, 360 142, 356 142 L 44 142 C 40 142, 38 139, 38 136 C 38 124, 26 112, 14 112 C 11 112, 8 109, 8 106 L 8 54 C 8 51, 11 48, 14 48 C 26 48, 38 36, 38 24 C 38 21, 40 18, 44 18 Z" fill="#f4eedb"/>
+          <path d="M 46 24 L 354 24 C 356 24, 358 26, 358 28 C 358 40, 370 52, 382 52 L 382 108 C 370 108, 358 120, 358 132 L 42 132 C 42 120, 30 108, 18 108 L 18 52 C 30 52, 42 40, 42 28 C 42 26, 44 24, 46 24 Z" fill="none" stroke="#a89360" stroke-width="2.5"/>
+          <text x="200" y="94" font-family="'Georgia', 'Times New Roman', serif" font-weight="900" font-size="70" fill="#231f20" text-anchor="middle" letter-spacing="4">YARDS</text>
+          <text x="200" y="124" font-family="'Georgia', 'Times New Roman', serif" font-weight="700" font-size="19" fill="#231f20" text-anchor="middle" letter-spacing="3.5">BREWING COMPANY</text>
+        </svg>
       </div>
-      <div>
-        <h1 class="font-bold text-sm sm:text-base tracking-wide text-slate-100 flex items-center gap-2">
-          <span>YARDS BREWING CO.</span>
-          <span class="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono">VS-C320MX PROTOTYPE</span>
-        </h1>
-        <p class="text-xs text-slate-400">Automated Pre-Fill Can Flange Defect Detection & Rejection Cell</p>
+
+      <!-- Station and Line Description -->
+      <div class="border-l border-slate-700 pl-3 hidden md:block">
+        <div class="flex items-center gap-2">
+          <span class="text-xs sm:text-sm font-extrabold text-amber-300 font-serif tracking-wide">Pre-Fill Can Flange Defect Inspection Cell</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-semibold">
+            KEYENCE VS-C320MX
+          </span>
+        </div>
+        <p class="text-[11px] text-slate-400">
+          Section 2, Step 3 • 220 CPM Line Velocity • Philadelphia, PA
+        </p>
       </div>
     </div>
 
-    <!-- Navigation Tabs -->
-    <nav class="flex items-center space-x-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-medium">
-      <button onclick="switchTab('digitalTwin')" id="tabBtn-digitalTwin" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors bg-cyan-600 text-white shadow">
+    <!-- Center Navigation Tabs -->
+    <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+      <button id="nav-btn-cad" onclick="switchTab('tab-cad')" class="px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold flex items-center gap-1.5 transition-all shadow">
         <i data-lucide="box" class="w-3.5 h-3.5"></i>
         <span>3D Prototype CAD</span>
       </button>
-      <button onclick="switchTab('partsBom')" id="tabBtn-partsBom" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200">
-        <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-        <span>Printable Parts & STL</span>
-      </button>
-      <button onclick="switchTab('visionPipeline')" id="tabBtn-visionPipeline" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200">
-        <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+
+      <button id="nav-btn-vision" onclick="switchTab('tab-vision')" class="px-3 py-1.5 rounded-lg hover:text-slate-200 text-slate-400 flex items-center gap-1.5 transition-all">
+        <i data-lucide="eye" class="w-3.5 h-3.5 text-cyan-400"></i>
         <span>Keyence / Vision HUD</span>
       </button>
-      <button onclick="switchTab('timingSchematic')" id="tabBtn-timingSchematic" class="px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200">
-        <i data-lucide="cpu" class="w-3.5 h-3.5"></i>
-        <span>PLC Timing & Firmware</span>
-      </button>
-    </nav>
 
-    <!-- Quick Stats -->
-    <div class="hidden lg:flex items-center space-x-4 text-xs font-mono">
-      <div class="flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span class="text-slate-400">Line: <strong class="text-slate-200">220 Cans/min</strong></span>
-      </div>
-      <div class="px-2.5 py-1 bg-slate-800/80 rounded border border-slate-700 text-slate-300">
-        Flange OD: <span class="text-cyan-400">56.9 ±0.5 mm</span>
-      </div>
+      <button id="nav-btn-audit" onclick="switchTab('tab-audit')" class="px-3 py-1.5 rounded-lg hover:text-slate-200 text-slate-400 flex items-center gap-1.5 transition-all">
+        <i data-lucide="check-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+        <span>Inspection Log &amp; Defects</span>
+        <span id="badge-defect-count" class="ml-1 px-1.5 py-0.2 rounded-full text-[9px] bg-rose-950 text-rose-300 border border-rose-800 font-mono">0</span>
+      </button>
+
+      <button id="nav-btn-specs" onclick="toggleSpecsDrawer()" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 flex items-center gap-1.5 transition-all">
+        <i data-lucide="layers" class="w-3.5 h-3.5 text-amber-400"></i>
+        <span>Component Specs</span>
+      </button>
+    </div>
+
+    <!-- Right Controls: GitHub Badge & Measurement Toggle -->
+    <div class="flex items-center space-x-2">
+      <button onclick="toggleDimensionOverlay()" id="btn-toggle-dims" class="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors">
+        <i data-lucide="ruler" class="w-3.5 h-3.5 text-amber-400"></i>
+        <span id="dims-toggle-label" class="hidden sm:inline">3D Measurements</span>
+      </button>
+
+      <button onclick="showDeploymentModal()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-xs flex items-center transition-colors" title="GitHub Pages Ready">
+        <i data-lucide="github" class="w-4 h-4 text-emerald-400"></i>
+      </button>
     </div>
   </header>
 
+  <!-- Main Viewport Body -->
   <main class="flex-1 flex overflow-hidden relative">
 
-    <!-- TAB 1: 3D DIGITAL TWIN & SIMULATOR -->
-    <div id="tab-digitalTwin" class="w-full h-full flex flex-col lg:flex-row relative">
-      <!-- 3D Canvas Container -->
-      <div class="flex-1 relative h-full bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
-        <div id="threejs-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+    <!-- TAB 1: 3D Digital Twin CAD View -->
+    <section id="tab-cad" class="flex-1 relative h-full w-full flex bg-gradient-to-b from-slate-950 via-[#070e1c] to-slate-950 overflow-hidden">
+      <div id="threejs-container" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
 
-        <!-- 3D Overlay Controls -->
-        <div class="absolute top-4 left-4 z-10 flex flex-col gap-2">
-          <!-- Simulation Status & Live Trigger Card -->
-          <div class="bg-slate-900/90 border border-slate-700/80 rounded-xl p-3 backdrop-blur-md shadow-xl text-xs w-64">
-            <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
-              <span class="font-bold text-slate-200 flex items-center gap-1.5">
-                <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i> Conveyor Simulator
-              </span>
-              <span id="simStateBadge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">RUNNING</span>
-            </div>
-            
-            <div class="space-y-1.5 font-mono text-[11px]">
-              <div class="flex justify-between">
-                <span class="text-slate-400">Linear Velocity:</span>
-                <span class="text-slate-200">254 mm/s (10 in/s)</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Trigger Dist to Rejection:</span>
-                <span class="text-slate-200">150.0 mm</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Transit Delay:</span>
-                <span class="text-cyan-300 font-bold">572 ms (PLC timer)</span>
-              </div>
-              <div class="flex justify-between pt-1 border-t border-slate-800">
-                <span class="text-slate-400">Sim Inspection Rate:</span>
-                <span id="stat-inspection-count" class="text-emerald-400 font-bold">0 inspected</span>
-              </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Rejections (Air Shot):</span>
-                <span id="stat-reject-count" class="text-rose-400 font-bold">0 ejected</span>
-              </div>
-            </div>
-
-            <!-- Sim Control Buttons -->
-            <div class="grid grid-cols-2 gap-2 mt-3 pt-2 border-t border-slate-800">
-              <button id="btn-toggle-sim" onclick="toggleSimulation()" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-medium flex items-center justify-center gap-1">
-                <i data-lucide="pause" id="simIcon" class="w-3.5 h-3.5"></i>
-                <span id="simText">Pause</span>
-              </button>
-              <button onclick="injectDefectCan()" class="w-full py-1.5 bg-rose-900/60 hover:bg-rose-800 border border-rose-700 rounded text-rose-200 font-medium flex items-center justify-center gap-1">
-                <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
-                <span>Inject Defect</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- View Angles -->
-          <div class="bg-slate-900/80 border border-slate-800 rounded-lg p-1.5 backdrop-blur-md flex gap-1 shadow-lg text-[11px]">
-            <button onclick="setCameraView('iso')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200">Isometric</button>
-            <button onclick="setCameraView('top')" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">Top (Vision)</button>
-            <button onclick="setCameraView('side')" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">Side Elevation</button>
-            <button onclick="setCameraView('rejector')" class="px-2.5 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200">Reject Station</button>
-          </div>
-        </div>
-
-        <!-- 3D Overlay Right Bottom: Exploded Slider & Print Info -->
-        <div class="absolute bottom-4 right-4 z-10 bg-slate-900/90 border border-slate-700/80 rounded-xl p-3.5 backdrop-blur-md shadow-xl text-xs w-80">
-          <div class="flex items-center justify-between mb-2">
+      <!-- Top-Left Overlay: Conveyor Telemetry & Line Control Card -->
+      <div class="absolute top-4 left-4 z-20 flex flex-col gap-2 max-w-xs">
+        <div class="bg-slate-900/95 border border-slate-700/80 rounded-xl p-3 backdrop-blur-md shadow-2xl text-xs">
+          <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
             <span class="font-bold text-slate-200 flex items-center gap-1.5">
-              <i data-lucide="wrench" class="w-4 h-4 text-cyan-400"></i> Assembly & Exploded View
+              <i data-lucide="activity" class="w-3.5 h-3.5 text-amber-400"></i> Line Telemetry
             </span>
-            <span id="explodeValText" class="font-mono text-cyan-400">0%</span>
+            <span id="simStateBadge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">220 CPM RUNNING</span>
           </div>
-          <input type="range" id="explodeSlider" min="0" max="100" value="0" oninput="onExplodeChange(this.value)" class="w-full accent-cyan-500 cursor-pointer">
-          <p class="text-[11px] text-slate-400 mt-2">
-            Drag to explode 3D-printable brackets, camera gantry, pneumatic nozzle block, and conveyor side rails.
-          </p>
-        </div>
-
-        <!-- Vision HUD Mini PIP (Live Camera Output) -->
-        <div class="absolute bottom-4 left-4 z-10 bg-slate-900/95 border border-slate-700 rounded-xl p-2.5 shadow-2xl backdrop-blur-md w-52 pointer-events-auto">
-          <div class="flex items-center justify-between text-[11px] font-semibold text-slate-300 pb-1.5 mb-1.5 border-b border-slate-800">
-            <span class="flex items-center gap-1">
-              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> KEYENCE CAM #2
-            </span>
-            <span id="mini-verdict-badge" class="px-1.5 py-0.2 rounded font-mono text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800">PASS</span>
-          </div>
-          <!-- 2D Canvas for Optical Viewport Simulation -->
-          <div class="relative w-full h-36 bg-black rounded overflow-hidden flex items-center justify-center border border-slate-800">
-            <canvas id="miniCameraCanvas" width="180" height="150" class="w-full h-full object-cover"></canvas>
-            <div id="flash-effect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-75"></div>
-          </div>
-          <div class="mt-1.5 flex justify-between font-mono text-[10px] text-slate-400">
-            <span>Diameter: <strong id="hud-measured-od" class="text-cyan-400">56.92 mm</strong></span>
-            <span>Proc: <strong class="text-emerald-400">4.1 ms</strong></span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Interactive Sidebar Controls -->
-      <aside class="w-full lg:w-96 bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-800 flex flex-col h-auto lg:h-full z-10 overflow-y-auto">
-        <div class="p-4 border-b border-slate-800">
-          <h2 class="font-bold text-sm text-slate-200 flex items-center gap-2">
-            <i data-lucide="sliders" class="w-4 h-4 text-cyan-400"></i> Production Configuration
-          </h2>
-          <p class="text-xs text-slate-400 mt-1">Adjust can profiles, optical gantry Z-height, and rejector parameters</p>
-        </div>
-
-        <div class="p-4 space-y-5 flex-1">
-          <!-- Can Format Selector (Section 4 of Yards Spec) -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Can Package Format</label>
-            <div class="grid grid-cols-3 gap-2">
-              <button onclick="setCanProfile('small')" id="btn-can-small" class="p-2.5 rounded-lg border border-cyan-500 bg-cyan-950/40 text-left transition-all">
-                <div class="font-bold text-xs text-cyan-300">12 oz Std</div>
-                <div class="text-[10px] text-slate-400 font-mono">122.7 mm</div>
-              </button>
-              <button onclick="setCanProfile('medium')" id="btn-can-medium" class="p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-left hover:border-slate-700 transition-all">
-                <div class="font-bold text-xs text-slate-200">16 oz Pint</div>
-                <div class="text-[10px] text-slate-400 font-mono">157.2 mm</div>
-              </button>
-              <button onclick="setCanProfile('large')" id="btn-can-large" class="p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-left hover:border-slate-700 transition-all">
-                <div class="font-bold text-xs text-slate-200">19.2 oz Stv</div>
-                <div class="text-[10px] text-slate-400 font-mono">182.6 mm</div>
-              </button>
+          
+          <div class="space-y-1 font-mono text-[11px]">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Line Velocity:</span>
+              <span class="text-amber-300 font-bold">254.0 mm/s (10 in/s)</span>
             </div>
-            <p class="text-[11px] text-slate-400 mt-2">
-              All 3 sizes share standard <strong class="text-slate-200">202 End (56.9 mm OD)</strong>. Camera gantry slides along precision 3D-printed leadscrew / indexed detents.
-            </p>
-          </div>
-
-          <!-- Gantry Height Fine Adjustment -->
-          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-            <div class="flex justify-between items-center mb-1">
-              <span class="text-xs font-medium text-slate-300">Camera Working Distance</span>
-              <span id="gantryHeightDisplay" class="font-mono text-xs text-cyan-400">250.0 mm</span>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Working Distance (WD):</span>
+              <span id="stat-wd" class="text-cyan-400 font-bold">250.0 mm</span>
             </div>
-            <input type="range" id="gantrySlider" min="200" max="350" value="250" oninput="onGantrySlider(this.value)" class="w-full accent-cyan-500 cursor-pointer">
-            <div class="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
-              <span>200 mm</span>
-              <span>Nominal: 250 mm (8.0 px/mm)</span>
-              <span>350 mm</span>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Transit to Air Nozzle:</span>
+              <span class="text-emerald-300 font-bold">572 ms (PLC delay)</span>
+            </div>
+            <div class="flex justify-between pt-1 border-t border-slate-800">
+              <span class="text-slate-400">Inspected Cans:</span>
+              <span id="stat-inspection-count" class="text-emerald-400 font-bold">0</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Air-Shot Ejections:</span>
+              <span id="stat-reject-count" class="text-rose-400 font-bold">0</span>
             </div>
           </div>
 
-          <!-- Rejector Actuation Method -->
-          <div>
-            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Rejection System Mode</label>
-            <div class="grid grid-cols-2 gap-2 text-xs">
-              <label class="flex items-center gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer hover:border-slate-700">
-                <input type="radio" name="rejectorType" value="pneumatic" checked onchange="setRejectorMode('pneumatic')" class="accent-cyan-500">
-                <div>
-                  <div class="font-medium text-slate-200">Air-Shot Nozzle</div>
-                  <div class="text-[10px] text-slate-400">80 PSI solenoid, 40ms</div>
-                </div>
-              </label>
-              <label class="flex items-center gap-2 p-2.5 bg-slate-950 border border-slate-800 rounded-lg cursor-pointer hover:border-slate-700">
-                <input type="radio" name="rejectorType" value="servo" onchange="setRejectorMode('servo')" class="accent-cyan-500">
-                <div>
-                  <div class="font-medium text-slate-200">Servo Kicker</div>
-                  <div class="text-[10px] text-slate-400">3D print desktop arm</div>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          <!-- 3D Print Hardware Specs Card -->
-          <div class="bg-cyan-950/20 border border-cyan-900/50 rounded-lg p-3 text-xs">
-            <div class="font-semibold text-cyan-300 flex items-center gap-1.5 mb-1.5">
-              <i data-lucide="printer" class="w-4 h-4"></i> Rapid Prototype Architecture
-            </div>
-            <ul class="space-y-1 text-[11px] text-slate-300 list-disc list-inside">
-              <li><strong class="text-slate-100">Modular Track:</strong> 250 mm interlocking conveyor bed sections with snap-in guide rails</li>
-              <li><strong class="text-slate-100">Optics Tower:</strong> Telescoping uprights with dual M5 thumb lock screws</li>
-              <li><strong class="text-slate-100">Camera Casing:</strong> Keyence VS-C320MX C-mount splash cover with M68 filter ring</li>
-              <li><strong class="text-slate-100">Materials:</strong> PETG/ABS for chemical/alcohol washdown resistance</li>
-            </ul>
-          </div>
-
-          <!-- Quick STL Export Action -->
-          <div>
-            <button onclick="downloadAllStlBundle()" class="w-full py-2.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-lg font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20">
-              <i data-lucide="download" class="w-4 h-4"></i>
-              <span>Generate & Download STL Parts</span>
+          <!-- Production Action Controls -->
+          <div class="grid grid-cols-2 gap-2 mt-2.5 pt-2 border-t border-slate-800">
+            <button id="btn-toggle-sim" onclick="toggleSimulation()" class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-200 font-semibold flex items-center justify-center gap-1.5 transition-colors">
+              <i data-lucide="pause" id="simIcon" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span id="simText">Pause</span>
+            </button>
+            <button onclick="injectDefectCan()" class="w-full py-1.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-700 rounded-lg text-rose-200 font-semibold flex items-center justify-center gap-1.5 transition-colors shadow">
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-rose-400"></i>
+              <span>Inject Defect</span>
             </button>
           </div>
         </div>
-      </aside>
-    </div>
 
-    <!-- TAB 2: PRINTABLE PARTS CATALOG & STL GENERATOR -->
-    <div id="tab-partsBom" class="w-full h-full p-6 overflow-y-auto hidden">
-      <div class="max-w-6xl mx-auto space-y-6">
-        <div>
-          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
-            <i data-lucide="layers" class="w-5 h-5 text-cyan-400"></i>
-            3D Printable Engineering Files & Bill of Materials
-          </h2>
-          <p class="text-sm text-slate-400 mt-1">
-            Complete modular system engineered to fit within standard 220 × 220 × 250 mm 3D printer build volumes (Ender-3, Prusa MK3/MK4, Bambu Lab X1/P1P).
-          </p>
+        <!-- Camera Perspective Presets -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-1 backdrop-blur-md flex gap-1 shadow-lg text-[11px] font-medium">
+          <button onclick="setCameraView('iso')" class="px-2.5 py-1 rounded-lg bg-amber-600/20 text-amber-300 border border-amber-600/40">Isometric</button>
+          <button onclick="setCameraView('top')" class="px-2.5 py-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200">Top-Down</button>
+          <button onclick="setCameraView('side')" class="px-2.5 py-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200">Side Elevation</button>
+          <button onclick="setCameraView('rejector')" class="px-2.5 py-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200">Reject Nozzle</button>
+        </div>
+      </div>
+
+      <!-- Bottom-Left: Mini Keyence Preview Card (Collapsible) -->
+      <div id="mini-cam-card" class="absolute bottom-4 left-4 z-20 bg-slate-900/95 border border-slate-700/80 rounded-2xl p-2.5 sm:p-3 shadow-2xl backdrop-blur-md w-52 sm:w-60 transition-all duration-200">
+        <div class="flex items-center justify-between text-xs font-semibold text-slate-200 pb-1.5 mb-1.5 border-b border-slate-800">
+          <span class="flex items-center gap-1 font-mono text-[10px] text-amber-400 cursor-pointer hover:underline" onclick="switchTab('tab-vision')">
+            <i data-lucide="camera" class="w-3.5 h-3.5 text-cyan-400"></i> LIVE KEYENCE CAM
+          </span>
+          <div class="flex items-center gap-1.5">
+            <span id="mini-verdict-badge" class="px-1.5 py-0.2 rounded font-mono text-[9px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">PASS</span>
+            <button onclick="toggleMiniCamPreview()" class="text-slate-400 hover:text-slate-200 p-0.5 rounded" title="Minimize / Expand View">
+              <i data-lucide="chevrons-down" id="mini-cam-toggle-icon" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
         </div>
 
-        <!-- Part Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="partsCatalogGrid">
-          <!-- Dynamically populated or statically rendered below -->
-        </div>
+        <!-- 2D Canvas Visualizing Fisheye View of Can Flange -->
+        <div id="mini-cam-body" class="space-y-1.5">
+          <div class="relative w-full h-24 sm:h-28 bg-black rounded-lg overflow-hidden flex items-center justify-center border border-slate-800 crosshair-grid cursor-pointer" onclick="switchTab('tab-vision')">
+            <canvas id="miniCameraCanvas" width="200" height="150" class="w-full h-full object-cover"></canvas>
+            <div id="flash-effect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-75"></div>
+            <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div class="w-full h-[1px] bg-cyan-500/20"></div>
+              <div class="absolute h-full w-[1px] bg-cyan-500/20"></div>
+            </div>
+          </div>
 
-        <!-- Printing Guidelines & Materials -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-          <h3 class="font-bold text-sm text-slate-200 flex items-center gap-2">
-            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i> Brewery Environmental & 3D Slicing Guidelines
-          </h3>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
-              <span class="text-cyan-400 font-bold block mb-1">Material Recommendation</span>
-              <p class="text-slate-300">
-                <strong class="text-white">PETG or ASA:</strong> Resists moisture, cleaning caustic detergents, and beer splashes. Standard PLA will deform under warm brewery washdown spray.
-              </p>
+          <div class="space-y-0.5 font-mono text-[10px] text-slate-300">
+            <div class="flex justify-between">
+              <span class="text-slate-400">Measured OD:</span>
+              <span id="hud-measured-od" class="text-cyan-400 font-bold">56.92 mm</span>
             </div>
-            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
-              <span class="text-cyan-400 font-bold block mb-1">Infill & Wall Perimeters</span>
-              <p class="text-slate-300">
-                <strong class="text-white">4 Walls, 35% Gyroid Infill:</strong> Provides rigidity against high-speed 220 cans/min vibration and pneumatic solenoid recoil impacts.
-              </p>
-            </div>
-            <div class="bg-slate-950 p-3.5 rounded-lg border border-slate-800">
-              <span class="text-cyan-400 font-bold block mb-1">Standard Hardware (Off-the-shelf)</span>
-              <p class="text-slate-300">
-                M4/M5 Hex Socket Cap Screws & Brass Heat-Set Threaded Inserts (Ruthex M4×8.1mm). 2020 T-slot aluminum extrusions for the conveyor rails.
-              </p>
+            <div class="flex justify-between">
+              <span class="text-slate-400">Nominal Spec:</span>
+              <span class="text-slate-400">56.90 ±0.50 mm</span>
             </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- TAB 3: KEYENCE / OPENCV VISION PIPELINE -->
-    <div id="tab-visionPipeline" class="w-full h-full p-6 overflow-y-auto hidden">
-      <div class="max-w-6xl mx-auto space-y-6">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
-              <i data-lucide="eye" class="w-5 h-5 text-cyan-400"></i>
-              Keyence VS-C320MX / OpenCV Vision Inspection Simulation
-            </h2>
-            <p class="text-sm text-slate-400 mt-1">
-              Top-down 3mm Fisheye optics inspection: ShapeTrax outer/inner circularity, OD/ID dimensioning, and YOLO rim defect classification.
-            </p>
-          </div>
-          <div class="flex items-center gap-2">
-            <button onclick="testVisionPass()" class="px-3 py-1.5 bg-emerald-600/80 hover:bg-emerald-500 rounded text-xs font-semibold text-white">Test Good Can</button>
-            <button onclick="testVisionDent()" class="px-3 py-1.5 bg-amber-600/80 hover:bg-amber-500 rounded text-xs font-semibold text-white">Test Dent Defect</button>
-            <button onclick="testVisionOval()" class="px-3 py-1.5 bg-rose-600/80 hover:bg-rose-500 rounded text-xs font-semibold text-white">Test Ovality Defect</button>
+      <!-- Bottom-Center: Yards Packaging Format & Explode Strip (Non-overlapping & responsive) -->
+      <div class="absolute bottom-4 left-auto right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 z-20 bg-slate-900/95 border border-slate-700/80 rounded-2xl px-3 py-2 backdrop-blur-md shadow-2xl flex flex-wrap items-center gap-2 sm:gap-3 text-xs max-w-[calc(100vw-1.5rem)]">
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <span class="text-slate-400 font-medium text-[10px] sm:text-[11px] uppercase tracking-wider">Format:</span>
+          <div class="flex gap-1">
+            <button onclick="setCanProfile('small')" id="btn-can-small" class="px-2 py-1 rounded-lg border border-amber-500 bg-amber-950/40 text-amber-300 font-bold transition-all text-xs flex items-center gap-1">
+              <span>12 oz</span>
+              <span class="font-mono text-[10px] text-slate-400 hidden md:inline">122.7mm</span>
+            </button>
+            <button onclick="setCanProfile('medium')" id="btn-can-medium" class="px-2 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1">
+              <span>16 oz</span>
+              <span class="font-mono text-[10px] text-slate-400 hidden md:inline">157.2mm</span>
+            </button>
+            <button onclick="setCanProfile('large')" id="btn-can-large" class="px-2 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1">
+              <span>19.2 oz</span>
+              <span class="font-mono text-[10px] text-slate-400 hidden md:inline">182.6mm</span>
+            </button>
           </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <!-- Main Vision Display -->
-          <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col">
-            <div class="flex justify-between items-center pb-3 border-b border-slate-800 text-xs">
-              <span class="font-mono text-cyan-400 flex items-center gap-1.5">
-                <i data-lucide="camera" class="w-4 h-4"></i> FRAME_BUFFER: 2048×1536 MONO (3.2 MP)
-              </span>
-              <span id="vision-status-chip" class="px-2.5 py-0.5 rounded font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+        <div class="h-4 w-[1px] bg-slate-700 hidden sm:block"></div>
+
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-400 font-medium text-[10px] sm:text-[11px]">Exploded:</span>
+          <input type="range" id="explodeSlider" min="0" max="100" value="0" oninput="onExplodeChange(this.value)" class="w-14 sm:w-16 accent-amber-500 cursor-pointer">
+          <span id="explodeValText" class="font-mono text-amber-400 text-xs w-6">0%</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: Full Keyence / Vision HUD View -->
+    <section id="tab-vision" class="hidden flex-1 relative h-full w-full overflow-y-auto bg-slate-950 p-4 sm:p-6 flex flex-col justify-start">
+      <div class="max-w-6xl mx-auto w-full space-y-4">
+        
+        <!-- Header Banner & Action Buttons -->
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+              <i data-lucide="eye" class="w-5 h-5 text-cyan-400"></i>
+              <span>Keyence VS-C320MX / OpenCV Vision Inspection Simulation</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Top-down 3mm Fisheye optics inspection: ShapeTrax outer/inner circularity, OD/ID dimensioning, and YOLO rim defect classification.
+            </p>
+          </div>
+
+          <!-- Quick Test Injections -->
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="runManualVisionTest('good')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition-all shadow">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              <span>Test Good Can</span>
+            </button>
+            <button onclick="runManualVisionTest('dent')" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg text-xs flex items-center gap-1.5 transition-all shadow">
+              <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+              <span>Test Dent Defect</span>
+            </button>
+            <button onclick="runManualVisionTest('ovality')" class="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-slate-100 font-bold rounded-lg text-xs flex items-center gap-1.5 transition-all shadow">
+              <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+              <span>Test Ovality / Split</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Vision Main Grid (Camera HUD + Side Tolerances & Timing) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          
+          <!-- Left: 3.2 MP Fisheye Frame Buffer Screen (7 Cols) -->
+          <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+            <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-xs">
+              <div class="flex items-center gap-2 font-mono text-cyan-400">
+                <i data-lucide="camera" class="w-4 h-4"></i>
+                <span class="font-bold">FRAME_BUFFER: 2048×1536 MONO (3.2 MP)</span>
+              </div>
+              <div id="full-system-verdict" class="px-2.5 py-0.5 rounded font-mono font-bold text-xs bg-emerald-950 text-emerald-400 border border-emerald-800">
                 SYSTEM VERDICT: PASS
-              </span>
-            </div>
-
-            <!-- Optical Feed Canvas -->
-            <div class="flex-1 flex items-center justify-center p-4">
-              <div class="relative w-[360px] h-[360px] bg-black rounded-lg border-2 border-slate-800 overflow-hidden shadow-inner crosshair-grid">
-                <canvas id="largeVisionCanvas" width="360" height="360" class="w-full h-full"></canvas>
-                <!-- Reticle crosshair -->
-                <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
-                  <div class="w-full h-[1px] bg-cyan-500/20"></div>
-                  <div class="absolute h-full w-[1px] bg-cyan-500/20"></div>
-                </div>
               </div>
             </div>
 
-            <!-- Tool Chain Status Badges (From Keyence Spec sheet #4) -->
-            <div class="grid grid-cols-5 gap-2 pt-3 border-t border-slate-800 text-[11px] font-mono">
-              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
-                <div class="text-slate-400">1. ShapeTrax</div>
-                <div id="tool-shapetrax" class="text-emerald-400 font-bold mt-0.5">LOCKED</div>
+            <!-- Optical Sensor Display Canvas -->
+            <div class="relative w-full aspect-[4/3] bg-black rounded-xl overflow-hidden border border-slate-800 reticle-grid flex items-center justify-center">
+              <canvas id="fullCameraCanvas" width="600" height="450" class="w-full h-full object-contain"></canvas>
+              
+              <!-- Crosshair Overlay -->
+              <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div class="w-full h-[1px] bg-cyan-500/30"></div>
+                <div class="absolute h-full w-[1px] bg-cyan-500/30"></div>
+                <div class="w-8 h-8 rounded-full border border-cyan-500/30"></div>
               </div>
-              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
-                <div class="text-slate-400">2. Surface Defect</div>
-                <div id="tool-surface" class="text-emerald-400 font-bold mt-0.5">0.00% OK</div>
+
+              <!-- Optical Strobe Flash Indicator -->
+              <div id="full-flash-effect" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-75"></div>
+
+              <!-- Live Watermark Overlay -->
+              <div class="absolute bottom-2 left-3 font-mono text-[10px] text-slate-500 bg-slate-950/80 px-2 py-0.5 rounded border border-slate-800">
+                KEYENCE VS-CREATOR • GLOBAL SHUTTER 1/2000s
               </div>
-              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
-                <div class="text-slate-400">3. ID Tool</div>
-                <div id="tool-id" class="text-emerald-400 font-bold mt-0.5">52.41 mm</div>
-              </div>
-              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
-                <div class="text-slate-400">4. OD Tool</div>
-                <div id="tool-od" class="text-emerald-400 font-bold mt-0.5">56.91 mm</div>
-              </div>
-              <div class="bg-slate-950 p-2 rounded border border-slate-800 text-center">
-                <div class="text-slate-400">5. AI Anomaly</div>
-                <div id="tool-ai" class="text-emerald-400 font-bold mt-0.5">PASS (98%)</div>
-              </div>
+            </div>
+
+            <!-- 5 Inspection Tool Tabs (From Keyence Guide) -->
+            <div class="grid grid-cols-5 gap-1.5 mt-3 pt-3 border-t border-slate-800 text-[11px] font-mono">
+              <button onclick="setActiveVisionTool(1)" id="vtool-1" class="py-1.5 px-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-center font-bold">
+                1. ShapeTrax
+              </button>
+              <button onclick="setActiveVisionTool(2)" id="vtool-2" class="py-1.5 px-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-slate-800 text-center">
+                2. Surface Defect
+              </button>
+              <button onclick="setActiveVisionTool(3)" id="vtool-3" class="py-1.5 px-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-slate-800 text-center">
+                3. ID Tool
+              </button>
+              <button onclick="setActiveVisionTool(4)" id="vtool-4" class="py-1.5 px-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-slate-800 text-center">
+                4. OD Tool
+              </button>
+              <button onclick="setActiveVisionTool(5)" id="vtool-5" class="py-1.5 px-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-slate-800 text-center">
+                5. AI Anomaly
+              </button>
             </div>
           </div>
 
-          <!-- Parameter Limits & Tolerances -->
-          <div class="space-y-4">
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-              <h3 class="font-bold text-xs uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-1.5">
-                <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i> Yards Tolerance Envelope
-              </h3>
-              <div class="space-y-2.5 text-xs font-mono">
-                <div class="p-2 bg-slate-950 rounded border border-slate-800">
-                  <div class="flex justify-between text-slate-400">
-                    <span>Flange OD Target:</span>
-                    <span class="text-cyan-400">56.90 mm</span>
+          <!-- Right: Yards Tolerance Envelope & Timing Budget (5 Cols) -->
+          <div class="lg:col-span-5 space-y-4">
+            
+            <!-- Yards Tolerance Envelope Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl text-xs space-y-3">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                <span class="font-bold text-slate-200 flex items-center gap-1.5">
+                  <i data-lucide="shield-check" class="w-4 h-4 text-cyan-400"></i>
+                  <span>YARDS TOLERANCE ENVELOPE</span>
+                </span>
+                <span class="text-[10px] font-mono text-amber-400 bg-amber-950/70 border border-amber-800 px-2 py-0.5 rounded">202 END SPEC</span>
+              </div>
+
+              <div class="space-y-2.5 font-mono text-[11px]">
+                <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <div class="flex justify-between">
+                    <span class="text-slate-400">Flange OD Target:</span>
+                    <strong id="env-measured-od" class="text-emerald-400 text-xs">56.92 mm</strong>
                   </div>
-                  <div class="flex justify-between text-[11px] text-slate-500 mt-0.5">
+                  <div class="flex justify-between text-[10px] text-slate-500 mt-0.5">
                     <span>Tolerance (±0.5mm):</span>
                     <span>56.40 – 57.40 mm</span>
                   </div>
                 </div>
 
-                <div class="p-2 bg-slate-950 rounded border border-slate-800">
-                  <div class="flex justify-between text-slate-400">
-                    <span>Flange ID Target:</span>
-                    <span class="text-cyan-400">52.40 mm</span>
+                <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                  <div class="flex justify-between">
+                    <span class="text-slate-400">Flange ID Target:</span>
+                    <strong id="env-measured-id" class="text-cyan-400 text-xs">52.41 mm</strong>
                   </div>
-                  <div class="flex justify-between text-[11px] text-slate-500 mt-0.5">
-                    <span>Inner lip lip width:</span>
-                    <span>2.10 mm nominal</span>
-                  </div>
-                </div>
-
-                <div class="p-2 bg-slate-950 rounded border border-slate-800">
-                  <div class="flex justify-between text-slate-400">
-                    <span>Max Ovality (Major - Minor):</span>
-                    <span class="text-amber-400">&lt; 1.50 mm</span>
+                  <div class="flex justify-between text-[10px] text-slate-500 mt-0.5">
+                    <span>Inner lip width:</span>
+                    <span>2.10 ±0.20 mm</span>
                   </div>
                 </div>
 
-                <div class="p-2 bg-slate-950 rounded border border-slate-800">
-                  <div class="flex justify-between text-slate-400">
-                    <span>Pixel Calibration Scale:</span>
-                    <span class="text-slate-200">8.00 pixels = 1.0 mm</span>
-                  </div>
-                  <div class="flex justify-between text-[11px] text-slate-500 mt-0.5">
-                    <span>Working Distance (WD):</span>
-                    <span>250.0 mm</span>
-                  </div>
+                <div class="flex justify-between px-2">
+                  <span class="text-slate-400">Max Ovality (Major - Minor):</span>
+                  <span id="env-ovality" class="text-amber-400 font-bold">&lt; 1.50 mm (0.14 mm)</span>
+                </div>
+
+                <div class="flex justify-between px-2">
+                  <span class="text-slate-400">Pixel Calibration Scale:</span>
+                  <span class="text-slate-200">8.00 pixels = 1.0 mm</span>
+                </div>
+
+                <div class="flex justify-between px-2">
+                  <span class="text-slate-400">Working Distance (WD):</span>
+                  <span class="text-slate-200">250.0 mm</span>
                 </div>
               </div>
             </div>
 
-            <!-- Algorithm Execution Time Breakdown -->
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
-              <h3 class="font-bold text-xs uppercase tracking-wider text-slate-300 mb-2">Cycle Timing Budget (&lt; 20 ms)</h3>
-              <div class="space-y-1.5 text-xs">
+            <!-- Cycle Timing Budget (< 20 ms) Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl text-xs space-y-3">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                <span class="font-bold text-slate-200 flex items-center gap-1.5">
+                  <i data-lucide="clock" class="w-4 h-4 text-emerald-400"></i>
+                  <span>CYCLE TIMING BUDGET (&lt; 20 MS)</span>
+                </span>
+                <span id="timing-total-badge" class="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950 border border-emerald-800 px-2 py-0.5 rounded">12.1 ms</span>
+              </div>
+
+              <div class="space-y-2 font-mono text-[10px]">
                 <div>
-                  <div class="flex justify-between text-[11px] text-slate-400 mb-0.5">
-                    <span>1. Exposure & Transfer (Global Shutter)</span>
-                    <span class="font-mono text-cyan-400">1.8 ms</span>
+                  <div class="flex justify-between text-slate-400 mb-1">
+                    <span>1. Exposure &amp; Transfer (Global Shutter)</span>
+                    <span class="text-slate-200">4.2 ms</span>
                   </div>
-                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div class="bg-cyan-500 h-full w-[15%]"></div>
+                  <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-cyan-500 h-full rounded-full" style="width: 21%"></div>
                   </div>
                 </div>
+
                 <div>
-                  <div class="flex justify-between text-[11px] text-slate-400 mb-0.5">
-                    <span>2. Gaussian Filter & Hough Circles</span>
-                    <span class="font-mono text-cyan-400">4.1 ms</span>
+                  <div class="flex justify-between text-slate-400 mb-1">
+                    <span>2. Gaussian Filter &amp; Hough Circles</span>
+                    <span class="text-slate-200">5.8 ms</span>
                   </div>
-                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div class="bg-cyan-500 h-full w-[35%]"></div>
+                  <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-amber-500 h-full rounded-full" style="width: 29%"></div>
                   </div>
                 </div>
+
                 <div>
-                  <div class="flex justify-between text-[11px] text-slate-400 mb-0.5">
+                  <div class="flex justify-between text-slate-400 mb-1">
                     <span>3. ShapeTrax Anomaly Classification</span>
-                    <span class="font-mono text-cyan-400">6.2 ms</span>
+                    <span class="text-slate-200">2.1 ms</span>
                   </div>
-                  <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div class="bg-cyan-500 h-full w-[50%]"></div>
+                  <div class="w-full bg-slate-950 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-emerald-500 h-full rounded-full" style="width: 11%"></div>
                   </div>
                 </div>
-                <div class="pt-2 text-[11px] font-mono text-emerald-400 font-bold flex justify-between border-t border-slate-800">
-                  <span>Total Latency: 12.1 ms</span>
-                  <span>Margin: +7.9 ms</span>
+
+                <div class="pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
+                  <span class="text-slate-300">Total Latency: <strong id="timing-total-text" class="text-emerald-400">12.1 ms</strong></span>
+                  <span class="text-cyan-400">Margin: +7.9 ms</span>
                 </div>
               </div>
             </div>
+
           </div>
+
         </div>
+
       </div>
-    </div>
+    </section>
 
-    <!-- TAB 4: TIMING & FIRMWARE -->
-    <div id="tab-timingSchematic" class="w-full h-full p-6 overflow-y-auto hidden">
-      <div class="max-w-6xl mx-auto space-y-6">
-        <div>
-          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
-            <i data-lucide="cpu" class="w-5 h-5 text-cyan-400"></i>
-            Conveyor Velocity, PLC Timing Math & Prototype Firmware
-          </h2>
-          <p class="text-sm text-slate-400 mt-1">
-            Exact timing calculations synchronized with Section 2 (Step 3) of the Yards Brewing packaging line.
-          </p>
-        </div>
+    <!-- TAB 3: Can Inspection Log & Defect Audit View -->
+    <section id="tab-audit" class="hidden flex-1 relative h-full w-full overflow-y-auto bg-slate-950 p-4 sm:p-6 flex flex-col justify-start">
+      <div class="max-w-6xl mx-auto w-full space-y-4">
+        
+        <!-- Header & Action Controls -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+              <i data-lucide="list-checks" class="w-5 h-5 text-emerald-400"></i>
+              <span>Live Can Inspection Audit &amp; Defect History</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Real-time audit log of all empty cans passing through Section 2, Step 3 prior to filling.
+            </p>
+          </div>
 
-        <!-- Formula Callout -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
-          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
-            <span class="text-slate-500 text-xs block mb-1">Throughput</span>
-            <span class="text-lg font-bold text-white">220 cans/min</span>
-            <span class="text-[10px] text-slate-400 block mt-0.5">~3.67 cans/sec</span>
-          </div>
-          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
-            <span class="text-slate-500 text-xs block mb-1">Conveyor Velocity ($v$)</span>
-            <span class="text-lg font-bold text-cyan-400">254.0 mm/s</span>
-            <span class="text-[10px] text-slate-400 block mt-0.5">10.0 inches/sec</span>
-          </div>
-          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
-            <span class="text-slate-500 text-xs block mb-1">Transit Distance ($d$)</span>
-            <span class="text-lg font-bold text-white">150.0 mm</span>
-            <span class="text-[10px] text-slate-400 block mt-0.5">Optics center to nozzle</span>
-          </div>
-          <div class="p-3 bg-slate-950 rounded-lg border border-slate-800">
-            <span class="text-slate-500 text-xs block mb-1">Rejection Delay Timer</span>
-            <span class="text-lg font-bold text-emerald-400">572 ms</span>
-            <span class="text-[10px] text-slate-400 block mt-0.5">(590 ms transit - 18 ms CV)</span>
-          </div>
-        </div>
-
-        <!-- Microcontroller Prototype Code (Arduino / Raspberry Pi Pico) -->
-        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-          <div class="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex justify-between items-center text-xs font-mono">
-            <span class="text-cyan-400 flex items-center gap-2">
-              <i data-lucide="code" class="w-4 h-4"></i> prototype_controller.ino (Hardware Interrupt & Solenoid Pulse)
-            </span>
-            <button onclick="copyFirmwareCode()" class="text-slate-400 hover:text-slate-200 flex items-center gap-1">
-              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-              <span id="copy-btn-text">Copy Code</span>
+          <div class="flex items-center gap-2">
+            <button onclick="exportAuditLogCSV()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700">
+              <i data-lucide="download" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>Export CSV</span>
+            </button>
+            <button onclick="clearAuditLog()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-rose-300 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-700">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>Clear Log</span>
             </button>
           </div>
-          <pre class="p-4 text-xs font-mono text-slate-300 overflow-x-auto leading-relaxed">
-<span class="text-slate-500">// Yards Brewing Co. - Pre-Fill Can Inspection Prototype Controller</span>
-<span class="text-slate-500">// Synchronizes M12 optical trigger, Keyence / ELP camera, and pneumatic rejector</span>
-
-<span class="text-purple-400">#include</span> <span class="text-amber-300">&lt;Arduino.h&gt;</span>
-
-<span class="text-cyan-400">const int</span> PIN_PHOTO_TRIGGER = <span class="text-amber-400">2</span>;   <span class="text-slate-500">// M12 Diffuse optical sensor (Step 3)</span>
-<span class="text-cyan-400">const int</span> PIN_CAM_TRIGGER   = <span class="text-amber-400">3</span>;   <span class="text-slate-500">// 24V Opto-isolated pulse to Keyence VS-C320MX</span>
-<span class="text-cyan-400">const int</span> PIN_CV_DECISION   = <span class="text-amber-400">4</span>;   <span class="text-slate-500">// Input from Keyence Out1 (HIGH = REJECT)</span>
-<span class="text-cyan-400">const int</span> PIN_AIR_SOLENOID  = <span class="text-amber-400">5</span>;   <span class="text-slate-500">// MOSFET driver for 80 PSI Air Shot Valve</span>
-<span class="text-cyan-400">const int</span> PIN_SERVO_PWM     = <span class="text-amber-400">6</span>;   <span class="text-slate-500">// Desktop hobby servo kicker alternative</span>
-
-<span class="text-slate-500">// Calibration Constants (10 inches/sec @ 150mm spacing)</span>
-<span class="text-cyan-400">const unsigned long</span> TRANSIT_DELAY_MS   = <span class="text-amber-400">572</span>; <span class="text-slate-500">// 590ms transit - 18ms camera latency</span>
-<span class="text-cyan-400">const unsigned long</span> SOLENOID_PULSE_MS  = <span class="text-amber-400">40</span>;  <span class="text-slate-500">// High-velocity 40ms air shot</span>
-
-<span class="text-cyan-400">struct</span> CanEvent {
-  <span class="text-cyan-400">unsigned long</span> fireTime;
-  <span class="text-cyan-400">bool</span> reject;
-};
-
-<span class="text-purple-400">#define</span> QUEUE_SIZE 8
-CanEvent eventQueue[QUEUE_SIZE];
-<span class="text-cyan-400">volatile int</span> qHead = <span class="text-amber-400">0</span>;
-<span class="text-cyan-400">volatile int</span> qTail = <span class="text-amber-400">0</span>;
-
-<span class="text-cyan-400">void</span> <span class="text-blue-400">IRAM_ATTR</span> onCanDetected() {
-  <span class="text-slate-500">// 1. Immediate trigger pulse to camera to freeze motion (1/2000s exposure)</span>
-  digitalWrite(PIN_CAM_TRIGGER, HIGH);
-  delayMicroseconds(<span class="text-amber-400">100</span>);
-  digitalWrite(PIN_CAM_TRIGGER, LOW);
-}
-
-<span class="text-cyan-400">void</span> <span class="text-blue-400">setup</span>() {
-  pinMode(PIN_PHOTO_TRIGGER, INPUT_PULLUP);
-  pinMode(PIN_CAM_TRIGGER, OUTPUT);
-  pinMode(PIN_CV_DECISION, INPUT);
-  pinMode(PIN_AIR_SOLENOID, OUTPUT);
-  attachInterrupt(digitalPinToInterrupt(PIN_PHOTO_TRIGGER), onCanDetected, RISING);
-  Serial.begin(<span class="text-amber-400">115200</span>);
-}
-
-<span class="text-cyan-400">void</span> <span class="text-blue-400">loop</span>() {
-  <span class="text-slate-500">// Check if Keyence flagged reject for current frame</span>
-  <span class="text-purple-400">if</span> (digitalRead(PIN_CV_DECISION) == HIGH) {
-    <span class="text-cyan-400">unsigned long</span> targetFire = millis() + TRANSIT_DELAY_MS;
-    eventQueue[qHead] = { targetFire, <span class="text-amber-400">true</span> };
-    qHead = (qHead + <span class="text-amber-400">1</span>) % QUEUE_SIZE;
-  }
-
-  <span class="text-slate-500">// Fire air shot when can arrives at nozzle</span>
-  <span class="text-purple-400">if</span> (qHead != qTail && millis() &gt;= eventQueue[qTail].fireTime) {
-    <span class="text-purple-400">if</span> (eventQueue[qTail].reject) {
-      digitalWrite(PIN_AIR_SOLENOID, HIGH);
-      delay(SOLENOID_PULSE_MS);
-      digitalWrite(PIN_AIR_SOLENOID, LOW);
-    }
-    qTail = (qTail + <span class="text-amber-400">1</span>) % QUEUE_SIZE;
-  }
-}
-          </pre>
         </div>
+
+        <!-- Summary KPI Cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="bg-slate-900 border border-slate-800 p-3.5 rounded-xl shadow">
+            <span class="text-slate-400 text-xs font-medium block">Total Inspected</span>
+            <span id="kpi-total-cans" class="text-xl sm:text-2xl font-bold font-mono text-slate-100 mt-0.5 block">0</span>
+            <span class="text-[10px] text-slate-500 font-mono">220 CPM Target</span>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-3.5 rounded-xl shadow">
+            <span class="text-slate-400 text-xs font-medium block">Passed to Filler</span>
+            <span id="kpi-passed-cans" class="text-xl sm:text-2xl font-bold font-mono text-emerald-400 mt-0.5 block">0</span>
+            <span class="text-[10px] text-emerald-500/80 font-mono">Rotary Double-Seamer</span>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-3.5 rounded-xl shadow">
+            <span class="text-slate-400 text-xs font-medium block">Defects Ejected</span>
+            <span id="kpi-defect-cans" class="text-xl sm:text-2xl font-bold font-mono text-rose-400 mt-0.5 block">0</span>
+            <span class="text-[10px] text-rose-500/80 font-mono">80 PSI Scrap Chute</span>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-3.5 rounded-xl shadow">
+            <span class="text-slate-400 text-xs font-medium block">Canning Yield Rate</span>
+            <span id="kpi-yield-rate" class="text-xl sm:text-2xl font-bold font-mono text-amber-400 mt-0.5 block">100.0%</span>
+            <span class="text-[10px] text-amber-500/80 font-mono">Acceptable &gt; 98.5%</span>
+          </div>
+        </div>
+
+        <!-- Filter Selector Tabs -->
+        <div class="flex items-center gap-2 pt-1">
+          <button onclick="setAuditFilter('all')" id="filter-btn-all" class="px-3 py-1 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+            All Cans (<span id="filter-count-all">0</span>)
+          </button>
+          <button onclick="setAuditFilter('pass')" id="filter-btn-pass" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800">
+            Passed Only (<span id="filter-count-pass">0</span>)
+          </button>
+          <button onclick="setAuditFilter('defect')" id="filter-btn-defect" class="px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800">
+            Defects Only (<span id="filter-count-defect">0</span>)
+          </button>
+        </div>
+
+        <!-- Audit Records Table -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-950 text-slate-400 font-mono uppercase text-[10px] border-b border-slate-800">
+                <tr>
+                  <th class="p-3">Can ID</th>
+                  <th class="p-3">Format</th>
+                  <th class="p-3">Flange Rim View</th>
+                  <th class="p-3">Measured OD</th>
+                  <th class="p-3">Ovality</th>
+                  <th class="p-3">Defect Classification</th>
+                  <th class="p-3">Verdict &amp; Action</th>
+                  <th class="p-3 text-right">Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="audit-table-body" class="divide-y divide-slate-800/60 font-mono text-[11px]">
+                <!-- Dynamic rows injected here -->
+                <tr id="audit-empty-row">
+                  <td colspan="8" class="p-8 text-center text-slate-500 font-sans">
+                    No can inspections recorded yet. Start simulation or click "Inject Defect" to populate data.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
-    </div>
+    </section>
+
+    <!-- Sliding Sidebar Overlay: Exact Component Names, Brand Details & Engineering Dimensions -->
+    <aside id="specs-drawer" class="fixed top-16 right-0 bottom-0 w-80 sm:w-96 bg-slate-900/98 backdrop-blur-xl border-l border-slate-700 flex flex-col z-40 overflow-hidden shadow-2xl transition-transform duration-300 transform translate-x-full">
+      
+      <!-- Drawer Header -->
+      <div class="p-3.5 border-b border-slate-800 bg-slate-900/90 flex justify-between items-center">
+        <div>
+          <h2 class="font-bold text-xs sm:text-sm text-amber-400 flex items-center gap-1.5">
+            <i data-lucide="clipboard-list" class="w-4 h-4"></i> Production Line Components
+          </h2>
+          <p class="text-[11px] text-slate-400 mt-0.5">OEM Hardware &amp; 3D Printable Assembly Dimensions</p>
+        </div>
+        <button onclick="toggleSpecsDrawer(false)" class="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Component Specs Scroll List -->
+      <div class="flex-1 overflow-y-auto p-3.5 space-y-3 text-xs">
+
+        <!-- Component 1: Unipak Slat Conveyor Bed -->
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 hover:border-amber-500/50 transition-all">
+          <div class="flex justify-between items-start mb-1">
+            <h3 class="font-bold text-slate-200">1. Unipak Corp. Slat Conveyor Bed</h3>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-400 border border-cyan-800">Conveyor Frame</span>
+          </div>
+          <p class="text-slate-400 text-[11px] mb-2">Single-file tabletop chain conveyor segment with integrated 2020 extrusion channels and Yards brand plaque.</p>
+          <div class="grid grid-cols-2 gap-1 font-mono text-[11px] bg-slate-900 p-2 rounded-lg border border-slate-800/80">
+            <div><span class="text-slate-500">Length:</span> <strong class="text-slate-200">600.0 mm</strong></div>
+            <div><span class="text-slate-500">Width:</span> <strong class="text-slate-200">90.0 mm</strong></div>
+            <div><span class="text-slate-500">Height:</span> <strong class="text-slate-200">25.0 mm</strong></div>
+            <div><span class="text-slate-500">Slat Width:</span> <strong class="text-slate-200">76.0 mm</strong></div>
+          </div>
+        </div>
+
+        <!-- Component 2: Lateral Guide Rails -->
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 hover:border-amber-500/50 transition-all">
+          <div class="flex justify-between items-start mb-1">
+            <h3 class="font-bold text-slate-200">2. Low-Friction Lateral Guide Rails</h3>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-950 text-amber-400 border border-amber-800">3D Print PETG</span>
+          </div>
+          <p class="text-slate-400 text-[11px] mb-2">Constrains 66.0 mm can bodies to smooth travel with a precise 66.2 mm lane clearance at 220 CPM.</p>
+          <div class="grid grid-cols-2 gap-1 font-mono text-[11px] bg-slate-900 p-2 rounded-lg border border-slate-800/80">
+            <div><span class="text-slate-500">Track Clearance:</span> <strong class="text-amber-300">66.2 mm</strong></div>
+            <div><span class="text-slate-500">Rail Height:</span> <strong class="text-slate-200">16.0 mm</strong></div>
+            <div><span class="text-slate-500">Thickness:</span> <strong class="text-slate-200">6.0 mm</strong></div>
+            <div><span class="text-slate-500">Length:</span> <strong class="text-slate-200">600.0 mm</strong></div>
+          </div>
+        </div>
+
+        <!-- Component 3: Keyence Camera & Optics -->
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-amber-500/40 hover:border-amber-400 transition-all shadow-md shadow-amber-950/20">
+          <div class="flex justify-between items-start mb-1">
+            <h3 class="font-bold text-amber-300">3. Keyence VS-C320MX Smart Camera</h3>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">AI Vision Cell</span>
+          </div>
+          <p class="text-slate-400 text-[11px] mb-2">3.2 MP monochrome CMOS sensor with 3mm fisheye lens, polarized LED ring, and IP68 washdown seal.</p>
+          <div class="grid grid-cols-2 gap-1 font-mono text-[11px] bg-slate-900 p-2 rounded-lg border border-slate-800/80">
+            <div><span class="text-slate-500">Sensor:</span> <strong class="text-slate-200">2048 × 1536</strong></div>
+            <div><span class="text-slate-500">Enclosure:</span> <strong class="text-slate-200">55 × 45 × 45 mm</strong></div>
+            <div><span class="text-slate-500">Lens Type:</span> <strong class="text-slate-200">3mm Fisheye (120°)</strong></div>
+            <div><span class="text-slate-500">Working Dist:</span> <strong class="text-cyan-400">250.0 mm</strong></div>
+          </div>
+        </div>
+
+        <!-- Component 4: Z-Axis Adjustable Gantry -->
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 hover:border-amber-500/50 transition-all">
+          <div class="flex justify-between items-start mb-1">
+            <h3 class="font-bold text-slate-200">4. Telescoping Overhead Gantry</h3>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-400 border border-cyan-800">Height Adjust</span>
+          </div>
+          <p class="text-slate-400 text-[11px] mb-2">Dual upright columns with calibrated indexed detents for 12 oz (122.7 mm), 16 oz (157.2 mm), and 19.2 oz (182.6 mm) cans.</p>
+          <div class="grid grid-cols-2 gap-1 font-mono text-[11px] bg-slate-900 p-2 rounded-lg border border-slate-800/80">
+            <div><span class="text-slate-500">Total Height:</span> <strong class="text-slate-200">360.0 mm</strong></div>
+            <div><span class="text-slate-500">Column Span:</span> <strong class="text-slate-200">175.0 mm</strong></div>
+            <div><span class="text-slate-500">Profiles:</span> <strong class="text-slate-200">25 × 25 mm</strong></div>
+            <div><span class="text-slate-500">Z-Travel:</span> <strong class="text-slate-200">100.0 mm</strong></div>
+          </div>
+        </div>
+
+        <!-- Component 5: M12 Photoelectric Sensor -->
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 hover:border-amber-500/50 transition-all">
+          <div class="flex justify-between items-start mb-1">
+            <h3 class="font-bold text-slate-200">5. M12 Photoelectric Trigger Sensor</h3>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-400 border border-cyan-800">Trigger</span>
+          </div>
+          <p class="text-slate-400 text-[11px] mb-2">High-speed diffuse optical sensor located 150 mm upstream to trigger Keyence global shutter snapshot.</p>
+          <div class="grid grid-cols-2 gap-1 font-mono text-[11px] bg-slate-900 p-2 rounded-lg border border-slate-800/80">
+            <div><span class="text-slate-500">Thread:</span> <strong class="text-slate-200">M12 × 1.0 mm</strong></div>
+            <div><span class="text-slate-500">Barrel Length:</span> <strong class="text-slate-200">45.0 mm</strong></div>
+            <div><span class="text-slate-500">Offset:</span> <strong class="text-slate-200">150.0 mm Upstream</strong></div>
+            <div><span class="text-slate-500">Response:</span> <strong class="text-slate-200">&lt; 0.5 ms</strong></div>
+          </div>
+        </div>
+
+        <!-- Component 6: Air-Shot Rejection Jet -->
+        <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800 hover:border-amber-500/50 transition-all">
+          <div class="flex justify-between items-start mb-1">
+            <h3 class="font-bold text-slate-200">6. High-Velocity Air-Shot Rejector</h3>
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-950 text-rose-400 border border-rose-800">80 PSI Ejector</span>
+          </div>
+          <p class="text-slate-400 text-[11px] mb-2">Pneumatic valve delivering a 40 ms blast at 80 PSI (5.5 bar) precisely timed by PLC (572 ms delay).</p>
+          <div class="grid grid-cols-2 gap-1 font-mono text-[11px] bg-slate-900 p-2 rounded-lg border border-slate-800/80">
+            <div><span class="text-slate-500">Offset:</span> <strong class="text-amber-400">150.0 mm Downstream</strong></div>
+            <div><span class="text-slate-500">Pressure:</span> <strong class="text-slate-200">80 PSI (5.5 bar)</strong></div>
+            <div><span class="text-slate-500">Nozzle Bore:</span> <strong class="text-slate-200">Ø 7.0 mm (1/8" NPT)</strong></div>
+            <div><span class="text-slate-500">Pulse Width:</span> <strong class="text-slate-200">40 ms</strong></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Quick Footer -->
+      <div class="p-3 bg-slate-950/90 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+        <span>Yards Brewing Quality Engineering</span>
+        <span class="text-amber-400 font-mono">VS-C320MX</span>
+      </div>
+    </aside>
   </main>
 
   <!-- Notification Toast Container -->
-  <div id="toast" class="fixed top-16 right-5 z-50 transform translate-y-[-100px] opacity-0 transition-all duration-300 pointer-events-none bg-slate-900 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs">
+  <div id="toast" class="fixed top-20 right-6 z-50 transform translate-y-[-100px] opacity-0 transition-all duration-300 pointer-events-none bg-slate-900/95 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs">
     <i id="toast-icon" data-lucide="check" class="w-4 h-4 text-emerald-400"></i>
     <span id="toast-msg">Notification</span>
+  </div>
+
+  <!-- GitHub Pages Modal -->
+  <div id="gh-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-5 shadow-2xl text-xs space-y-3.5">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+        <div class="flex items-center gap-2">
+          <i data-lucide="github" class="w-5 h-5 text-emerald-400"></i>
+          <h3 class="font-bold text-sm text-slate-100">Ready for GitHub Pages</h3>
+        </div>
+        <button onclick="hideDeploymentModal()" class="text-slate-400 hover:text-slate-200">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <p class="text-slate-300">
+        This file is structured as a self-contained <code class="text-amber-300 font-mono bg-slate-950 px-1 py-0.5 rounded">index.html</code>. You can deploy it to GitHub Pages in 3 quick steps:
+      </p>
+
+      <ol class="list-decimal list-inside space-y-1.5 text-slate-300 font-mono text-[11px] bg-slate-950 p-3 rounded-xl border border-slate-800">
+        <li>Create a GitHub repository (e.g. <span class="text-cyan-400">yards-can-inspection</span>).</li>
+        <li>Upload this file as <span class="text-amber-400">index.html</span> to the repository root.</li>
+        <li>Go to <strong>Settings &gt; Pages</strong>, select <strong>Deploy from branch</strong> (main / root), and click <strong>Save</strong>.</li>
+      </ol>
+
+      <div class="pt-2 flex justify-end">
+        <button onclick="hideDeploymentModal()" class="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded-lg transition-colors">
+          Got it
+        </button>
+      </div>
+    </div>
   </div>
 
   <script>
     /* Global Application State */
     const state = {
+      activeTab: 'tab-cad', // 'tab-cad' | 'tab-vision' | 'tab-audit'
       simRunning: true,
       conveyorSpeed: 254.0, // mm/sec (10 in/sec)
       canInterval: 1.1, // seconds between cans
       lastCanSpawn: 0,
       inspectionCount: 0,
       rejectCount: 0,
+      passedCount: 0,
       activeCanProfile: 'small', // small (122.7mm), medium (157.2mm), large (182.6mm)
-      rejectorMode: 'pneumatic', // 'pneumatic' or 'servo'
-      gantryHeight: 250.0, // mm
+      gantryHeight: 250.0, // mm Working Distance
       explodeFactor: 0.0,
-      activeTab: 'digitalTwin',
-      cans: [], // list of 3d can objects on conveyor
-      injectDefectNext: false
+      showDimensions: true,
+      specsDrawerOpen: false,
+      miniCamCollapsed: false,
+      cans: [],
+      injectDefectNext: false,
+      activeVisionToolIndex: 1,
+      auditRecords: [],
+      auditFilter: 'all' // 'all' | 'pass' | 'defect'
     };
 
     const CAN_SPECS = {
-      small: { name: '12 oz Standard', height: 122.7, od: 56.9, id: 52.4, color: 0xd1d5db },
-      medium: { name: '16 oz Pint', height: 157.2, od: 56.9, id: 52.4, color: 0x93c5fd },
-      large: { name: '19.2 oz Stovepipe', height: 182.6, od: 56.9, id: 52.4, color: 0xfcd34d }
+      small: { name: '12 oz Standard (Yards Pale Ale)', height: 122.7, od: 56.9, id: 52.4, color: 0xd1d5db },
+      medium: { name: '16 oz Pint (Yards Brawler)', height: 157.2, od: 56.9, id: 52.4, color: 0x93c5fd },
+      large: { name: '19.2 oz Stovepipe (Philly Standard)', height: 182.6, od: 56.9, id: 52.4, color: 0xfde047 }
     };
 
     let scene, camera, renderer, controls;
     let conveyorGroup, gantryGroup, cameraHousing, rejectorGroup, railsGroup, cansContainer;
-    let cameraFlashMesh, photoSensorLED;
+    let cameraFlashMesh, photoSensorLED, dimensionsGroup;
+
+    function createYardsPlaqueTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 160;
+      const ctx = canvas.getContext('2d');
+
+      ctx.fillStyle = '#091322';
+      ctx.fillRect(0, 0, 512, 160);
+
+      ctx.fillStyle = '#f4eedb';
+      ctx.roundRect(20, 16, 472, 128, 14);
+      ctx.fill();
+
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#c5a059';
+      ctx.stroke();
+
+      ctx.fillStyle = '#231f20';
+      ctx.font = '900 68px "Georgia", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('YARDS', 256, 68);
+
+      ctx.font = '700 20px "Georgia", serif';
+      ctx.letterSpacing = '3px';
+      ctx.fillText('BREWING COMPANY', 256, 114);
+
+      return new THREE.CanvasTexture(canvas);
+    }
 
     function initThreeJS() {
       const container = document.getElementById('threejs-container');
@@ -631,11 +765,11 @@ CanEvent eventQueue[QUEUE_SIZE];
       const height = container.clientHeight;
 
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x090d16);
-      scene.fog = new THREE.FogExp2(0x090d16, 0.0012);
+      scene.background = new THREE.Color(0x060c16);
+      scene.fog = new THREE.FogExp2(0x060c16, 0.0011);
 
-      camera = new THREE.PerspectiveCamera(45, width / height, 1, 3000);
-      camera.position.set(380, 320, 420);
+      camera = new THREE.PerspectiveCamera(45, width / height, 1, 3500);
+      camera.position.set(400, 310, 410);
 
       renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
       renderer.setSize(width, height);
@@ -647,246 +781,261 @@ CanEvent eventQueue[QUEUE_SIZE];
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
-      controls.maxPolarAngle = Math.PI / 2 + 0.05; // don't go below floor
-      controls.target.set(0, 100, 0);
+      controls.maxPolarAngle = Math.PI / 2 + 0.04;
+      controls.target.set(0, 110, 0);
 
-      // Environment & Floor Grid
-      const grid = new THREE.GridHelper(1000, 40, 0x1e293b, 0x0f172a);
+      const grid = new THREE.GridHelper(1200, 48, 0xc5a059, 0x111c30);
       grid.position.y = -0.5;
       scene.add(grid);
 
-      // Lighting Setup
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
       scene.add(ambientLight);
 
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-      dirLight.position.set(200, 400, 200);
+      const dirLight = new THREE.DirectionalLight(0xfffbeb, 0.95);
+      dirLight.position.set(240, 450, 220);
       dirLight.castShadow = true;
       dirLight.shadow.mapSize.width = 2048;
       dirLight.shadow.mapSize.height = 2048;
-      dirLight.shadow.camera.near = 10;
-      dirLight.shadow.camera.far = 1000;
-      dirLight.shadow.camera.left = -300;
-      dirLight.shadow.camera.right = 300;
-      dirLight.shadow.camera.top = 300;
-      dirLight.shadow.camera.bottom = -300;
       scene.add(dirLight);
 
-      const blueRimLight = new THREE.PointLight(0x06b6d4, 1.2, 500);
-      blueRimLight.position.set(-150, 200, -100);
-      scene.add(blueRimLight);
+      const amberAccentLight = new THREE.PointLight(0xc5a059, 1.4, 600);
+      amberAccentLight.position.set(0, 280, 150);
+      scene.add(amberAccentLight);
 
-      // Construct Complete 3D Assembly
+      const cyanFill = new THREE.PointLight(0x06b6d4, 1.0, 500);
+      cyanFill.position.set(-180, 180, -120);
+      scene.add(cyanFill);
+
       buildAssembly();
+      buildDimensionOverlays();
 
-      // Window resize listener
       window.addEventListener('resize', onWindowResize);
     }
 
     function buildAssembly() {
-      // 1. Conveyor Assembly
       conveyorGroup = new THREE.Group();
       scene.add(conveyorGroup);
 
-      // Conveyor Bed (Black Anodized aluminum / 3D printed PETG segments)
-      const bedMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.6 });
-      const bedGeo = new THREE.BoxGeometry(600, 25, 90);
-      const bed = new THREE.Mesh(bedGeo, bedMat);
-      bed.position.set(0, 25/2, 0);
+      const bedMat = new THREE.MeshStandardMaterial({ color: 0x1a2333, roughness: 0.5, metalness: 0.7 });
+      const bed = new THREE.Mesh(new THREE.BoxGeometry(600, 25, 90), bedMat);
+      bed.position.set(0, 12.5, 0);
       bed.castShadow = true;
       bed.receiveShadow = true;
       conveyorGroup.add(bed);
 
-      // Conveyor Tabletop Chain Belt (Modular interlocking slat track)
+      const plaqueTexture = createYardsPlaqueTexture();
+      const plaqueMat = new THREE.MeshStandardMaterial({ map: plaqueTexture, metalness: 0.2, roughness: 0.4 });
+      const plaque = new THREE.Mesh(new THREE.BoxGeometry(160, 20, 2), plaqueMat);
+      plaque.position.set(0, 12, 46);
+      conveyorGroup.add(plaque);
+
       const beltMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8, metalness: 0.2 });
-      const beltGeo = new THREE.BoxGeometry(596, 4, 76);
-      const belt = new THREE.Mesh(beltGeo, beltMat);
-      belt.position.set(0, 25 + 2, 0);
-      belt.receiveShadow = true;
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(596, 4, 76), beltMat);
+      belt.position.set(0, 27, 0);
       conveyorGroup.add(belt);
 
-      // Conveyor Side Rails (3D Printable snap-in guide rails for 66mm cans)
       railsGroup = new THREE.Group();
-      const railMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.4, metalness: 0.2 });
-      
-      const railGeo = new THREE.BoxGeometry(600, 16, 6);
-      const leftRail = new THREE.Mesh(railGeo, railMat);
+      const railMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.35, metalness: 0.3 });
+      const leftRail = new THREE.Mesh(new THREE.BoxGeometry(600, 16, 6), railMat);
       leftRail.position.set(0, 42, -37);
-      const rightRail = new THREE.Mesh(railGeo, railMat);
+      const rightRail = new THREE.Mesh(new THREE.BoxGeometry(600, 16, 6), railMat);
       rightRail.position.set(0, 42, 37);
       railsGroup.add(leftRail, rightRail);
       conveyorGroup.add(railsGroup);
 
-      // 2. Optical Sensor (M12 Photoelectric Sensor Bracket at Step 3 infeed)
-      const sensorBracketMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.6 });
-      const sensorBracket = new THREE.Mesh(new THREE.BoxGeometry(20, 45, 12), sensorBracketMat);
+      // Photoelectric Sensor (-150 mm)
+      const sensorBracket = new THREE.Mesh(new THREE.BoxGeometry(20, 45, 12), new THREE.MeshStandardMaterial({ color: 0x475569 }));
       sensorBracket.position.set(-150, 40, -45);
       conveyorGroup.add(sensorBracket);
 
-      // M12 Barrel Sensor
-      const barrelMat = new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.8, roughness: 0.3 });
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 30, 16), barrelMat);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 36, 16), new THREE.MeshStandardMaterial({ color: 0xd97706, metalness: 0.85 }));
       barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(-150, 45, -35);
+      barrel.position.set(-150, 45, -34);
       conveyorGroup.add(barrel);
 
-      // Sensor Status LED Indicator
-      const ledMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
-      photoSensorLED = new THREE.Mesh(new THREE.SphereGeometry(2.5, 12, 12), ledMat);
-      photoSensorLED.position.set(-150, 45, -50);
+      photoSensorLED = new THREE.Mesh(new THREE.SphereGeometry(2.5, 12, 12), new THREE.MeshBasicMaterial({ color: 0x22c55e }));
+      photoSensorLED.position.set(-150, 45, -52);
       conveyorGroup.add(photoSensorLED);
 
-      // 3. Overhead Gantry System (Adjustable Z-Axis for 12oz, 16oz, 19.2oz)
+      // Gantry
       gantryGroup = new THREE.Group();
       scene.add(gantryGroup);
-
-      const uprightMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.8 });
-      // Dual Upright Columns
-      const colGeo = new THREE.BoxGeometry(25, 360, 25);
-      const leftCol = new THREE.Mesh(colGeo, uprightMat);
+      const uprightMat = new THREE.MeshStandardMaterial({ color: 0x0b1322, roughness: 0.45, metalness: 0.8 });
+      const leftCol = new THREE.Mesh(new THREE.BoxGeometry(25, 360, 25), uprightMat);
       leftCol.position.set(0, 180, -75);
-      const rightCol = new THREE.Mesh(colGeo, uprightMat);
+      const rightCol = new THREE.Mesh(new THREE.BoxGeometry(25, 360, 25), uprightMat);
       rightCol.position.set(0, 180, 75);
-      leftCol.castShadow = true;
-      rightCol.castShadow = true;
-      gantryGroup.add(leftCol, rightCol);
-
-      // Top Crossbar
       const crossbar = new THREE.Mesh(new THREE.BoxGeometry(30, 25, 175), uprightMat);
       crossbar.position.set(0, 360, 0);
-      gantryGroup.add(crossbar);
+      gantryGroup.add(leftCol, rightCol, crossbar);
 
-      // Sliding Carriage (Holds Keyence VS-C320MX Camera + LED Ring Light)
+      // Keyence Camera Housing
       cameraHousing = new THREE.Group();
-      const carriageMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3, metalness: 0.4 });
-      const carriageBase = new THREE.Mesh(new THREE.BoxGeometry(50, 35, 140), carriageMat);
-      carriageBase.castShadow = true;
+      const carriageBase = new THREE.Mesh(new THREE.BoxGeometry(50, 32, 140), new THREE.MeshStandardMaterial({ color: 0xc5a059, metalness: 0.6 }));
       cameraHousing.add(carriageBase);
 
-      // Keyence VS-C320MX Camera Body (Black industrial housing with Keyence logo accents)
-      const keyenceMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.3, metalness: 0.7 });
-      const camBody = new THREE.Mesh(new THREE.BoxGeometry(45, 55, 45), keyenceMat);
-      camBody.position.set(0, 25, 0);
-      cameraHousing.add(camBody);
-
-      // C-Mount 3mm Fisheye Lens & Direct LED Ring Light
-      const lensMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.9, roughness: 0.2 });
-      const lens = new THREE.Mesh(new THREE.CylinderGeometry(18, 16, 28, 24), lensMat);
+      const camBody = new THREE.Mesh(new THREE.BoxGeometry(45, 55, 45), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.25 }));
+      camBody.position.set(0, 26, 0);
+      const keyenceRedBand = new THREE.Mesh(new THREE.BoxGeometry(46, 6, 46), new THREE.MeshStandardMaterial({ color: 0xdc2626 }));
+      keyenceRedBand.position.set(0, 38, 0);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(18, 16, 28, 24), new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.95 }));
       lens.position.set(0, -14, 0);
-      cameraHousing.add(lens);
-
-      // LED Ring Light (White Diffuser for specular reduction)
-      const ringMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x444444, roughness: 0.2 });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(26, 6, 16, 32), ringMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(26, 6, 16, 32), new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x666666 }));
       ring.rotation.x = Math.PI / 2;
       ring.position.set(0, -22, 0);
-      cameraHousing.add(ring);
 
-      // Camera Flash Mesh (Visual representation of 1/2000s inspection pulse)
-      const flashGeo = new THREE.CylinderGeometry(2, 45, 150, 16, 1, true);
+      const flashGeo = new THREE.CylinderGeometry(2, 50, 160, 20, 1, true);
       const flashMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
       cameraFlashMesh = new THREE.Mesh(flashGeo, flashMat);
-      cameraFlashMesh.position.set(0, -85, 0);
-      cameraHousing.add(cameraFlashMesh);
+      cameraFlashMesh.position.set(0, -90, 0);
 
-      // Place Camera Housing at default Working Distance (250mm above conveyor surface)
+      cameraHousing.add(camBody, keyenceRedBand, lens, ring, cameraFlashMesh);
       cameraHousing.position.set(0, 250 + 25, 0);
       gantryGroup.add(cameraHousing);
 
-      // 4. Rejection Mechanism (150 mm downstream from camera)
+      // Rejection Station (150 mm downstream)
       rejectorGroup = new THREE.Group();
-      rejectorGroup.position.set(150, 25, 0); // 150mm downstream per Yards engineering math
+      rejectorGroup.position.set(150, 25, 0);
       scene.add(rejectorGroup);
 
-      // Air Shot Nozzle Block (Pneumatic)
-      const nozzleBlockMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.4 });
-      const nozzleBlock = new THREE.Mesh(new THREE.BoxGeometry(28, 35, 25), nozzleBlockMat);
+      const nozzleBlock = new THREE.Mesh(new THREE.BoxGeometry(28, 35, 25), new THREE.MeshStandardMaterial({ color: 0x0284c7 }));
       nozzleBlock.position.set(0, 30, -50);
-      rejectorGroup.add(nozzleBlock);
-
-      // Stainless Steel Nozzle Tube pointing across the conveyor
-      const nozzleTubeMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
-      const nozzleTube = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 30, 16), nozzleTubeMat);
+      const nozzleTube = new THREE.Mesh(new THREE.CylinderGeometry(3.5, 3.5, 30, 16), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.95 }));
       nozzleTube.rotation.x = Math.PI / 2;
       nozzleTube.position.set(0, 35, -30);
-      rejectorGroup.add(nozzleTube);
+      const bin = new THREE.Mesh(new THREE.BoxGeometry(70, 45, 55), new THREE.MeshStandardMaterial({ color: 0xbe123c }));
+      bin.position.set(0, 12, 75);
+      rejectorGroup.add(nozzleBlock, nozzleTube, bin);
 
-      // Defect Catch Bin / Diverter Slide on opposite side
-      const binMat = new THREE.MeshStandardMaterial({ color: 0xbe123c, roughness: 0.5, metalness: 0.2 });
-      const bin = new THREE.Mesh(new THREE.BoxGeometry(70, 45, 55), binMat);
-      bin.position.set(0, 10, 75);
-      rejectorGroup.add(bin);
-
-      // Container for dynamic cans traveling on conveyor
       cansContainer = new THREE.Group();
       scene.add(cansContainer);
 
-      // Initial Cans
       spawnCan(-180);
       spawnCan(-80);
       spawnCan(20);
     }
 
-    function createCanMesh(profileKey, hasDefect = false) {
+    function buildDimensionOverlays() {
+      dimensionsGroup = new THREE.Group();
+      scene.add(dimensionsGroup);
+
+      function makeTextSprite(message, color = '#c5a059') {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = 'rgba(7, 13, 24, 0.90)';
+        ctx.roundRect(4, 4, 248, 56, 8);
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+        ctx.fillStyle = color;
+        ctx.font = 'bold 22px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(message, 128, 32);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, depthWrite: false }));
+        sprite.scale.set(70, 17.5, 1);
+        return sprite;
+      }
+
+      function makeDimLine(p1, p2, color = 0xc5a059) {
+        const mat = new THREE.LineBasicMaterial({ color: color, linewidth: 2 });
+        const geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        return new THREE.Line(geo, mat);
+      }
+
+      // 1. Conveyor Length
+      dimensionsGroup.add(makeDimLine(new THREE.Vector3(-300, 3, 56), new THREE.Vector3(300, 3, 56)));
+      const convLabel = makeTextSprite('Conveyor: 600 mm', '#38bdf8');
+      convLabel.position.set(0, 16, 68);
+      dimensionsGroup.add(convLabel);
+
+      // 2. Offset to Rejection Nozzle
+      dimensionsGroup.add(makeDimLine(new THREE.Vector3(0, 52, 45), new THREE.Vector3(150, 52, 45), 0xc5a059));
+      const distLabel = makeTextSprite('Offset: 150.0 mm', '#c5a059');
+      distLabel.position.set(75, 68, 55);
+      dimensionsGroup.add(distLabel);
+
+      // 3. Working Distance
+      dimensionsGroup.add(makeDimLine(new THREE.Vector3(-45, 125, 0), new THREE.Vector3(-45, 250, 0), 0x22c55e));
+      const wdLabel = makeTextSprite('WD: 250.0 mm', '#22c55e');
+      wdLabel.position.set(-65, 187, 10);
+      dimensionsGroup.add(wdLabel);
+    }
+
+    function createCanMesh(profileKey, hasDefect = false, defectType = 'dent') {
       const spec = CAN_SPECS[profileKey];
       const canGroup = new THREE.Group();
 
-      // Aluminum Can Cylinder Body (66.0 mm OD)
       const canBodyMat = new THREE.MeshStandardMaterial({
         color: spec.color,
         metalness: 0.85,
         roughness: 0.25
       });
 
-      // Scaled in scene units: 1 mm = 1 unit
-      const bodyRadius = 66.0 / 2;
-      const bodyHeight = spec.height - 12; // lower body
-      const bodyGeo = new THREE.CylinderGeometry(bodyRadius, bodyRadius * 0.96, bodyHeight, 32);
-      const body = new THREE.Mesh(bodyGeo, canBodyMat);
+      const bodyRadius = 66.0 / 2; // 33 mm radius
+      const bodyHeight = spec.height - 12;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(bodyRadius, bodyRadius * 0.96, bodyHeight, 32), canBodyMat);
       body.position.y = bodyHeight / 2;
       body.castShadow = true;
       canGroup.add(body);
 
-      // Can Neck & Taper (202 neck down to 56.9 mm)
-      const neckGeo = new THREE.CylinderGeometry(spec.od / 2, bodyRadius, 10, 32);
-      const neck = new THREE.Mesh(neckGeo, canBodyMat);
+      // Label Band (Yards Navy & Gold)
+      const labelBand = new THREE.Mesh(
+        new THREE.CylinderGeometry(bodyRadius + 0.1, bodyRadius + 0.1, bodyHeight * 0.65, 32),
+        new THREE.MeshStandardMaterial({ color: 0x091322, metalness: 0.3, roughness: 0.4 })
+      );
+      labelBand.position.y = bodyHeight * 0.48;
+      canGroup.add(labelBand);
+
+      const goldStripe = new THREE.Mesh(
+        new THREE.CylinderGeometry(bodyRadius + 0.2, bodyRadius + 0.2, 2.5, 32),
+        new THREE.MeshBasicMaterial({ color: 0xc5a059 })
+      );
+      goldStripe.position.y = bodyHeight * 0.78;
+      canGroup.add(goldStripe);
+
+      // 202 Neck
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(spec.od / 2, bodyRadius, 10, 32), canBodyMat);
       neck.position.y = bodyHeight + 5;
       canGroup.add(neck);
 
-      // Flange Rim (The critical inspection feature)
-      let rimColor = 0xffffff;
-      if (hasDefect) rimColor = 0xf87171;
-
+      // Flange Rim
+      const rimRadius = spec.od / 2;
       const rimMat = new THREE.MeshStandardMaterial({
-        color: rimColor,
-        metalness: 0.9,
-        roughness: 0.15
+        color: hasDefect ? 0xef4444 : 0xffffff,
+        metalness: 0.92,
+        roughness: 0.12
       });
 
-      // Rim Torus
-      const rimRadius = spec.od / 2;
-      const rimGeo = new THREE.TorusGeometry(rimRadius, 1.2, 16, 32);
+      const rimGeo = new THREE.TorusGeometry(rimRadius, 1.25, 16, 32);
       rimGeo.rotateX(Math.PI / 2);
       const rim = new THREE.Mesh(rimGeo, rimMat);
       rim.position.y = spec.height;
       canGroup.add(rim);
 
-      // If defect: introduce a visible flat-spot dent or ovality
       if (hasDefect) {
-        rim.scale.set(1.08, 1.0, 0.90); // out of round oval defect
-        const dentIndicator = new THREE.Mesh(
-          new THREE.SphereGeometry(3, 8, 8),
-          new THREE.MeshBasicMaterial({ color: 0xef4444 })
-        );
-        dentIndicator.position.set(rimRadius * 0.9, spec.height, 0);
-        canGroup.add(dentIndicator);
+        if (defectType === 'dent') {
+          rim.scale.set(1.06, 1.0, 0.92);
+          const dentDot = new THREE.Mesh(new THREE.SphereGeometry(3, 8, 8), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+          dentDot.position.set(rimRadius * 0.88, spec.height, 0);
+          canGroup.add(dentDot);
+        } else {
+          rim.scale.set(1.12, 1.0, 0.86);
+        }
       }
 
       canGroup.userData = {
+        canId: '#' + (1000 + state.inspectionCount + 1),
         profileKey: profileKey,
         height: spec.height,
         od: spec.od,
         hasDefect: hasDefect,
+        defectType: defectType,
         inspected: false,
         rejected: false,
         rejectVelocityZ: 0
@@ -898,7 +1047,7 @@ CanEvent eventQueue[QUEUE_SIZE];
     function spawnCan(xPos) {
       const isDefect = state.injectDefectNext;
       state.injectDefectNext = false;
-      const can = createCanMesh(state.activeCanProfile, isDefect);
+      const can = createCanMesh(state.activeCanProfile, isDefect, isDefect ? 'dent' : 'none');
       can.position.set(xPos, 27, 0);
       cansContainer.add(can);
       state.cans.push(can);
@@ -913,19 +1062,16 @@ CanEvent eventQueue[QUEUE_SIZE];
       lastTime = currentTime;
 
       if (state.simRunning) {
-        // Move cans forward along conveyor
-        const speed = state.conveyorSpeed; // mm/sec
+        const speed = state.conveyorSpeed;
 
         for (let i = state.cans.length - 1; i >= 0; i--) {
           const can = state.cans[i];
 
-          // If currently being ejected by air shot
           if (can.userData.rejected) {
             can.position.z += can.userData.rejectVelocityZ * delta;
             can.position.y += Math.sin(can.position.z * 0.05) * 0.5;
             can.rotation.x += 4 * delta;
 
-            // Remove when fully in bin
             if (can.position.z > 120) {
               cansContainer.remove(can);
               state.cans.splice(i, 1);
@@ -935,31 +1081,29 @@ CanEvent eventQueue[QUEUE_SIZE];
 
           can.position.x += speed * delta;
 
-          // 1. Photoelectric Trigger Check (x = -150 mm)
-          if (can.position.x >= -150 && can.position.x < -140 && !can.userData.triggered) {
+          // Trigger Sensor at x = -150 mm
+          if (can.position.x >= -150 && can.position.x < -135 && !can.userData.triggered) {
             can.userData.triggered = true;
             flashPhotoSensor();
           }
 
-          // 2. Camera Inspection Check (x = 0 mm)
+          // Camera Inspection at x = 0 mm
           if (can.position.x >= 0 && !can.userData.inspected) {
             can.userData.inspected = true;
             triggerVisionInspection(can);
           }
 
-          // 3. Rejection Point Check (x = 150 mm downstream)
+          // Air Rejection at x = 150 mm
           if (can.position.x >= 150 && can.userData.hasDefect && !can.userData.rejected) {
             actuateRejector(can);
           }
 
-          // Remove off-screen clean cans (x > 320 mm)
           if (can.position.x > 320) {
             cansContainer.remove(can);
             state.cans.splice(i, 1);
           }
         }
 
-        // Spawn new cans based on line throughput
         if (currentTime - state.lastCanSpawn > state.canInterval * 1000) {
           spawnCan(-280);
           state.lastCanSpawn = currentTime;
@@ -972,136 +1116,418 @@ CanEvent eventQueue[QUEUE_SIZE];
 
     function flashPhotoSensor() {
       if (photoSensorLED) {
-        photoSensorLED.material.color.setHex(0xf59e0b); // yellow trigger pulse
+        photoSensorLED.material.color.setHex(0xf59e0b);
         setTimeout(() => photoSensorLED.material.color.setHex(0x22c55e), 80);
       }
     }
 
     function triggerVisionInspection(can) {
       state.inspectionCount++;
-      document.getElementById('stat-inspection-count').textContent = `${state.inspectionCount} inspected`;
+      document.getElementById('stat-inspection-count').textContent = `${state.inspectionCount}`;
 
-      // Trigger optical flash cone
+      // 3D Strobe
       if (cameraFlashMesh) {
-        cameraFlashMesh.material.opacity = 0.5;
+        cameraFlashMesh.material.opacity = 0.55;
         setTimeout(() => cameraFlashMesh.material.opacity = 0.0, 60);
       }
 
-      // Mini HUD flash
-      const flashEl = document.getElementById('flash-effect');
-      if (flashEl) {
-        flashEl.style.opacity = '0.7';
-        setTimeout(() => flashEl.style.opacity = '0', 80);
+      // Flash 2D Views
+      ['flash-effect', 'full-flash-effect'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.style.opacity = '0.7';
+          setTimeout(() => el.style.opacity = '0', 70);
+        }
+      });
+
+      const hasDefect = can.userData.hasDefect;
+      let measuredOD, measuredID, ovality, defectName;
+
+      if (hasDefect) {
+        if (can.userData.defectType === 'dent') {
+          measuredOD = (56.9 + 1.82).toFixed(2);
+          measuredID = (52.4 + 1.20).toFixed(2);
+          ovality = '0.94 mm (FAIL)';
+          defectName = 'Flange Rim Dent (Localized Fold)';
+        } else {
+          measuredOD = (56.9 - 2.15).toFixed(2);
+          measuredID = (52.4 - 1.60).toFixed(2);
+          ovality = '1.86 mm (FAIL)';
+          defectName = 'Severe Ovality & Cracked Lip';
+        }
+      } else {
+        state.passedCount++;
+        measuredOD = (56.9 + (Math.random() * 0.16 - 0.08)).toFixed(2);
+        measuredID = (52.4 + (Math.random() * 0.14 - 0.07)).toFixed(2);
+        ovality = (0.08 + Math.random() * 0.12).toFixed(2) + ' mm (PASS)';
+        defectName = 'Nominal Specification (None)';
       }
 
-      // Simulate vision evaluation
-      const hasDefect = can.userData.hasDefect;
-      const measuredOD = hasDefect ? (56.9 + (Math.random() > 0.5 ? 1.6 : -1.8)) : (56.9 + (Math.random() * 0.2 - 0.1));
-      
-      updateVisionHUD(hasDefect, measuredOD.toFixed(2));
+      // Render Visualizations
+      renderVisionCanvas('miniCameraCanvas', hasDefect, can.userData.defectType);
+      renderVisionCanvas('fullCameraCanvas', hasDefect, can.userData.defectType);
+
+      // Update HUD Labels
+      updateHUDLabels(hasDefect, measuredOD, measuredID, ovality);
+
+      // Push into Audit Records
+      const record = {
+        id: can.userData.canId,
+        format: CAN_SPECS[can.userData.profileKey].name.split(' ')[0] + ' ' + CAN_SPECS[can.userData.profileKey].name.split(' ')[1],
+        od: measuredOD,
+        idSpec: measuredID,
+        ovality: ovality,
+        defect: defectName,
+        passed: !hasDefect,
+        time: new Date().toLocaleTimeString(),
+        type: can.userData.defectType
+      };
+
+      state.auditRecords.unshift(record);
+      if (state.auditRecords.length > 50) state.auditRecords.pop();
+
+      updateAuditUI();
     }
 
     function actuateRejector(can) {
       can.userData.rejected = true;
-      can.userData.rejectVelocityZ = 280; // kick off to side
+      can.userData.rejectVelocityZ = 290;
       state.rejectCount++;
-      document.getElementById('stat-reject-count').textContent = `${state.rejectCount} ejected`;
+      document.getElementById('stat-reject-count').textContent = `${state.rejectCount}`;
+      document.getElementById('badge-defect-count').textContent = `${state.rejectCount}`;
 
-      showToast(`Air Shot Ejected Defective Can (${can.userData.profileKey.toUpperCase()})`, 'reject');
+      showToast(`Air-Shot Solenoid: Ejected Defective Can (${can.userData.profileKey.toUpperCase()})`, 'reject');
     }
 
-    function updateVisionHUD(hasDefect, measuredOD) {
-      const canvas = document.getElementById('miniCameraCanvas');
+    function renderVisionCanvas(canvasId, hasDefect, defectType) {
+      const canvas = document.getElementById(canvasId);
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       const w = canvas.width;
       const h = canvas.height;
 
-      ctx.fillStyle = '#05070d';
+      ctx.fillStyle = '#050a14';
       ctx.fillRect(0, 0, w, h);
 
       const cx = w / 2;
       const cy = h / 2;
+      const outerR = Math.min(w, h) * 0.32;
+      const innerR = Math.min(w, h) * 0.25;
 
-      // Simulated Can Flange Grayscale Profile
+      // Dark background void
       ctx.beginPath();
-      ctx.arc(cx, cy, 48, 0, Math.PI * 2);
-      ctx.fillStyle = '#475569';
+      ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+      ctx.fillStyle = '#1e293b';
       ctx.fill();
 
-      // Interior void
       ctx.beginPath();
-      ctx.arc(cx, cy, 40, 0, Math.PI * 2);
-      ctx.fillStyle = '#0b0f19';
+      ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+      ctx.fillStyle = '#050a14';
       ctx.fill();
 
-      // Keyence ShapeTrax Circle Overlays (Green if Pass, Red if Fail)
-      ctx.lineWidth = 1.8;
+      // Outer Flange Boundary
+      ctx.lineWidth = canvasId === 'fullCameraCanvas' ? 3.5 : 2.0;
       ctx.strokeStyle = hasDefect ? '#ef4444' : '#22c55e';
 
       ctx.beginPath();
       if (hasDefect) {
-        ctx.ellipse(cx, cy, 52, 44, 0.4, 0, Math.PI * 2);
+        if (defectType === 'dent') {
+          ctx.ellipse(cx, cy, outerR * 1.08, outerR * 0.91, 0.45, 0, Math.PI * 2);
+        } else {
+          ctx.ellipse(cx, cy, outerR * 1.15, outerR * 0.82, -0.6, 0, Math.PI * 2);
+        }
       } else {
-        ctx.arc(cx, cy, 48, 0, Math.PI * 2);
+        ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
       }
       ctx.stroke();
 
-      // Inner Diameter Circle
+      // Inner ID Circle
       ctx.strokeStyle = '#06b6d4';
-      ctx.lineWidth = 1;
+      ctx.lineWidth = canvasId === 'fullCameraCanvas' ? 2.0 : 1.0;
       ctx.beginPath();
-      ctx.arc(cx, cy, 40, 0, Math.PI * 2);
+      ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
       ctx.stroke();
 
-      // UI Text Badges
-      const verdictBadge = document.getElementById('mini-verdict-badge');
-      const measuredODEl = document.getElementById('hud-measured-od');
+      // If defect: draw localized AI anomaly heat bounding box
+      if (hasDefect) {
+        ctx.strokeStyle = '#f59e0b';
+        ctx.lineWidth = 2.0;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(cx + outerR * 0.5, cy - outerR * 0.4, 40, 40);
+        ctx.setLineDash([]);
+        
+        ctx.fillStyle = '#ef4444';
+        ctx.font = 'bold 12px monospace';
+        ctx.fillText('ANOMALY_961.6', cx + outerR * 0.5, cy - outerR * 0.45);
+      }
+    }
+
+    function updateHUDLabels(hasDefect, od, idVal, ovality) {
+      const hudOD = document.getElementById('hud-measured-od');
+      const miniBadge = document.getElementById('mini-verdict-badge');
+      const fullBadge = document.getElementById('full-system-verdict');
+      const envOD = document.getElementById('env-measured-od');
+      const envID = document.getElementById('env-measured-id');
+      const envOv = document.getElementById('env-ovality');
+
+      if (hudOD) hudOD.textContent = `${od} mm`;
+      if (envOD) envOD.textContent = `${od} mm`;
+      if (envID) envID.textContent = `${idVal} mm`;
+      if (envOv) envOv.textContent = ovality;
 
       if (hasDefect) {
-        verdictBadge.textContent = 'REJECT';
-        verdictBadge.className = 'px-1.5 py-0.2 rounded font-mono text-[10px] bg-rose-950 text-rose-400 border border-rose-800';
+        if (miniBadge) {
+          miniBadge.textContent = 'REJECT';
+          miniBadge.className = 'px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-rose-950 text-rose-400 border border-rose-800';
+        }
+        if (fullBadge) {
+          fullBadge.textContent = 'SYSTEM VERDICT: FAIL (EJECT)';
+          fullBadge.className = 'px-2.5 py-0.5 rounded font-mono font-bold text-xs bg-rose-950 text-rose-400 border border-rose-800';
+        }
+        if (hudOD) hudOD.className = 'text-rose-400 font-bold';
+        if (envOD) envOD.className = 'text-rose-400 text-xs font-bold';
       } else {
-        verdictBadge.textContent = 'PASS';
-        verdictBadge.className = 'px-1.5 py-0.2 rounded font-mono text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800';
+        if (miniBadge) {
+          miniBadge.textContent = 'PASS';
+          miniBadge.className = 'px-1.5 py-0.5 rounded font-mono text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
+        }
+        if (fullBadge) {
+          fullBadge.textContent = 'SYSTEM VERDICT: PASS';
+          fullBadge.className = 'px-2.5 py-0.5 rounded font-mono font-bold text-xs bg-emerald-950 text-emerald-400 border border-emerald-800';
+        }
+        if (hudOD) hudOD.className = 'text-cyan-400 font-bold';
+        if (envOD) envOD.className = 'text-emerald-400 text-xs font-bold';
+      }
+    }
+
+    function updateAuditUI() {
+      const tbody = document.getElementById('audit-table-body');
+      if (!tbody) return;
+
+      // Update KPI counters
+      document.getElementById('kpi-total-cans').textContent = `${state.inspectionCount}`;
+      document.getElementById('kpi-passed-cans').textContent = `${state.passedCount}`;
+      document.getElementById('kpi-defect-cans').textContent = `${state.rejectCount}`;
+      
+      const yieldRate = state.inspectionCount > 0 ? ((state.passedCount / state.inspectionCount) * 100).toFixed(1) : '100.0';
+      document.getElementById('kpi-yield-rate').textContent = `${yieldRate}%`;
+
+      document.getElementById('filter-count-all').textContent = `${state.auditRecords.length}`;
+      document.getElementById('filter-count-pass').textContent = `${state.auditRecords.filter(r => r.passed).length}`;
+      document.getElementById('filter-count-defect').textContent = `${state.auditRecords.filter(r => !r.passed).length}`;
+
+      // Filter rows
+      const filtered = state.auditRecords.filter(r => {
+        if (state.auditFilter === 'pass') return r.passed;
+        if (state.auditFilter === 'defect') return !r.passed;
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 font-sans">No records found matching current filter.</td></tr>`;
+        return;
       }
 
-      measuredODEl.textContent = `${measuredOD} mm`;
-      measuredODEl.className = hasDefect ? 'text-rose-400 font-bold' : 'text-cyan-400 font-bold';
+      tbody.innerHTML = filtered.map(r => `
+        <tr class="hover:bg-slate-800/40 transition-colors">
+          <td class="p-3 font-bold text-slate-200">${r.id}</td>
+          <td class="p-3 text-slate-300">${r.format}</td>
+          <td class="p-3">
+            <svg class="w-7 h-7 inline-block" viewBox="0 0 40 40">
+              <circle cx="20" cy="20" r="16" fill="#1e293b"/>
+              <circle cx="20" cy="20" r="12" fill="#090f1d"/>
+              ${r.passed ? 
+                `<circle cx="20" cy="20" r="16" fill="none" stroke="#22c55e" stroke-width="2"/>` : 
+                `<ellipse cx="20" cy="20" rx="17" ry="14" fill="none" stroke="#ef4444" stroke-width="2" transform="rotate(25 20 20)"/>`
+              }
+              <circle cx="20" cy="20" r="12" fill="none" stroke="#06b6d4" stroke-width="1"/>
+            </svg>
+          </td>
+          <td class="p-3 ${r.passed ? 'text-emerald-400' : 'text-rose-400 font-bold'}">${r.od} mm</td>
+          <td class="p-3 text-slate-300">${r.ovality}</td>
+          <td class="p-3 ${r.passed ? 'text-slate-400' : 'text-amber-300 font-semibold'}">${r.defect}</td>
+          <td class="p-3">
+            ${r.passed ? 
+              `<span class="px-2 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">PASS (To Filler)</span>` : 
+              `<span class="px-2 py-0.5 rounded text-[10px] bg-rose-950 text-rose-400 border border-rose-800 font-bold">REJECT (Air Shot)</span>`
+            }
+          </td>
+          <td class="p-3 text-right text-slate-500">${r.time}</td>
+        </tr>
+      `).join('');
+    }
+
+    function setAuditFilter(filter) {
+      state.auditFilter = filter;
+      ['all', 'pass', 'defect'].forEach(f => {
+        const btn = document.getElementById(`filter-btn-${f}`);
+        if (f === filter) {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        } else {
+          btn.className = 'px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800';
+        }
+      });
+      updateAuditUI();
+    }
+
+    function clearAuditLog() {
+      state.auditRecords = [];
+      updateAuditUI();
+      showToast('Audit log cleared', 'info');
+    }
+
+    function exportAuditLogCSV() {
+      if (state.auditRecords.length === 0) {
+        showToast('No records to export!', 'warning');
+        return;
+      }
+      let csv = 'Can ID,Format,Measured OD (mm),Measured ID (mm),Ovality,Defect Classification,Verdict,Timestamp\n';
+      state.auditRecords.forEach(r => {
+        csv += `"${r.id}","${r.format}","${r.od}","${r.idSpec}","${r.ovality}","${r.defect}","${r.passed ? 'PASS' : 'REJECT'}","${r.time}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `yards_can_inspection_log_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Exported audit CSV successfully!', 'info');
+    }
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+
+      ['tab-cad', 'tab-vision', 'tab-audit'].forEach(id => {
+        const el = document.getElementById(id);
+        if (id === tabId) {
+          el.classList.remove('hidden');
+          if (id === 'tab-cad') el.classList.add('flex');
+        } else {
+          el.classList.add('hidden');
+          if (id === 'tab-cad') el.classList.remove('flex');
+        }
+      });
+
+      // Update button highlights
+      const map = {
+        'tab-cad': 'nav-btn-cad',
+        'tab-vision': 'nav-btn-vision',
+        'tab-audit': 'nav-btn-audit'
+      };
+
+      Object.entries(map).forEach(([tId, btnId]) => {
+        const btn = document.getElementById(btnId);
+        if (tId === tabId) {
+          btn.className = 'px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold flex items-center gap-1.5 transition-all shadow';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-lg hover:text-slate-200 text-slate-400 flex items-center gap-1.5 transition-all';
+        }
+      });
+
+      if (tabId === 'tab-cad') {
+        setTimeout(onWindowResize, 100);
+      }
+    }
+
+    function runManualVisionTest(type) {
+      if (type === 'good') {
+        renderVisionCanvas('fullCameraCanvas', false, 'none');
+        renderVisionCanvas('miniCameraCanvas', false, 'none');
+        updateHUDLabels(false, '56.91', '52.41', '< 1.50 mm (0.11 mm)');
+        showToast('Test Good Can: Nominal 56.91 mm OD (PASS)', 'info');
+      } else if (type === 'dent') {
+        renderVisionCanvas('fullCameraCanvas', true, 'dent');
+        renderVisionCanvas('miniCameraCanvas', true, 'dent');
+        updateHUDLabels(true, '58.74', '53.60', '0.94 mm (FAIL)');
+        showToast('Test Dent Defect: 58.74 mm OD (>57.40 max)', 'reject');
+      } else {
+        renderVisionCanvas('fullCameraCanvas', true, 'ovality');
+        renderVisionCanvas('miniCameraCanvas', true, 'ovality');
+        updateHUDLabels(true, '54.75', '50.80', '1.86 mm (FAIL)');
+        showToast('Test Ovality Defect: 1.86 mm ovality (>1.50 max)', 'reject');
+      }
+    }
+
+    function setActiveVisionTool(idx) {
+      state.activeVisionToolIndex = idx;
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.getElementById(`vtool-${i}`);
+        if (i === idx) {
+          btn.className = 'py-1.5 px-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-center font-bold';
+        } else {
+          btn.className = 'py-1.5 px-1 rounded-lg bg-slate-800/80 text-slate-300 hover:bg-slate-800 text-center';
+        }
+      }
+      showToast(`Selected Vision Tool ${idx}: ${['ShapeTrax3A', 'Rule-Based Surface Defect', 'ID Tool', 'OD Tool', 'AI Anomaly Check'][idx - 1]}`, 'info');
     }
 
     function setCanProfile(profileKey) {
       state.activeCanProfile = profileKey;
       const spec = CAN_SPECS[profileKey];
 
-      // Update button highlights
       ['small', 'medium', 'large'].forEach(p => {
         const btn = document.getElementById(`btn-can-${p}`);
         if (p === profileKey) {
-          btn.className = 'p-2.5 rounded-lg border border-cyan-500 bg-cyan-950/40 text-left transition-all';
-          btn.querySelector('div:first-child').className = 'font-bold text-xs text-cyan-300';
+          btn.className = 'px-2.5 py-1 rounded-lg border border-amber-500 bg-amber-950/40 text-amber-300 font-bold transition-all text-xs flex items-center gap-1';
         } else {
-          btn.className = 'p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-left hover:border-slate-700 transition-all';
-          btn.querySelector('div:first-child').className = 'font-bold text-xs text-slate-200';
+          btn.className = 'px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 font-semibold hover:border-slate-500 transition-all text-xs flex items-center gap-1';
         }
       });
 
-      // Automatically adjust camera working distance slider to maintain 250 mm WD above flange
       const newHeight = spec.height + 120;
-      if (cameraHousing) {
-        cameraHousing.position.y = newHeight;
-      }
-      document.getElementById('gantryHeightDisplay').textContent = `${(newHeight - spec.height + 130).toFixed(1)} mm`;
-
-      showToast(`Switched package profile to ${spec.name} (${spec.height} mm)`, 'info');
+      if (cameraHousing) cameraHousing.position.y = newHeight;
+      document.getElementById('stat-wd').textContent = `250.0 mm (${spec.name.split(' ')[0]})`;
+      showToast(`Package format changed to Yards ${spec.name}`, 'info');
     }
 
-    function onGantrySlider(val) {
-      state.gantryHeight = parseFloat(val);
-      document.getElementById('gantryHeightDisplay').textContent = `${state.gantryHeight.toFixed(1)} mm`;
-      if (cameraHousing) {
-        cameraHousing.position.y = state.gantryHeight + 25;
+    function toggleDimensionOverlay() {
+      state.showDimensions = !state.showDimensions;
+      if (dimensionsGroup) dimensionsGroup.visible = state.showDimensions;
+      const label = document.getElementById('dims-toggle-label');
+      label.textContent = state.showDimensions ? '3D Measurements' : 'Measurements (Off)';
+      showToast(state.showDimensions ? '3D Measurements visible' : '3D Measurements hidden', 'info');
+    }
+
+    function toggleSpecsDrawer(forceState) {
+      const drawer = document.getElementById('specs-drawer');
+      const btn = document.getElementById('nav-btn-specs');
+      
+      if (typeof forceState === 'boolean') {
+        state.specsDrawerOpen = forceState;
+      } else {
+        state.specsDrawerOpen = !state.specsDrawerOpen;
       }
+
+      if (state.specsDrawerOpen) {
+        drawer.classList.remove('translate-x-full');
+        drawer.classList.add('translate-x-0');
+        if (btn) {
+          btn.className = 'px-3 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold flex items-center gap-1.5 transition-all shadow';
+        }
+      } else {
+        drawer.classList.add('translate-x-full');
+        drawer.classList.remove('translate-x-0');
+        if (btn) {
+          btn.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 flex items-center gap-1.5 transition-all';
+        }
+      }
+      setTimeout(onWindowResize, 320);
+    }
+
+    function toggleMiniCamPreview() {
+      state.miniCamCollapsed = !state.miniCamCollapsed;
+      const body = document.getElementById('mini-cam-body');
+      const icon = document.getElementById('mini-cam-toggle-icon');
+      
+      if (state.miniCamCollapsed) {
+        body.classList.add('hidden');
+        icon.setAttribute('data-lucide', 'chevrons-up');
+      } else {
+        body.classList.remove('hidden');
+        icon.setAttribute('data-lucide', 'chevrons-down');
+      }
+      lucide.createIcons();
     }
 
     function onExplodeChange(val) {
@@ -1109,8 +1535,7 @@ CanEvent eventQueue[QUEUE_SIZE];
       document.getElementById('explodeValText').textContent = `${val}%`;
 
       if (gantryGroup && railsGroup && rejectorGroup) {
-        // Translate components outward along their printable axes
-        gantryGroup.position.y = state.explodeFactor * 120;
+        gantryGroup.position.y = state.explodeFactor * 130;
         railsGroup.children[0].position.z = -37 - state.explodeFactor * 60;
         railsGroup.children[1].position.z = 37 + state.explodeFactor * 60;
         rejectorGroup.position.z = -state.explodeFactor * 50;
@@ -1120,16 +1545,16 @@ CanEvent eventQueue[QUEUE_SIZE];
     function setCameraView(viewName) {
       if (!controls) return;
       if (viewName === 'iso') {
-        camera.position.set(380, 320, 420);
-        controls.target.set(0, 100, 0);
+        camera.position.set(400, 310, 410);
+        controls.target.set(0, 110, 0);
       } else if (viewName === 'top') {
-        camera.position.set(0, 550, 5);
-        controls.target.set(0, 150, 0);
+        camera.position.set(0, 560, 5);
+        controls.target.set(0, 140, 0);
       } else if (viewName === 'side') {
-        camera.position.set(0, 140, 480);
+        camera.position.set(0, 140, 490);
         controls.target.set(0, 140, 0);
       } else if (viewName === 'rejector') {
-        camera.position.set(180, 120, 220);
+        camera.position.set(190, 130, 230);
         controls.target.set(150, 60, 0);
       }
     }
@@ -1143,25 +1568,20 @@ CanEvent eventQueue[QUEUE_SIZE];
       if (state.simRunning) {
         text.textContent = 'Pause';
         icon.setAttribute('data-lucide', 'pause');
-        badge.textContent = 'RUNNING';
-        badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800';
+        badge.textContent = '220 CPM RUNNING';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold';
       } else {
         text.textContent = 'Resume';
         icon.setAttribute('data-lucide', 'play');
-        badge.textContent = 'PAUSED';
-        badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950 text-amber-400 border border-amber-800';
+        badge.textContent = 'LINE PAUSED';
+        badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono bg-amber-950 text-amber-400 border border-amber-800 font-bold';
       }
       lucide.createIcons();
     }
 
     function injectDefectCan() {
       state.injectDefectNext = true;
-      showToast('Defective can queued! Watch inspection & air shot.', 'warning');
-    }
-
-    function setRejectorMode(mode) {
-      state.rejectorMode = mode;
-      showToast(`Rejector mode updated to ${mode.toUpperCase()}`, 'info');
+      showToast('Defective can queued: Watching inspection & pneumatic ejection!', 'warning');
     }
 
     function onWindowResize() {
@@ -1172,284 +1592,14 @@ CanEvent eventQueue[QUEUE_SIZE];
       renderer.setSize(container.clientWidth, container.clientHeight);
     }
 
-    const PRINTABLE_PARTS = [
-      {
-        id: 'conveyor_bed',
-        name: 'Interlocking Conveyor Bed Segment',
-        desc: 'Modular 250mm track section with built-in cable conduits and 2020 extrusion slots.',
-        printTime: '6h 15m',
-        material: 'PETG',
-        infill: '35% Gyroid',
-        dims: '250 × 90 × 25 mm'
-      },
-      {
-        id: 'gantry_carriage',
-        name: 'Z-Axis Camera Carriage & Slide Clamp',
-        desc: 'Telescoping mounting carriage with M5 indexed lock detents for 12oz, 16oz, and 19.2oz can heights.',
-        printTime: '4h 40m',
-        material: 'PETG / ABS',
-        infill: '45% Grid',
-        dims: '140 × 50 × 35 mm'
-      },
-      {
-        id: 'keyence_housing',
-        name: 'Keyence VS-C320MX Washdown Enclosure',
-        desc: 'IP67-style protective shroud with M68 optical glass thread and internal O-ring seal groove.',
-        printTime: '3h 50m',
-        material: 'PETG (Chemical resistant)',
-        infill: '100% Solid Perimeters',
-        dims: '75 × 65 × 65 mm'
-      },
-      {
-        id: 'sensor_bracket',
-        name: 'M12 Photoelectric Sensor Arm',
-        desc: 'Single-bolt adjustable mount to align through-beam/diffuse trigger dead-center at Step 3.',
-        printTime: '1h 20m',
-        material: 'PLA+ / PETG',
-        infill: '30%',
-        dims: '45 × 25 × 20 mm'
-      },
-      {
-        id: 'rejector_nozzle_block',
-        name: 'Pneumatic Air-Shot Jet Manifold',
-        desc: 'Aero-optimized 1/8" NPT air nozzle bracket aimed at top third of can for clean tip-free ejection.',
-        printTime: '2h 10m',
-        material: 'PETG / Nylon',
-        infill: '50% Concentric',
-        dims: '50 × 35 × 28 mm'
-      },
-      {
-        id: 'guide_rails_set',
-        name: 'Low-Friction Can Guide Rails (Pair)',
-        desc: 'Low-drag flared guide rails maintaining 66.2mm track gap for smooth 220 cans/min flow.',
-        printTime: '3h 30m',
-        material: 'PETG / Delrin',
-        infill: '40%',
-        dims: '250 × 16 × 8 mm'
-      }
-    ];
-
-    function renderPartsCatalog() {
-      const grid = document.getElementById('partsCatalogGrid');
-      grid.innerHTML = PRINTABLE_PARTS.map(part => `
-        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between hover:border-slate-700 transition-all">
-          <div>
-            <div class="flex justify-between items-start mb-2">
-              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950 text-cyan-400 border border-cyan-800">
-                ${part.material}
-              </span>
-              <span class="text-[11px] text-slate-400 font-mono flex items-center gap-1">
-                <i data-lucide="clock" class="w-3 h-3"></i> ${part.printTime}
-              </span>
-            </div>
-            <h4 class="font-bold text-sm text-slate-100">${part.name}</h4>
-            <p class="text-xs text-slate-400 mt-1">${part.desc}</p>
-            
-            <div class="mt-3 pt-3 border-t border-slate-800/80 space-y-1 text-[11px] font-mono text-slate-400">
-              <div class="flex justify-between">
-                <span>Bounding Box:</span>
-                <span class="text-slate-200">${part.dims}</span>
-              </div>
-              <div class="flex justify-between">
-                <span>Infill / Walls:</span>
-                <span class="text-slate-200">${part.infill}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-4 pt-2">
-            <button onclick="generateAndDownloadSTL('${part.id}', '${part.name}')" class="w-full py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-cyan-300 flex items-center justify-center gap-1.5 transition-colors">
-              <i data-lucide="download" class="w-3.5 h-3.5"></i>
-              <span>Download .STL File</span>
-            </button>
-          </div>
-        </div>
-      `).join('');
-      lucide.createIcons();
+    function showDeploymentModal() {
+      document.getElementById('gh-modal').classList.remove('hidden');
+      document.getElementById('gh-modal').classList.add('flex');
     }
 
-    function generateAndDownloadSTL(partId, partName) {
-      // Procedurally generate valid ASCII STL data for the 3D printable part
-      let stlString = `solid ${partId}\n`;
-
-      // Helper function to write facet
-      function addFacet(nx, ny, nz, v1, v2, v3) {
-        stlString += `  facet normal ${nx} ${ny} ${nz}\n`;
-        stlString += `    outer loop\n`;
-        stlString += `      vertex ${v1[0]} ${v1[1]} ${v1[2]}\n`;
-        stlString += `      vertex ${v2[0]} ${v2[1]} ${v2[2]}\n`;
-        stlString += `      vertex ${v3[0]} ${v3[1]} ${v3[2]}\n`;
-        stlString += `    endloop\n`;
-        stlString += `  endfacet\n`;
-      }
-
-      // Generate representative geometry based on part dimensions
-      const w = 50, h = 30, d = 25;
-      // Box facets
-      // Front
-      addFacet(0, 0, 1, [0, 0, d], [w, 0, d], [w, h, d]);
-      addFacet(0, 0, 1, [0, 0, d], [w, h, d], [0, h, d]);
-      // Back
-      addFacet(0, 0, -1, [0, 0, 0], [0, h, 0], [w, h, 0]);
-      addFacet(0, 0, -1, [0, 0, 0], [w, h, 0], [w, 0, 0]);
-      // Top
-      addFacet(0, 1, 0, [0, h, 0], [0, h, d], [w, h, d]);
-      addFacet(0, 1, 0, [0, h, 0], [w, h, d], [w, h, 0]);
-      // Bottom
-      addFacet(0, -1, 0, [0, 0, 0], [w, 0, 0], [w, 0, d]);
-      addFacet(0, -1, 0, [0, 0, 0], [w, 0, d], [0, 0, d]);
-      // Left
-      addFacet(-1, 0, 0, [0, 0, 0], [0, 0, d], [0, h, d]);
-      addFacet(-1, 0, 0, [0, 0, 0], [0, h, d], [0, h, 0]);
-      // Right
-      addFacet(1, 0, 0, [w, 0, 0], [w, h, 0], [w, h, d]);
-      addFacet(1, 0, 0, [w, 0, 0], [w, h, d], [w, 0, d]);
-
-      stlString += `endsolid ${partId}\n`;
-
-      // Trigger browser download
-      const blob = new Blob([stlString], { type: 'model/stl' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${partId}_yards_prototype.stl`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast(`Downloaded STL: ${partName}`, 'success');
-    }
-
-    function downloadAllStlBundle() {
-      PRINTABLE_PARTS.forEach((p, idx) => {
-        setTimeout(() => generateAndDownloadSTL(p.id, p.name), idx * 250);
-      });
-    }
-
-    function testVisionPass() {
-      drawLargeVision(false, 'pass');
-      showToast('Vision Pipeline: Can flange confirmed PASS (56.91 mm)', 'success');
-    }
-
-    function testVisionDent() {
-      drawLargeVision(true, 'dent');
-      showToast('Vision Pipeline: REJECT - Dented Flange Lip Detected', 'reject');
-    }
-
-    function testVisionOval() {
-      drawLargeVision(true, 'oval');
-      showToast('Vision Pipeline: REJECT - Out-of-Round Oval Lip (> 1.5mm error)', 'reject');
-    }
-
-    function drawLargeVision(hasDefect, type) {
-      const canvas = document.getElementById('largeVisionCanvas');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
-      const cx = w / 2;
-      const cy = h / 2;
-
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#020617';
-      ctx.fillRect(0, 0, w, h);
-
-      // Aluminum Can Outer Body Top
-      ctx.beginPath();
-      ctx.arc(cx, cy, 115, 0, Math.PI * 2);
-      ctx.fillStyle = '#1e293b';
-      ctx.fill();
-
-      // Flange Rim Ring
-      ctx.beginPath();
-      if (hasDefect && type === 'oval') {
-        ctx.ellipse(cx, cy, 108, 92, 0.45, 0, Math.PI * 2);
-      } else {
-        ctx.arc(cx, cy, 100, 0, Math.PI * 2);
-      }
-      ctx.fillStyle = '#64748b';
-      ctx.fill();
-
-      // Interior can cavity
-      ctx.beginPath();
-      ctx.arc(cx, cy, 84, 0, Math.PI * 2);
-      ctx.fillStyle = '#020617';
-      ctx.fill();
-
-      // Overlay Keyence Tools
-      ctx.lineWidth = 2.5;
-      if (hasDefect) {
-        ctx.strokeStyle = '#ef4444'; // Red
-      } else {
-        ctx.strokeStyle = '#22c55e'; // Green
-      }
-
-      ctx.beginPath();
-      if (hasDefect && type === 'oval') {
-        ctx.ellipse(cx, cy, 108, 92, 0.45, 0, Math.PI * 2);
-      } else {
-        ctx.arc(cx, cy, 100, 0, Math.PI * 2);
-      }
-      ctx.stroke();
-
-      // If dent defect, draw defect highlight patch (from Keyence #5 spec)
-      if (hasDefect && type === 'dent') {
-        ctx.beginPath();
-        ctx.arc(cx + 95, cy - 25, 14, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.6)'; // Blue highlight per Keyence spec
-        ctx.fill();
-        ctx.strokeStyle = '#38bdf8';
-        ctx.stroke();
-      }
-
-      // Update Tool chain badges
-      const statusChip = document.getElementById('vision-status-chip');
-      const toolSurface = document.getElementById('tool-surface');
-      const toolOd = document.getElementById('tool-od');
-      const toolAi = document.getElementById('tool-ai');
-
-      if (hasDefect) {
-        statusChip.textContent = `SYSTEM VERDICT: REJECT (${type.toUpperCase()})`;
-        statusChip.className = 'px-2.5 py-0.5 rounded font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800';
-        toolSurface.textContent = type === 'dent' ? 'FAIL (Flange Dent)' : '0.00% OK';
-        toolSurface.className = type === 'dent' ? 'text-rose-400 font-bold mt-0.5' : 'text-emerald-400 font-bold mt-0.5';
-        toolOd.textContent = type === 'oval' ? '58.42 mm (FAIL)' : '56.92 mm';
-        toolOd.className = type === 'oval' ? 'text-rose-400 font-bold mt-0.5' : 'text-emerald-400 font-bold mt-0.5';
-        toolAi.textContent = 'ANOMALY DETECTED';
-        toolAi.className = 'text-rose-400 font-bold mt-0.5';
-      } else {
-        statusChip.textContent = 'SYSTEM VERDICT: PASS';
-        statusChip.className = 'px-2.5 py-0.5 rounded font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
-        toolSurface.textContent = '0.00% OK';
-        toolSurface.className = 'text-emerald-400 font-bold mt-0.5';
-        toolOd.textContent = '56.91 mm';
-        toolOd.className = 'text-emerald-400 font-bold mt-0.5';
-        toolAi.textContent = 'PASS (98%)';
-        toolAi.className = 'text-emerald-400 font-bold mt-0.5';
-      }
-    }
-
-    function switchTab(tabId) {
-      state.activeTab = tabId;
-
-      ['digitalTwin', 'partsBom', 'visionPipeline', 'timingSchematic'].forEach(t => {
-        const el = document.getElementById(`tab-${t}`);
-        const btn = document.getElementById(`tabBtn-${t}`);
-        if (t === tabId) {
-          el.classList.remove('hidden');
-          btn.className = 'px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors bg-cyan-600 text-white shadow';
-        } else {
-          el.classList.add('hidden');
-          btn.className = 'px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-colors text-slate-400 hover:text-slate-200';
-        }
-      });
-
-      if (tabId === 'digitalTwin') {
-        setTimeout(onWindowResize, 50);
-      } else if (tabId === 'visionPipeline') {
-        drawLargeVision(false, 'pass');
-      }
+    function hideDeploymentModal() {
+      document.getElementById('gh-modal').classList.add('hidden');
+      document.getElementById('gh-modal').classList.remove('flex');
     }
 
     function showToast(msg, type = 'info') {
@@ -1460,13 +1610,13 @@ CanEvent eventQueue[QUEUE_SIZE];
       toastMsg.textContent = msg;
 
       if (type === 'reject') {
-        toast.className = 'fixed top-16 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-rose-950/95 border border-rose-700 text-rose-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
+        toast.className = 'fixed top-20 right-6 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-rose-950/95 border border-rose-700 text-rose-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
         toastIcon.setAttribute('data-lucide', 'alert-octagon');
       } else if (type === 'warning') {
-        toast.className = 'fixed top-16 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-amber-950/95 border border-amber-700 text-amber-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
+        toast.className = 'fixed top-20 right-6 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-amber-950/95 border border-amber-600 text-amber-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
         toastIcon.setAttribute('data-lucide', 'alert-triangle');
       } else {
-        toast.className = 'fixed top-16 right-5 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-slate-900 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
+        toast.className = 'fixed top-20 right-6 z-50 transform translate-y-0 opacity-100 transition-all duration-300 pointer-events-none bg-slate-900/95 border border-slate-700 text-slate-100 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-xs';
         toastIcon.setAttribute('data-lucide', 'check');
       }
 
@@ -1475,32 +1625,14 @@ CanEvent eventQueue[QUEUE_SIZE];
       setTimeout(() => {
         toast.classList.replace('translate-y-0', 'translate-y-[-100px]');
         toast.classList.replace('opacity-100', 'opacity-0');
-      }, 3000);
+      }, 3200);
     }
 
-    function copyFirmwareCode() {
-      const code = `// Yards Brewing Co. - Pre-Fill Can Inspection Controller
-const int PIN_PHOTO_TRIGGER = 2;
-const int PIN_CAM_TRIGGER   = 3;
-const int PIN_CV_DECISION   = 4;
-const int PIN_AIR_SOLENOID  = 5;
-const unsigned long TRANSIT_DELAY_MS  = 572;
-const unsigned long SOLENOID_PULSE_MS = 40;
-// Trigger math: 150mm distance / 254 mm/s = 590ms - 18ms latency = 572ms delay`;
-
-      navigator.clipboard.writeText(code).then(() => {
-        const btnText = document.getElementById('copy-btn-text');
-        btnText.textContent = 'Copied!';
-        setTimeout(() => btnText.textContent = 'Copy Code', 2000);
-      });
-    }
-
-    // Initialize application on page load
     window.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
       initThreeJS();
-      renderPartsCatalog();
-      updateVisionHUD(false, '56.92');
+      renderVisionCanvas('miniCameraCanvas', false, 'none');
+      renderVisionCanvas('fullCameraCanvas', false, 'none');
       requestAnimationFrame(animate);
     });
   </script>
