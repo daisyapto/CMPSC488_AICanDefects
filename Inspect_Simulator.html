@@ -1,0 +1,1404 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Inspection Line Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: HMI console — control strip + status strip, tab bar, one view per tab (line, camera, 3D, timing, dashboard, defects, setup, tests). */
+:root{
+  --bg:#eceff3; --panel:#ffffff; --panel-2:#f5f7fa; --ink:#15202b; --muted:#5a6676; --line:#d2d9e1;
+  --accent:#c97a00; --accent-ink:#ffffff; --pass:#1d8048; --fail:#c23b2d; --info:#2a62b4; --steel:#aab4bf; --steel-2:#7f8b98;
+  --belt:#3d4753; --glow:rgba(255,196,64,.55); --crit:#a3243b; --major:#c45f12; --minor:#5b6fa8; --scene:#e4e8ee;
+  --f-display:"Barlow Condensed","Arial Narrow",sans-serif; --f-body:"IBM Plex Sans",system-ui,sans-serif; --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1318; --panel:#161d25; --panel-2:#1c2530; --ink:#e2e8ee; --muted:#93a0ae; --line:#2b3542;
+  --accent:#f0a630; --accent-ink:#1a1206; --pass:#43c27a; --fail:#f0685a; --info:#6b9cf0; --steel:#8793a1; --steel-2:#5d6976;
+  --belt:#56616e; --glow:rgba(255,196,64,.45); --crit:#f0607a; --major:#f09048; --minor:#93a6e0; --scene:#141b23; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1318; --panel:#161d25; --panel-2:#1c2530; --ink:#e2e8ee; --muted:#93a0ae; --line:#2b3542;
+  --accent:#f0a630; --accent-ink:#1a1206; --pass:#43c27a; --fail:#f0685a; --info:#6b9cf0; --steel:#8793a1; --steel-2:#5d6976;
+  --belt:#56616e; --glow:rgba(255,196,64,.45); --crit:#f0607a; --major:#f09048; --minor:#93a6e0; --scene:#141b23; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:14px/1.5 var(--f-body);margin:0}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:grid;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 24px}
+h1{font:700 2rem/1 var(--f-display);letter-spacing:.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:4px 0 0;max-width:78ch}
+.tag{font:500 .72rem var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+h2{font:600 1.1rem/1.2 var(--f-display);text-transform:uppercase;letter-spacing:.06em;margin:0;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;min-width:0}
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+.grp{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
+button,.seg label{font:600 .95rem var(--f-display);letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);border-radius:4px;padding:6px 12px;cursor:pointer}
+button.sm{font-size:.78rem;padding:2px 8px}
+button:hover{border-color:var(--steel-2)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+button:focus-visible,input:focus-visible,select:focus-visible,.seg input:focus-visible+label,[role=tab]:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.seg{display:inline-flex;border-radius:4px;overflow:hidden}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label{border-radius:0;margin-left:-1px}
+.seg input:checked+label{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.field{display:grid;gap:2px;font-size:.82rem;color:var(--muted)}
+.field b{color:var(--ink);font:500 .82rem var(--f-mono)}
+input[type=range]{width:150px;accent-color:var(--accent)}
+select:disabled,input:disabled{opacity:.45;cursor:not-allowed}
+select{font:inherit;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:4px;padding:4px 6px;max-width:100%}
+.status{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:6px}
+.status div{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-family:var(--f-mono)}
+.status b{display:block;font:600 1.35rem/1.1 var(--f-display);color:var(--ink);letter-spacing:0;font-variant-numeric:tabular-nums}
+.status .hot b{color:var(--fail)} .status .gapc b{color:var(--accent)}
+.tabs{display:flex;gap:2px;border-bottom:2px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+.tabs [role=tab]{border:0;border-radius:4px 4px 0 0;background:none;color:var(--muted);padding:8px 14px;margin-bottom:-2px;border-bottom:2px solid transparent;white-space:nowrap}
+.tabs [role=tab][aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);background:var(--panel)}
+.view{display:grid;gap:14px}
+.canvas-box{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+canvas{display:block;width:100%;height:auto}
+.legend{position:absolute;left:12px;top:10px;display:flex;flex-wrap:wrap;gap:4px 14px;font:500 .74rem var(--f-mono);color:var(--muted);pointer-events:none}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:1000px){.grid3,.grid2{grid-template-columns:1fr}}
+.cm{display:grid;grid-template-columns:auto 1fr 1fr;gap:4px;font-size:.82rem;margin-top:10px}
+.cm div{padding:8px;border-radius:4px;background:var(--panel-2);text-align:center}
+.cm .h{background:none;color:var(--muted);font:500 .7rem var(--f-mono);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;justify-content:center}
+.cm .n{font:600 1.5rem/1 var(--f-display);font-variant-numeric:tabular-nums}
+.cm .good{box-shadow:inset 0 -3px 0 var(--pass)} .cm .bad{box-shadow:inset 0 -3px 0 var(--fail)}
+.cm small{display:block;color:var(--muted);font-size:.7rem;margin-top:2px}
+table{border-collapse:collapse;width:100%;font-size:.8rem;font-variant-numeric:tabular-nums}
+th{font:500 .68rem var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+td.num{font-family:var(--f-mono);text-align:right;white-space:nowrap}
+tr.area td{background:var(--panel-2);font:600 .7rem var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+tr.oos td{color:var(--muted)}
+.pill{display:inline-block;font:600 .72rem var(--f-mono);padding:1px 7px;border-radius:99px;color:var(--panel);background:var(--steel-2);white-space:nowrap}
+.pill.pass{background:var(--pass)} .pill.fail{background:var(--fail)} .pill.info{background:var(--info)} .pill.warn{background:var(--accent);color:var(--accent-ink)}
+.cls{display:inline-block;font:600 .68rem var(--f-mono);padding:0 6px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.cls.Critical{color:var(--crit)} .cls.Major{color:var(--major)} .cls.Minor{color:var(--minor)} .cls.MinorMajor{color:var(--minor)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:.82rem;margin-top:10px}
+.kv span:nth-child(even){font-family:var(--f-mono);text-align:right}
+.kv .alert{color:var(--fail);font-weight:600} .kv .gapc{color:var(--accent);font-weight:600}
+.ok{color:var(--pass);font-weight:600} .ng{color:var(--fail);font-weight:600} .fl{color:var(--minor);font-weight:600} .gp{color:var(--accent);font-weight:600}
+.log{font:400 .74rem/1.45 var(--f-mono);height:200px;overflow:auto;background:var(--panel-2);border-radius:4px;padding:6px 8px;margin-top:10px;color:var(--muted)}
+.log .f{color:var(--fail)} .log .p{color:var(--pass)} .log .w{color:var(--accent)}
+.scroll{overflow-x:auto}
+.settings{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:18px 24px}
+.settings fieldset{border:0;padding:0;margin:0;display:grid;gap:10px;align-content:start}
+.settings legend{font:600 .95rem var(--f-display);text-transform:uppercase;letter-spacing:.06em;color:var(--ink);margin-bottom:4px}
+.check{display:flex;gap:6px;align-items:center;font-size:.85rem}
+.note{font-size:.78rem;color:var(--muted);max-width:85ch;margin:0}
+.tests td:first-child{font-family:var(--f-mono);white-space:nowrap}
+.tests td.exp{color:var(--muted)}
+.hint{font-size:.78rem;color:var(--muted)}
+.rate{display:flex;align-items:center;gap:6px;min-width:110px}
+.rate .track{flex:1;height:7px;background:var(--panel-2);border-radius:4px;overflow:hidden;display:flex}
+.rate .r{background:var(--pass)} .rate .m{background:var(--fail)} .rate .g{background:var(--accent)} .rate .q{background:var(--minor)}
+.rate span{font:500 .72rem var(--f-mono);min-width:3.2em;text-align:right}
+.catalog td.sec{font-family:var(--f-mono);color:var(--muted)}
+.keys{display:flex;flex-wrap:wrap;gap:4px 14px;font:500 .72rem var(--f-mono);color:var(--muted);margin:6px 0 2px}
+.keys i{display:inline-block;width:10px;height:7px;border-radius:2px;margin-right:4px;vertical-align:0}
+.classsum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:8px}
+.classsum div{background:var(--panel-2);border-radius:4px;padding:6px 8px;font-size:.75rem;color:var(--muted)}
+.classsum b{display:block;font:600 1.15rem/1.1 var(--f-display);color:var(--ink);font-variant-numeric:tabular-nums}
+.camgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:860px){.camgrid{grid-template-columns:1fr}}
+.feed{background:#07090b;border-radius:6px;overflow:hidden;position:relative}
+.feed canvas{height:auto}
+.feedhead{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.feedhead h2{color:var(--ink)}
+.gl-wrap{position:relative;background:var(--scene);border:1px solid var(--line);border-radius:6px;overflow:hidden;touch-action:none;cursor:grab}
+.gl-wrap canvas{width:100%;height:100%;display:block}
+.lbl3{position:absolute;transform:translate(-50%,-100%);font:600 .72rem var(--f-mono);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:0 5px;pointer-events:none;white-space:nowrap}
+.glmsg{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted)}
+.svgchart{width:100%;height:auto;display:block}
+.alarm{display:flex;gap:8px;font-size:.8rem;padding:4px 0;border-bottom:1px solid var(--line)}
+.alarm time{font-family:var(--f-mono);color:var(--muted);white-space:nowrap}
+.budget{display:grid;gap:6px;margin-top:8px}
+.budget .row{display:grid;grid-template-columns:150px minmax(0,1fr) 70px;gap:8px;align-items:center;font-size:.8rem}
+.budget .bar2{height:14px;background:var(--panel-2);border-radius:3px;position:relative;overflow:hidden}
+.budget .bar2 i{position:absolute;top:0;bottom:0;border-radius:3px}
+.budget .row span:last-child{font-family:var(--f-mono);text-align:right}
+@media (max-width:520px){.budget .row{grid-template-columns:1fr 60px}.budget .row .bar2{grid-column:1/-1}}
+.hmi{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px}
+@media (max-width:1000px){.hmi{grid-template-columns:1fr}}
+.hmi-top{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.hmi-tile{background:var(--panel-2);border-radius:6px;padding:10px 14px;min-width:150px;flex:1}
+.hmi-tile small{display:block;font:500 .68rem var(--f-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.hmi-tile b{display:block;font:700 1.7rem/1.15 var(--f-display);font-variant-numeric:tabular-nums}
+.state{font:700 1.7rem/1.15 var(--f-display);letter-spacing:.04em}
+.state.RUNNING{color:var(--pass)} .state.READY{color:var(--info)} .state.STOPPED{color:var(--muted)} .state.FAULT,.state.NOT{color:var(--fail)}
+.bigres{font:700 3.2rem/1 var(--f-display);letter-spacing:.04em}
+.bigres.PASS{color:var(--pass)} .bigres.FAIL{color:var(--fail)}
+.hmi-btns{display:flex;gap:8px;flex-wrap:wrap}
+.hmi-btns button{font-size:1.15rem;padding:10px 22px}
+button.go{background:var(--pass);border-color:var(--pass);color:var(--panel)} button.stop{background:var(--fail);border-color:var(--fail);color:var(--panel)}
+.steps{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:6px}
+.steps li{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:8px;align-items:center;font-size:.85rem;padding:6px 8px;background:var(--panel-2);border-radius:4px}
+.steps li .ck{width:18px;height:18px;border-radius:50%;border:2px solid var(--steel-2);display:grid;place-items:center;font-size:.7rem;color:var(--panel)}
+.steps li.done .ck{background:var(--pass);border-color:var(--pass)}
+.faillist{display:grid;gap:6px;max-height:330px;overflow:auto}
+.faillist button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;text-align:left;font:400 .8rem var(--f-body);text-transform:none;letter-spacing:0;padding:6px 8px;align-items:center}
+.faillist button[aria-pressed="true"]{background:var(--panel-2);color:var(--ink);border-color:var(--accent)}
+.hwtable td:first-child{white-space:nowrap;color:var(--muted)}
+.okc{color:var(--pass)} .warnc{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="tag">CMPSC 488 · Team 2 · Virtual prototype · Yards single-file filler infeed</div>
+      <h1>Inspection Line Simulator</h1>
+      <p class="sub">A working model of the proposed station for both solutions in the requirements specification: Solution 1 (KEYENCE VS-C320MX, CV-L3, CA-DRM5X) and Solution 2, the Teledyne budget option (Genie Nano C1280, Arducam C-mount lens, Python/OpenCV on a Windows PC). The single-file conveyor runs at its normal speed with no added gaps, every can is checked against the 14 defect types in the Defect Requirements, and the result is carried to the Yards air-jet rejector by a calibrated delay. Switch tabs to watch the same run from the line, through the camera, in 3D, on a timing trace, or as production statistics.</p>
+    </div>
+    <div class="tag" id="clock">t = 0.000 s</div>
+  </header>
+
+  <div class="panel bar" role="toolbar" aria-label="Line controls">
+    <label class="field" for="sol">Solution<select id="sol"><option value="keyence">1 · KEYENCE</option><option value="teledyne">2 · Teledyne budget</option></select></label>
+    <button class="primary" id="run">Pause</button>
+    <button id="reset">Reset</button>
+    <span class="field">Can size preset
+      <span class="seg" id="preset">
+        <input type="radio" name="preset" id="p12" value="12" checked><label for="p12">12 oz</label>
+        <input type="radio" name="preset" id="p16" value="16"><label for="p16">16 oz</label>
+        <input type="radio" name="preset" id="p19" value="19.2"><label for="p19">19.2 oz</label>
+      </span>
+    </span>
+    <span class="grp">
+      <label class="field" for="injType">Inject a can<select id="injType"></select></label>
+      <button id="inj">Inject</button>
+    </span>
+    <label class="field" for="simspeed">Playback <b id="simspeedV">0.25×</b><input type="range" id="simspeed" min="0.02" max="1" step="0.01" value="0.25"></label>
+    <label class="field" for="light">Lighting<select id="light"><option value="normal">Normal</option><option value="multi">Multi-Spectrum</option><option value="lumi">LumiTrax</option></select></label>
+    <label class="check" for="sidecam"><input type="checkbox" id="sidecam"> Side camera (evaluation)</label>
+    <label class="check" for="truth"><input type="checkbox" id="truth" checked> Show true defects</label>
+  </div>
+
+  <div class="status" id="status" aria-live="off"></div>
+
+  <div class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" id="t-hmi" aria-controls="v-hmi" data-v="hmi">Operator HMI</button>
+    <button role="tab" id="t-line" aria-controls="v-line" data-v="line">Line</button>
+    <button role="tab" id="t-camera" aria-controls="v-camera" data-v="camera">Camera</button>
+    <button role="tab" id="t-3d" aria-controls="v-3d" data-v="3d">3D station</button>
+    <button role="tab" id="t-timing" aria-controls="v-timing" data-v="timing">Timing</button>
+    <button role="tab" id="t-dash" aria-controls="v-dash" data-v="dash">Dashboard</button>
+    <button role="tab" id="t-defects" aria-controls="v-defects" data-v="defects">Defects</button>
+    <button role="tab" id="t-setup" aria-controls="v-setup" data-v="setup">Setup</button>
+    <button role="tab" id="t-tests" aria-controls="v-tests" data-v="tests">Tests</button>
+  </div>
+
+  <!-- ================= HMI ================= -->
+  <section class="view" id="v-hmi" role="tabpanel" aria-labelledby="t-hmi" hidden>
+    <div class="panel">
+      <div class="hmi-top">
+        <div class="hmi-tile"><small>System status (FR-30)</small><span class="state" id="hState">READY</span><div class="hint" id="hStateWhy"></div></div>
+        <div class="hmi-tile"><small>Active configuration (FR-25)</small><b id="hConf">12 oz</b><div class="hint" id="hProg"></div></div>
+        <div class="hmi-tile"><small>Current result (FR-32)</small><span class="bigres" id="hRes">—</span><div class="hint" id="hResWhy"></div></div>
+        <div class="hmi-tile"><small>Inspection control (FR-27, FR-28)</small><div class="hmi-btns" style="margin-top:6px"><button class="go" id="hStart">Start</button><button class="stop" id="hStop">Stop</button><button id="hAck">Reset fault</button></div></div>
+      </div>
+      <div class="hmi-top" style="margin-top:10px" id="hCounts"></div>
+    </div>
+    <div class="hmi">
+      <div class="panel">
+        <h2>Failed inspection review (FR-37, FR-38)</h2>
+        <p class="note" style="margin-top:4px">The last 20 FAIL results with the checks that failed. Select one to see its frame.</p>
+        <div class="camgrid" style="margin-top:8px;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr)">
+          <div class="faillist" id="hFails"><p class="hint">No failed inspections yet.</p></div>
+          <div><div class="feed"><canvas id="hFrame" width="640" height="480" aria-label="Frame of the selected failed inspection"></canvas></div><div class="hint" id="hFrameInfo" style="margin-top:6px"></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Procedures (FR-44 – FR-47)</h2>
+        <div class="bar" style="margin-top:8px">
+          <span class="grp" role="group" aria-label="Procedure">
+            <button class="sm pbtn" data-p="startup" aria-pressed="true">Startup</button>
+            <button class="sm pbtn" data-p="change" aria-pressed="false">Changeover</button>
+            <button class="sm pbtn" data-p="shutdown" aria-pressed="false">Shutdown</button>
+          </span>
+          <label class="field" for="hTarget" id="hTargetWrap" hidden>Change to<select id="hTarget"><option value="12">12 oz</option><option value="16">16 oz</option><option value="19.2">19.2 oz</option></select></label>
+        </div>
+        <ol class="steps" id="hSteps"></ol>
+        <p class="note" style="margin-top:8px" id="hProcNote"></p>
+        <h2 style="margin-top:14px">Hardware and FR-52 environmental check</h2>
+        <div class="scroll"><table class="hwtable" id="hHw"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= LINE ================= -->
+  <section class="view" id="v-line" role="tabpanel" aria-labelledby="t-line">
+    <div class="canvas-box">
+      <canvas id="cv" width="1600" height="900" aria-label="Side view of the conveyor, trigger sensor, camera and air jet"></canvas>
+      <div class="legend"><span><i style="background:var(--pass)"></i>PASS</span><span><i style="background:var(--fail)"></i>FAIL</span><span><i style="background:var(--crit)"></i>critical defect</span><span><i style="background:var(--major)"></i>major</span><span><i style="background:var(--minor)"></i>minor</span><span><i style="background:var(--info)"></i>sensor beams</span></div>
+    </div>
+    <div class="grid3">
+      <section class="panel">
+        <h2>Results vs. ground truth</h2>
+        <div class="cm">
+          <div class="h"></div><div class="h">System passed</div><div class="h">System rejected</div>
+          <div class="h">Good can</div>
+          <div class="good"><span class="n" id="mTN">0</span><small>correct pass</small></div>
+          <div class="bad"><span class="n" id="mFP">0</span><small>false reject</small></div>
+          <div class="h">Defective</div>
+          <div class="bad"><span class="n" id="mFN">0</span><small id="mFNs">missed defect</small></div>
+          <div class="good"><span class="n" id="mTP">0</span><small>correct reject</small></div>
+        </div>
+        <div class="classsum" id="classsum"></div>
+        <div class="kv" id="kv"></div>
+      </section>
+      <section class="panel">
+        <h2>Tracking queue</h2>
+        <div class="scroll"><table id="queue"></table></div>
+        <h2 style="margin-top:14px">Alarms</h2>
+        <div id="alarms" class="hint" style="margin-top:6px">No alarms.</div>
+      </section>
+      <section class="panel">
+        <h2>Event log</h2>
+        <div class="log" id="log" style="height:430px"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ================= CAMERA ================= -->
+  <section class="view" id="v-camera" role="tabpanel" aria-labelledby="t-camera" hidden>
+    <div class="camgrid">
+      <div class="panel">
+        <div class="feedhead"><h2 id="liveHead">Live · VS-C320MX</h2><span class="tag" id="liveInfo"></span></div>
+        <div class="feed"><canvas id="camLive" width="1024" height="768" aria-label="Live monochrome view from the top-down camera"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="feedhead"><h2>Inspected frame</h2>
+          <span class="grp"><button class="sm" id="ovTools" aria-pressed="true">Tools</button><button class="sm" id="ovHeat" aria-pressed="false">Anomaly map</button><button class="sm" id="ovHold" aria-pressed="false">Hold FAIL</button></span></div>
+        <div class="feed"><canvas id="camShot" width="1024" height="768" aria-label="Last inspected frame with measurement overlays"></canvas></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="feedhead"><h2>Capture result</h2></div>
+        <div id="capInfo" class="hint">Waiting for the first trigger.</div>
+        <div id="sideWrap" hidden style="margin-top:10px">
+          <div class="feedhead"><h2>Side camera (evaluation)</h2><span class="tag">outside of body only</span></div>
+          <div class="feed"><canvas id="camSide" width="1024" height="420" style="aspect-ratio:1024/420" aria-label="Side camera view"></canvas></div>
+        </div>
+        <p class="note" style="margin-top:10px">The image is drawn with a pinhole model of the 3.5 mm lens on the 1/1.8 in sensor, so cans away from the centre show their sides (parallax) and the can top looks larger than its base. Defects are drawn exaggerated. Motion blur follows the exposure setting; out-of-focus blur appears when the preset does not match the cans.</p>
+      </div>
+      <div class="panel">
+        <div class="feedhead"><h2>Measurements</h2></div>
+        <div class="scroll"><table id="meas"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 3D ================= -->
+  <section class="view" id="v-3d" role="tabpanel" aria-labelledby="t-3d" hidden>
+    <div class="panel bar">
+      <span class="grp" role="group" aria-label="Viewpoint">
+        <button class="sm vbtn" data-view="iso" aria-pressed="true">Isometric</button>
+        <button class="sm vbtn" data-view="front" aria-pressed="false">Operator side</button>
+        <button class="sm vbtn" data-view="top" aria-pressed="false">Top</button>
+        <button class="sm vbtn" data-view="along" aria-pressed="false">Down the line</button>
+        <button class="sm vbtn" data-view="pov" aria-pressed="false">Camera POV</button>
+        <button class="sm vbtn" data-view="follow" aria-pressed="false">Follow a can</button>
+      </span>
+      <label class="check" for="g3labels"><input type="checkbox" id="g3labels" checked> Labels</label>
+      <label class="check" for="g3fov"><input type="checkbox" id="g3fov" checked> Field of view</label>
+      <span class="hint">Drag to orbit · wheel to zoom</span>
+    </div>
+    <div class="gl-wrap" id="glwrap" style="aspect-ratio:16/9">
+      <canvas id="gl" aria-label="3D view of the inspection station"></canvas>
+      <div id="gl3labels"></div>
+      <div class="glmsg" id="glmsg" hidden>3D view needs WebGL, which this browser has turned off.</div>
+    </div>
+    <p class="note">Same layout as the 1:3 printed model at full size: trigger sensor and air jet on the operator side, camera post and reject tray behind the belt, verify sensor after the jet. Rejected cans are pushed across the belt into the tray.</p>
+  </section>
+
+  <!-- ================= TIMING ================= -->
+  <section class="view" id="v-timing" role="tabpanel" aria-labelledby="t-timing" hidden>
+    <div class="panel">
+      <div class="bar" style="justify-content:space-between">
+        <h2>Signal trace</h2>
+        <label class="field" for="span">Window<select id="span"><option value="800">0.8 s</option><option value="1600" selected>1.6 s</option><option value="3200">3.2 s</option></select></label>
+      </div>
+      <div class="canvas-box" style="margin-top:8px"><canvas id="trace" width="1600" height="620" aria-label="Timing diagram of sensor, trigger, exposure, processing, result and air-jet signals"></canvas></div>
+      <p class="note" style="margin-top:8px">Each row is one signal on the station's I/O, newest on the right. Numbers are can IDs. Pause the line to freeze the trace.</p>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h2>Timing budget per can</h2><div class="budget" id="budget"></div><p class="note" style="margin-top:8px" id="budgetNote"></p></div>
+      <div class="panel"><h2>Recent cans</h2><div class="scroll"><table id="ttable"></table></div></div>
+    </div>
+  </section>
+
+  <!-- ================= DASHBOARD ================= -->
+  <section class="view" id="v-dash" role="tabpanel" aria-labelledby="t-dash" hidden>
+    <div class="grid2">
+      <div class="panel"><h2>Throughput and reject rate</h2><div id="chartRate"></div></div>
+      <div class="panel"><h2>Outcome by defect type</h2><div id="chartPareto"></div></div>
+    </div>
+    <div class="grid3">
+      <div class="panel"><h2>Detection by class</h2><div id="chartClass"></div></div>
+      <div class="panel"><h2>Why good cans were rejected</h2><div id="chartFP"></div></div>
+      <div class="panel"><h2>Why defects got through</h2><div id="chartFN"></div></div>
+    </div>
+  </section>
+
+  <!-- ================= DEFECTS ================= -->
+  <section class="view" id="v-defects" role="tabpanel" aria-labelledby="t-defects" hidden>
+    <div class="panel">
+      <div class="bar" style="justify-content:space-between">
+        <h2>Defect catalog and detection by type</h2>
+        <span class="grp"><button class="sm" id="mixAll">Include all</button><button class="sm" id="mixTop">Top-visible only</button><button class="sm" id="mixNone">None</button></span>
+      </div>
+      <p class="note" style="margin-top:6px">Limits from the Defect Requirements document. “Seen by” is where the defect can be measured. Untick a type to remove it from the random mix; Inject sends one can with that defect.</p>
+      <div class="keys"><span><i style="background:var(--pass)"></i>rejected</span><span><i style="background:var(--fail)"></i>missed (camera could see it)</span><span><i style="background:var(--accent)"></i>missed (outside camera view)</span><span><i style="background:var(--minor)"></i>passed and flagged (minor policy)</span></div>
+      <div class="scroll"><table class="catalog" id="catalog"></table></div>
+    </div>
+  </section>
+
+  <!-- ================= SETUP ================= -->
+  <section class="view" id="v-setup" role="tabpanel" aria-labelledby="t-setup" hidden>
+    <div class="panel settings">
+      <fieldset><legend>Solution and trigger</legend>
+        <label class="field" for="sensor">Presence sensor<select id="sensor"></select></label>
+        <label class="field" for="focal">Teledyne lens focal length (Arducam C-mount)<select id="focal"><option value="6">6 mm</option><option value="8" selected>8 mm</option><option value="12">12 mm</option><option value="16">16 mm</option></select></label>
+        <label class="field" for="wdT">Teledyne working distance <b id="wdTV"></b><input type="range" id="wdT" min="80" max="300" step="5" value="160"></label>
+        <p class="note" id="solNote"></p>
+      </fieldset>
+      <fieldset><legend>Line</legend>
+        <label class="field" for="cpm">Line rate <b id="cpmV"></b><input type="range" id="cpm" min="60" max="226" step="1" value="220"></label>
+        <label class="field" for="spacing">Can spacing<select id="spacing"><option value="steady">Steady, back to back</option><option value="random">Random gaps</option><option value="surge">Surges (dense groups, then gaps)</option></select></label>
+        <label class="field" for="speedMode">Belt speed<select id="speedMode"><option value="offset">Constant offset</option><option value="osc">Oscillating (4 s period)</option></select></label>
+        <label class="field" for="dev">Speed offset / amplitude <b id="devV"></b><input type="range" id="dev" min="-15" max="15" step="1" value="0"></label>
+        <label class="field" for="lateral">Lateral wander (σ) <b id="lateralV"></b><input type="range" id="lateral" min="0" max="4" step="0.5" value="1.5"></label>
+        <p class="note" id="lineNote"></p>
+      </fieldset>
+      <fieldset><legend>Defects</legend>
+        <label class="field" for="defect">Defective cans <b id="defectV"></b><input type="range" id="defect" min="0" max="60" step="1" value="15"></label>
+        <label class="field" for="sev">Severity<select id="sev"><option value="marginal">Marginal (just past the limit)</option><option value="mixed" selected>Mixed</option><option value="gross">Gross</option></select></label>
+        <label class="field" for="multi">Defective cans with two defects <b id="multiV"></b><input type="range" id="multi" min="0" max="50" step="5" value="10"></label>
+        <label class="field" for="minor">Minor defects (stains, light scratches)<select id="minor"><option value="reject">Reject</option><option value="flag">Flag only, let pass</option></select></label>
+      </fieldset>
+      <fieldset><legend>Camera and decision</legend>
+        <label class="field" for="camMode">Camera height<select id="camMode"><option value="preset">Moved per preset (WD 100 mm)</option><option value="fixed">Fixed at 19.2 oz position</option></select></label>
+        <label class="field" for="exposure">Exposure <b id="exposureV"></b><input type="range" id="exposure" min="0.02" max="1.5" step="0.01" value="0.1"></label>
+        <label class="field" for="noise">Measurement noise (σ at 0.099 mm/px) <b id="noiseV"></b><input type="range" id="noise" min="0.01" max="0.12" step="0.005" value="0.03"></label>
+        <label class="field" for="guard">Guard band inside each limit <b id="guardV"></b><input type="range" id="guard" min="0" max="5" step="0.5" value="3"></label>
+        <label class="field" for="anom">Anomaly-score threshold <b id="anomV"></b><input type="range" id="anom" min="150" max="300" step="25" value="200"></label>
+        <label class="field" for="latMean">Processing time (mean) <b id="latV"></b><input type="range" id="latMean" min="10" max="1000" step="10" value="40"></label>
+        <label class="field" for="latJit">Processing jitter <b id="latJitV"></b><input type="range" id="latJit" min="0" max="60" step="2" value="10"></label>
+        <p class="note" id="camNote"></p>
+      </fieldset>
+      <fieldset><legend>Positions and reject</legend>
+        <label class="field" for="dT">Trigger sensor upstream of camera <b id="dTV"></b><input type="range" id="dT" min="20" max="300" step="5" value="45"></label>
+        <label class="field" for="dR">Air jet downstream of camera <b id="dRV"></b><input type="range" id="dR" min="120" max="600" step="10" value="240"></label>
+        <label class="field" for="valve">Valve response delay <b id="valveV"></b><input type="range" id="valve" min="0" max="40" step="1" value="10"></label>
+        <label class="field" for="pushRel">Air-jet push success <b id="pushRelV"></b><input type="range" id="pushRel" min="80" max="100" step="1" value="100"></label>
+        <label class="check" for="verify"><input type="checkbox" id="verify" checked> Reject verify sensor after the jet</label>
+        <label class="field" for="consec">Alarm after consecutive rejects <b id="consecV"></b><input type="range" id="consec" min="3" max="10" step="1" value="5"></label>
+        <p class="note" id="posNote"></p>
+      </fieldset>
+      <fieldset><legend>Tracking and faults</legend>
+        <label class="field" for="track">Reject tracking<select id="track"><option value="time">Calibrated delay (TR-14, constant speed)</option><option value="encoder">Encoder position (fallback if speed varies)</option></select></label>
+        <label class="check" for="lockout"><input type="checkbox" id="lockout" checked> Trigger lockout (½ can pitch)</label>
+        <label class="field" for="miss">Missed-trigger rate <b id="missV"></b><input type="range" id="miss" min="0" max="20" step="1" value="0"></label>
+        <label class="field" for="dbl">Double-trigger rate <b id="dblV"></b><input type="range" id="dbl" min="0" max="20" step="1" value="0"></label>
+        <label class="field" for="actual">Cans actually running<select id="actual"><option value="match">Same as preset</option><option value="12">12 oz</option><option value="16">16 oz</option><option value="19.2">19.2 oz</option></select></label>
+      </fieldset>
+    </div>
+    <p class="note">The conveyor runs at its normal production speed with no added gaps, as stated in the requirements; the speed offset slider is only for testing what happens if the speed is not constant. Lighting effects are illustrative: LumiTrax lowers noise on shape defects (dents, bends, cracks, indentations), Multi-Spectrum lowers noise on contrast defects (stains, debris, scratches), and Normal lighting has the most glare. Replace these factors with the lighting comparison from Part 2 §2.4 once it is measured.</p>
+  </section>
+
+  <!-- ================= TESTS ================= -->
+  <section class="view" id="v-tests" role="tabpanel" aria-labelledby="t-tests" hidden>
+    <div class="panel">
+      <div class="bar" style="justify-content:space-between">
+        <h2>Virtual test bench</h2>
+        <button class="primary" id="runTests">Run all virtual tests</button>
+      </div>
+      <p class="note" style="margin-top:6px">Each test runs the simulation headless with a fixed random seed, so results repeat exactly. Negative controls switch a safeguard off, or leave a known gap open, and pass when the expected failure appears. “Missed (visible)” counts defects a camera could see but the system passed; defects outside every camera's view are reported separately as a coverage gap.</p>
+      <div class="scroll"><table class="tests" id="tests"></table></div>
+    </div>
+  </section>
+
+  <p class="note">Model assumptions: 220 cans/min at 248.9 mm/s (49 ft/min) gives a 67.9 mm can pitch, a 1.9 mm gap between 66.0 mm cans. Image scale uses a pinhole model: KEYENCE VS-C320MX with CV-L3 (3.5 mm, 1/1.8 in, 3.45 µm, 2048 × 1536, 62 fps) gives about 0.099 mm per pixel at 100 mm; Teledyne Genie Nano C1280 with an Arducam C-mount lens (1/2 in, 4.8 µm, 1280 × 1024, 92 fps) gives about 0.096 mm per pixel with an 8 mm lens at 160 mm. The Teledyne option assumes 1.3× edge-measurement noise (colour sensor) and 70 ± 20 ms processing on the PC; sensor response times are from the datasheets (E3Z-D61 1 ms, LR-ZB250 1.5–50 ms, E18-D80NK under 2 ms). The trigger switches on when a can's centre is 30 mm upstream of the beam. Anomaly scores model the example ranges in the Defect Requirements. Valve delay, push success, processing time and lighting factors are placeholders. None of these values are Keyence outputs.</p>
+</div>
+
+<script>
+(()=>{
+// ================================================================ constants and catalog
+const VNOM=248.9, CAN_D=66, R_EFF=30, ROI_TOL=10, JET_HALF=22, JET_MS=15, WD0=100, VERIFY_OFF=90;
+const HEIGHT={"12":122.7,"16":157.2,"19.2":182.6};
+const DEF=[
+ {k:"bent",  sec:"1.1",name:"Bent flange",            cls:"Critical",area:"Rim / flange",view:"top", ch:"Flange deviation",     u:"mm",hi:0.50},
+ {k:"fdent", sec:"1.2",name:"Dented flange",          cls:"Critical",area:"Rim / flange",view:"top", ch:"Flange dent depth",    u:"mm",hi:0.50},
+ {k:"round", sec:"1.3",name:"Out-of-round opening",   cls:"Critical",area:"Opening",     view:"top", ch:"Opening roundness error",u:"mm",hi:0.60},
+ {k:"od",    sec:"1.4",name:"Incorrect flange OD",    cls:"Critical",area:"Rim / flange",view:"top", ch:"Flange OD",            u:"mm",lo:56.60,hi:57.20},
+ {k:"width", sec:"1.5",name:"Incorrect flange width", cls:"Critical",area:"Rim / flange",view:"top", ch:"Flange width",         u:"mm",lo:1.90,hi:2.30},
+ {k:"crack", sec:"1.6",name:"Crack / split / tear",   cls:"Critical",area:"Rim / flange",view:"top", ch:"Crack score",          u:"",score:true},
+ {k:"ndent", sec:"2.1",name:"Major neck dent",        cls:"Major",   area:"Neck",        view:"top", ch:"Neck dent depth",      u:"mm",hi:1.00},
+ {k:"noff",  sec:"2.2",name:"Neck deformation (off-centre)",cls:"Major",area:"Neck",     view:"top", ch:"Neck centre offset",   u:"mm",hi:0.60},
+ {k:"bdent", sec:"3.1",name:"Body dent",              cls:"Major",   area:"Body",        view:"side",ch:"Body dent depth",      u:"mm",hi:1.50},
+ {k:"bround",sec:"3.2",name:"Body out-of-round",      cls:"Major",   area:"Body",        view:"silh",ch:"Body roundness error", u:"mm",hi:0.60},
+ {k:"scratch",sec:"3.3",name:"Scratches / surface damage",cls:"Minor / Major",area:"Interior or body",view:"loc",pUpper:0.5,ch:"Scratch score",u:"",score:true},
+ {k:"engr",  sec:"3.4",name:"Unwanted engraving / indentation",cls:"Major",area:"Upper surface or body",view:"loc",pUpper:0.3,ch:"Indentation depth",u:"mm",hi:0.50},
+ {k:"stain", sec:"4.1",name:"Stains / discoloration", cls:"Minor",   area:"Interior or body",view:"loc",pUpper:0.5,ch:"Stain score",u:"",score:true},
+ {k:"debris",sec:"4.2",name:"Foreign material / contamination",cls:"Critical",area:"Interior or body",view:"loc",pUpper:0.8,ch:"Contamination score",u:"",score:true},
+];
+const OOS=[
+ ["—","Missing / unreadable date or lot code","Major","Printed on the can bottom after this station, when the can is flipped"],
+ ["—","Lid / end dent, lid / end surface damage","Critical / Major","No end on the can before filling; belongs to the post-seam lid check"],
+ ["5","High-low sensor misses can · X-ray fill level","—","Post-fill checks downstream of the filler"],
+];
+const DK=Object.fromEntries(DEF.map(d=>[d.k,d]));
+const AREAS=["Rim / flange","Opening","Neck","Body","Interior or body","Upper surface or body"];
+const clsKey=c=>c==="Minor / Major"?"MinorMajor":c;
+const LIGHT={normal:{name:"Normal",shape:1,contrast:1,glare:0.03},multi:{name:"Multi-Spectrum",shape:1,contrast:0.6,glare:0.015},lumi:{name:"LumiTrax",shape:0.6,contrast:1.15,glare:0.005}};
+const SOL={
+ keyence:{key:"keyence",short:"KEYENCE",name:"Solution 1 · KEYENCE",cam:"VS-C320MX",lens:"CV-L3 3.5 mm",light:"CA-DRM5X",px:0.00345,res:[2048,1536],sen:[7.07,5.30],fps:62,mono:true,ip:"IP67",
+   scoreSig:15,dimK:1,sw:"VS Creator with VS-AD1 AI add-in",ui:"KEYENCE dedicated display, custom production screen",proc:[40,10],sensors:["e3z","lrz","lrz50"],prog:p=>`KEYENCE program ${{"12":"01","16":"02","19.2":"03"}[p]} · ${p} oz`},
+ teledyne:{key:"teledyne",short:"Teledyne",name:"Solution 2 · Teledyne budget",cam:"Genie Nano G3-GC10-C1280",lens:"Arducam C-mount",light:"white LED ring light",px:0.0048,res:[1280,1024],sen:[6.14,4.92],fps:92,mono:false,ip:"none listed",
+   scoreSig:20,dimK:1.3,sw:"Python / OpenCV on a Windows PC",ui:"custom PC application",proc:[70,20],sensors:["e18"],prog:p=>`Saved configuration ${p} oz (Python/OpenCV)`}};
+const SENS={e3z:{name:"OMRON E3Z-D61",resp:1,note:"diffuse, up to 100 mm, 12–24 V DC, NPN, IP67"},lrz:{name:"KEYENCE LR-ZB250, 1.5 ms mode",resp:1.5,note:"distance-based laser, 35–250 mm; confirm IP rating"},
+ lrz50:{name:"KEYENCE LR-ZB250, 50 ms mode",resp:50,note:"slowest response setting, for comparison only"},e18:{name:"HiLetgo E18-D80NK",resp:2,note:"diffuse IR, 30–800 mm, 5 V DC, NPN, no IP rating"}};
+function solOf(cfg){return SOL[cfg.sol||"keyence"]}
+function focalOf(cfg){return cfg.sol==="teledyne"?cfg.focal:3.5}
+function wdOf(cfg){return cfg.sol==="teledyne"?cfg.wdT:WD0}
+function mmpxOf(cfg,wd){return solOf(cfg).px*wd/focalOf(cfg)}
+function fovOf(cfg,wd){const S0=solOf(cfg),f=focalOf(cfg);return[S0.sen[0]*wd/f,S0.sen[1]*wd/f]}
+function lightOf(cfg){return cfg.sol==="teledyne"?{name:"White ring light",shape:1,contrast:1,glare:0.03}:LIGHT[cfg.light]}
+const SHAPE=new Set(["bent","fdent","ndent","bdent","engr","crack","noff"]),CONTRAST=new Set(["stain","debris","scratch"]);
+
+function rngOf(seed){let a=seed>>>0;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function gauss(r){let u=0,v=0;while(!u)u=r();while(!v)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+const expo=(r,m)=>-Math.log(1-r())*m;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function goodVal(k,r){
+  switch(k){case"bent":case"fdent":case"engr":return Math.abs(gauss(r))*0.06;
+    case"round":return Math.abs(0.12+gauss(r)*0.08);case"od":return 56.9+gauss(r)*0.06;case"width":return 2.10+gauss(r)*0.025;
+    case"ndent":return Math.abs(gauss(r))*0.12;case"noff":return Math.abs(gauss(r))*0.10;case"bdent":return Math.abs(gauss(r))*0.20;
+    case"bround":return Math.abs(0.10+gauss(r)*0.06);default:return 5+Math.pow(r(),2.5)*110;}
+}
+function defectVal(k,r,sev){
+  const ex=sev==="marginal"?0.02+expo(r,0.05):sev==="gross"?0.4+expo(r,0.8):0.02+expo(r,0.35);
+  const sc=sev==="marginal"?205+expo(r,25):sev==="gross"?500+r()*500:230+r()*700;
+  switch(k){case"bent":case"fdent":case"engr":return 0.5+ex;case"round":case"noff":case"bround":return 0.6+ex;
+    case"od":return r()<.5?57.2+ex*.6:56.6-ex*.6;case"width":return r()<.5?2.3+ex*.5:1.9-ex*.5;
+    case"ndent":return 1.0+ex*1.5;case"bdent":return 1.5+ex*2;default:return sc;}
+}
+function lensHeight(cfg,preset){const wd=wdOf(cfg);return cfg.camMode==="fixed"?HEIGHT["19.2"]+wd:HEIGHT[preset]+wd}
+function minorOnly(k,val,cfg){return k==="stain"||(k==="scratch"&&val<=2*cfg.anom)}
+function lightK(k,cfg){const L=lightOf(cfg);return SHAPE.has(k)?L.shape:CONTRAST.has(k)?L.contrast:1}
+
+// ================================================================ simulation core
+function zeroStats(){return Object.fromEntries(DEF.map(d=>[d.k,{n:0,rej:0,miss:0,gap:0,flag:0}]))}
+function makeSim(cfg,seed){
+  return{cfg:{...cfg,mix:[...cfg.mix]},r:rngOf(seed),t:0,enc:0,v:VNOM,cans:[],recs:[],jets:[],log:[],pulses:[],forced:[],ev:[],alarms:[],pile:[],win:[],hist:[],
+    failLog:[],pendTrig:[],nextCan:1,nextRec:1,sensor:false,vsensor:false,lastTrigEnc:-1e9,lastExp:-1e9,last:null,lastFail:null,ds:zeroStats(),streak:0,gapNext:null,surgeN:0,nextWin:2000,
+    m:{inspected:0,passN:0,failN:0,rejN:0,maxOff:0,fovErr:0,cans:0,TP:0,TN:0,FP:0,FN:0,FNgap:0,flagAcc:0,trig:0,ignored:0,dropped:0,uninspected:0,multi:0,fires:0,wrongHit:0,escapedFail:0,offCentre:0,empty:0,focus:0,
+       late:0,pushFail:0,verifyAlarm:0,alarms:0,glare:0,missCause:{},fpCause:{},fpByCh:{},latSum:0,latN:0,latMax:0}};
+}
+function pitch(cfg){return Math.max(CAN_D,VNOM*60/cfg.cpm)}
+function canSizeOf(cfg){return cfg.actual==="match"?cfg.preset:cfg.actual}
+function log(S,msg,cls){if(S.headless)return;S.log.push({t:S.t,msg,cls});if(S.log.length>220)S.log.shift()}
+function ev(S,o){if(S.headless)return;o.t=o.t??S.t;S.ev.push(o)}
+function alarm(S,msg){S.m.alarms++;S.fault=msg;if(S.headless)return;S.alarms.push({t:S.t,msg});if(S.alarms.length>40)S.alarms.shift();log(S,"ALARM: "+msg,"f")}
+function vNow(S){const c=S.cfg;return VNOM*(1+(c.speedMode==="osc"?c.dev/100*Math.sin(2*Math.PI*S.t/4000):c.dev/100))}
+function nextGap(S){const c=S.cfg,p=pitch(c),r=S.r;
+  if(c.spacing==="random")return p+(r()<0.35?expo(r,70):0);
+  if(c.spacing==="surge"){S.surgeN++;return S.surgeN%10===0?p+250+r()*200:Math.max(CAN_D+0.5,p*0.985)}
+  return p}
+
+function newCan(S,x){
+  const r=S.r,cfg=S.cfg;
+  const base={};for(const d of DEF)base[d.k]=goodVal(d.k,r);
+  const v={...base},loc={},defects=[];
+  const f=S.forced.shift();
+  let types=[];
+  if(f){if(f!=="good")types=[f.type]}
+  else if(cfg.mix.length&&r()<cfg.defect/100){
+    types=[cfg.mix[Math.floor(r()*cfg.mix.length)]];
+    if(cfg.mix.length>1&&r()<cfg.multi/100){let t2;do{t2=cfg.mix[Math.floor(r()*cfg.mix.length)]}while(t2===types[0]);types.push(t2)}
+  }
+  for(const k of types){
+    v[k]=f&&f.val!=null?f.val:defectVal(k,r,f&&f.sev||cfg.sev);
+    if(DK[k].view==="loc")loc[k]=f&&f.loc?f.loc:(r()<DK[k].pUpper?"upper":"body");
+    defects.push(k);
+  }
+  const c={id:S.nextCan++,x,y:clamp(gauss(r)*cfg.lateral,-4.5,4.5),size:canSizeOf(cfg),defects,v,base,loc,recs:[],removed:false,eject:0,vis:{},
+    ang:r()*Math.PI*2,miss:r()<cfg.miss/100,dbl:r()<cfg.dbl/100,result:null};
+  S.cans.push(c);S.m.cans++;S.gapNext=nextGap(S);
+  return c;
+}
+
+function trigger(S,c,isEcho,comp=0){
+  const cfg=S.cfg;
+  if(cfg.lockout&&S.enc-S.lastTrigEnc<0.5*pitch(cfg)){S.m.ignored++;log(S,`Trigger ignored by lockout (can ${c.id})`,"w");return}
+  S.lastTrigEnc=S.enc;S.m.trig++;ev(S,{k:"trig",id:c.id});
+  const rec={id:S.nextRec++,tTrig:S.t,preset:cfg.preset,tracking:cfg.track,side:cfg.side,light:cfg.light,
+    sol:cfg.sol,rack:cfg.rack,capAt:cfg.track==="encoder"?{enc:S.enc+cfg.dT+R_EFF-VNOM*comp/1000}:{t:S.t+(cfg.dT+R_EFF)/VNOM*1000-comp},captured:false,result:null};
+  S.recs.push(rec);
+  log(S,`Trigger #${rec.id}${isEcho?" (echo)":""} from can ${c.id}`);
+}
+
+function readersFor(k,c,side){
+  const d=DK[k],loc=c.loc[k],R=[];
+  if(d.view!=="side")R.push({cam:d.view==="silh"?"Top (silhouette)":"Top",f:d.view==="silh"?2:1,sees:!(d.view==="loc"&&loc==="body")});
+  if(side&&d.view!=="top")R.push({cam:"Side",f:1.5,sees:!(d.view==="loc"&&loc==="upper")});
+  return R;
+}
+
+function capture(S,rec){
+  const cfg=S.cfg,r=S.r;rec.captured=true;rec.tCap=S.t;rec.encCap=S.enc;
+  const SO=solOf(cfg);
+  if(S.t-S.lastExp<1000/SO.fps){rec.result="DROPPED";S.m.dropped++;log(S,`Capture #${rec.id} dropped: camera still busy (${SO.fps} fps limit)`,"f");return}
+  S.lastExp=S.t;
+  let c=null,best=1e9;for(const k of S.cans){if(k.removed)continue;const d=Math.abs(k.x);if(d<best){best=d;c=k}}
+  ev(S,{k:"exp",id:c?c.id:0,t2:S.t+Math.max(0.6,cfg.exposure)});
+  if(!c||best>CAN_D/2+8){rec.result="EMPTY";S.m.empty++;log(S,`Capture #${rec.id}: empty frame`,"w");return}
+  rec.can=c;rec.offset=c.x;rec.y=c.y;c.recs.push(rec);
+  if(!S.headless)rec.snap=S.cans.filter(k=>!k.removed&&Math.abs(k.x)<260).map(k=>({...k}));
+  const lens=lensHeight(cfg,rec.rack),wdAct=lens-HEIGHT[c.size],wdPre=wdOf(cfg);
+  rec.lens=lens;rec.wd=wdAct;rec.mmpx=mmpxOf(cfg,wdAct);rec.focusErr=Math.abs(wdAct-wdPre)>15;rec.focal=focalOf(cfg);
+  S.m.maxOff=Math.max(S.m.maxOff,Math.abs(rec.offset));
+  const fov=fovOf(cfg,wdAct);rec.fovErr=fov[1]<CAN_D+2*ROI_TOL;if(rec.fovErr)S.m.fovErr++;
+  if(rec.focusErr)S.m.focus++;
+  const v=vNow(S);rec.blurMm=v*cfg.exposure/1000;rec.blurPx=rec.blurMm/rec.mmpx;
+  const kB=Math.sqrt(1+0.5*rec.blurPx*rec.blurPx);
+  const scale=rec.mmpx/0.0986*(rec.focusErr?5:1);
+  rec.glare=r()<lightOf(cfg).glare;if(rec.glare)S.m.glare++;
+  rec.rows=[];rec.fails=[];rec.flags=[];
+  for(const d of DEF){
+    const R=readersFor(d.k,c,rec.side);
+    const row={k:d.k,readings:[],fail:false,flag:false};
+    for(const rd of R){
+      const sig=(d.score?SO.scoreSig:cfg.noise)*(rd.cam==="Side"?1:scale*(d.score?1:SO.dimK))*rd.f*kB*lightK(d.k,cfg);
+      const truth=rd.sees?c.v[d.k]:c.base[d.k];
+      let val=truth+gauss(r)*sig;if(d.lo==null)val=Math.max(0,val);
+      if(rec.glare&&d.k==="scratch"&&rd.cam==="Top")val+=90+r()*150;
+      const g=cfg.guard*sig,hi=d.score?cfg.anom-g:d.hi-g,lo=d.lo!=null?d.lo+g:null;
+      const bad=val>hi||(lo!=null&&val<lo);
+      row.readings.push({cam:rd.cam,val,sig,bad,sees:rd.sees});
+      if(rd.sees&&c.defects.includes(d.k))c.vis[d.k]=true;
+      if(bad){if(cfg.minor==="flag"&&minorOnly(d.k,val,cfg))row.flag=true;else row.fail=true}
+    }
+    if(row.fail)rec.fails.push(d.k);else if(row.flag)rec.flags.push(d.k);
+    rec.rows.push(row);
+  }
+  if(Math.hypot(rec.offset,rec.y)>ROI_TOL){rec.offCentre=true;S.m.offCentre++;rec.fails.push("roi")}
+  if(rec.focusErr)rec.fails.push("focus");
+  if(rec.fovErr)rec.fails.push("fov");
+  rec.readyAt=S.t+Math.max(5,cfg.latMean+gauss(r)*cfg.latJit);rec.pending=true;S.last=rec;
+  ev(S,{k:"proc",id:c.id,t2:rec.readyAt});
+}
+
+function finalize(S,c){
+  const m=S.m,bad=c.defects.length>0,cfg=S.cfg;
+  const lastRec=c.recs.length?c.recs[c.recs.length-1]:null,res=lastRec?lastRec.result:null;
+  const inspected=c.recs.length>0;
+  if(!inspected)m.uninspected++;
+  if(c.recs.filter(x=>x.result!=="EMPTY").length>1)m.multi++;
+  const policyAcc=cfg.minor==="flag"&&bad&&c.defects.every(k=>minorOnly(k,c.v[k],cfg));
+  const allHidden=inspected&&bad&&c.defects.every(k=>!c.vis[k]);
+  for(const k of c.defects){const st=S.ds[k];st.n++;
+    if(c.removed)st.rej++;else if(policyAcc)st.flag++;else if(inspected&&!c.vis[k])st.gap++;else st.miss++}
+  let outcome;
+  if(bad&&c.removed){m.TP++;outcome="TP"}
+  else if(bad&&policyAcc){m.flagAcc++;outcome="FLAG"}
+  else if(bad){m.FN++;outcome="FN";
+    const cause=!inspected?"not inspected (missed trigger)":allHidden?"outside camera view":lastRec&&lastRec.late?"result came too late":c.pushFail?"air jet push failed":res==="FAIL"?"jet timing missed it":"passed inspection";
+    if(cause==="outside camera view")m.FNgap++;
+    m.missCause[cause]=(m.missCause[cause]||0)+1}
+  else if(c.removed){m.FP++;outcome="FP";
+    const cause=lastRec&&lastRec.result==="FAIL"&&c.hitBy&&c.hitBy.can===c?"inspection said FAIL":"jet hit the wrong can";
+    m.fpCause[cause]=(m.fpCause[cause]||0)+1;
+    if(lastRec&&cause==="inspection said FAIL")for(const k of lastRec.fails)m.fpByCh[k]=(m.fpByCh[k]||0)+1}
+  else{m.TN++;outcome="TN"}
+  if(res==="FAIL"&&!c.removed)m.escapedFail++;
+  if(S.headless)return;
+  if(c.removed){S.pile.push({size:c.size,bad});if(S.pile.length>6)S.pile.shift()}
+  S.hist.push({id:c.id,outcome,defects:c.defects,tTrig:lastRec?lastRec.tTrig:null,tCap:lastRec?lastRec.tCap:null,tRes:lastRec&&lastRec.readyAt,tJet:c.tJet||null,res});
+  if(S.hist.length>40)S.hist.shift();
+}
+
+function due(S,a){return(a.enc!=null&&S.enc>=a.enc)||(a.t!=null&&S.t>=a.t)}
+function step(S,dt){
+  const cfg=S.cfg,r=S.r,v=vNow(S),dx=v*dt/1000;S.v=v;
+  S.t+=dt;S.enc+=dx;
+  const xStart=-cfg.dT-260,xEnd=cfg.dR+200,xV=cfg.dR+VERIFY_OFF;
+  for(const c of S.cans){if(c.removed)c.eject+=dt;else{
+    const before=c.x;c.x+=dx;
+    if(before<xV&&c.x>=xV&&cfg.verify&&c.result==="FAIL"){S.m.verifyAlarm++;ev(S,{k:"ver",id:c.id});alarm(S,`Reject failure: FAIL can #${c.id} passed the verify sensor`)}
+  }}
+  const lastC=S.cans.length?S.cans[S.cans.length-1]:null;
+  if(!lastC){if(!S.paused)newCan(S,xStart)}
+  else if(!S.paused&&lastC.x-xStart>=S.gapNext)newCan(S,lastC.x-S.gapNext);
+  const beam=-cfg.dT;let hit=null;
+  for(const c of S.cans){if(!c.removed&&Math.abs(c.x-beam)<R_EFF){hit=c;break}}
+  if(hit&&!S.sensor){ev(S,{k:"son",id:hit.id});if(hit.miss)log(S,`Sensor missed can ${hit.id}`,"f");else{const resp=(SENS[cfg.sensor]||SENS.e3z).resp;S.pendTrig.push({t:S.t+resp*(0.5+0.5*r()),c:hit,comp:resp*0.75});if(hit.dbl)S.pulses.push({t:S.t+6,c:hit})}}
+  for(let i=S.pendTrig.length-1;i>=0;i--)if(S.t>=S.pendTrig[i].t){const p=S.pendTrig[i];S.pendTrig.splice(i,1);trigger(S,p.c,false,p.comp)}
+  if(!hit&&S.sensor)ev(S,{k:"soff"});
+  S.sensor=!!hit;
+  let vh=false;for(const c of S.cans){if(!c.removed&&Math.abs(c.x-xV)<R_EFF){vh=true;break}}
+  if(vh!==S.vsensor)ev(S,{k:vh?"von":"voff"});S.vsensor=vh;
+  for(let i=S.pulses.length-1;i>=0;i--)if(S.t>=S.pulses[i].t){trigger(S,S.pulses[i].c,true);S.pulses.splice(i,1)}
+  for(const rec of S.recs){
+    if(!rec.captured&&due(S,rec.capAt))capture(S,rec);
+    if(rec.pending&&S.t>=rec.readyAt){
+      rec.pending=false;rec.result=rec.fails.length?"FAIL":"PASS";S.m.inspected++;if(rec.result==="PASS")S.m.passN++;else{S.m.failN++;if(!S.headless){S.failLog.unshift(rec);if(S.failLog.length>20)S.failLog.pop()}}
+      const lat=rec.readyAt-rec.tCap;S.m.latSum+=lat;S.m.latN++;S.m.latMax=Math.max(S.m.latMax,lat);
+      const c=rec.can;c.result=rec.result;c.flagged=rec.flags.length>0;
+      ev(S,{k:"res",id:c.id,v:rec.result});
+      if(!S.headless){const why=rec.fails.length?` (${rec.fails.map(k=>DK[k]?DK[k].sec+" "+DK[k].name:k==="roi"?"off-centre":k==="fov"?"can larger than field of view":"focus mismatch").join(", ")})`:rec.flags.length?` · flagged ${rec.flags.map(k=>DK[k].sec).join(", ")}`:"";
+        log(S,`Result #${rec.id} can ${c.id}: ${rec.result}${why}`,rec.result==="FAIL"?"f":"p")}
+      if(rec.result==="FAIL"){
+        S.lastFail=rec;S.streak++;if(S.streak===cfg.consec)alarm(S,`${cfg.consec} rejects in a row — check camera, lighting and can supply`);
+        const encT=rec.encCap+cfg.dR,tT=rec.tCap+cfg.dR/VNOM*1000;
+        const slack=JET_HALF-VNOM*cfg.valve/1000;const gone=rec.tracking==="encoder"?S.enc>encT+slack:S.t>tT+slack/VNOM*1000;
+        if(gone){rec.late=true;S.m.late++;log(S,`Result #${rec.id} arrived after can ${c.id} passed the air jet`,"f")}
+        else S.jets.push({rec,cmd:rec.tracking==="encoder"?{enc:encT-VNOM*cfg.valve/1000}:{t:tT-cfg.valve},fired:false});
+      }else S.streak=0;
+    }
+  }
+  S.recs=S.recs.filter(x=>!x.captured||x.pending||S.t-x.tCap<4000);
+  for(const j of S.jets){
+    if(!j.fired&&due(S,j.cmd)){j.fired=true;j.tCmd=S.t;j.tAir=S.t+Math.max(0,cfg.valve+gauss(r)*1.2);S.m.fires++;
+      ev(S,{k:"cmd",id:j.rec.can.id});log(S,`Valve command for result #${j.rec.id}`,"w")}
+    if(j.fired&&S.t>=j.tAir&&S.t<=j.tAir+JET_MS){
+      if(!j.airLogged){j.airLogged=true;ev(S,{k:"air",id:j.rec.can.id,t2:j.tAir+JET_MS});S.lastFire=S.t;j.rec.can.tJet=S.t}
+      for(const c of S.cans){if(!c.removed&&c.tried!==j&&Math.abs(c.x-cfg.dR)<JET_HALF){c.tried=j;
+        if(r()<cfg.pushRel/100){c.removed=true;c.hitBy=j.rec;S.m.rejN++;
+          if(j.rec.can!==c){S.m.wrongHit++;log(S,`Jet removed can ${c.id}, but result #${j.rec.id} belonged to can ${j.rec.can.id}`,"f")}else log(S,`Can ${c.id} rejected`,"p")}
+        else{c.pushFail=true;S.m.pushFail++;log(S,`Air jet hit can ${c.id} but did not push it off`,"f")}}}
+    }
+  }
+  S.jets=S.jets.filter(j=>!j.fired||S.t-j.tCmd<600);
+  for(let i=S.cans.length-1;i>=0;i--){const c=S.cans[i];
+    if((c.removed&&c.eject>700)||c.x>xEnd){finalize(S,c);S.cans.splice(i,1)}}
+  if(S.t>=S.nextWin){S.nextWin+=2000;const m=S.m;S.win.push({t:S.t,fin:m.TP+m.TN+m.FP+m.FN+m.flagAcc,rej:m.TP+m.FP,fp:m.FP,fnv:m.FN-m.FNgap,gap:m.FNgap});if(S.win.length>120)S.win.shift()}
+  if(S.ev.length>3000){const lim=S.t-7000;S.ev=S.ev.filter(e=>(e.t2||e.t)>lim)}
+}
+
+// ================================================================ UI state
+const $=id=>document.getElementById(id);
+const cfg={cpm:220,defect:15,dev:0,speedMode:"offset",spacing:"steady",lateral:1.5,dT:45,dR:240,camMode:"preset",noise:0.03,guard:3,anom:200,
+  exposure:0.1,light:"normal",latMean:40,latJit:10,valve:10,pushRel:100,verify:true,consec:5,
+  track:"time",lockout:true,miss:0,dbl:0,actual:"match",preset:"12",rack:"12",sev:"mixed",multi:10,minor:"reject",side:false,mix:DEF.map(d=>d.k),
+  sol:"keyence",sensor:"e3z",focal:8,wdT:160};
+let S=makeSim(cfg,Date.now()%100000),running=true,speed=0.25,view="line";
+const fmt=(n,d=2)=>n==null||isNaN(n)?"—":Number(n).toFixed(d);
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+$("injType").innerHTML=`<option value="good">Good can</option><option value="random">Random defect</option>`+DEF.map(d=>`<option value="${d.k}">${d.sec} ${d.name}</option>`).join("");
+$("injType").value="random";
+
+function readCfg(){
+  for(const k of ["cpm","defect","dev","lateral","dT","dR","noise","guard","anom","exposure","latMean","latJit","valve","pushRel","consec","miss","dbl","multi","focal","wdT"])cfg[k]=+$(k).value;
+  for(const k of ["speedMode","spacing","camMode","track","actual","sev","minor","light","sol","sensor"])cfg[k]=$(k).value;
+  cfg.lockout=$("lockout").checked;cfg.verify=$("verify").checked;cfg.side=$("sidecam").checked;
+  cfg.preset=document.querySelector('input[name=preset]:checked').value;
+  cfg.mix=[...document.querySelectorAll('.mixbox:checked')].map(e=>e.dataset.k);
+  Object.assign(S.cfg,cfg,{mix:[...cfg.mix]});
+  const p=pitch(cfg);
+  const T=(id,t)=>{$(id).textContent=t};
+  T("cpmV",`${cfg.cpm} cans/min`);T("defectV",`${cfg.defect}%`);T("devV",`${cfg.dev>0?"+":""}${cfg.dev}%`);T("lateralV",`${fmt(cfg.lateral,1)} mm`);
+  T("dTV",`${cfg.dT} mm  (delay ${fmt((cfg.dT+R_EFF)/VNOM*1000,0)} ms)`);T("dRV",`${cfg.dR} mm  (${fmt(cfg.dR/VNOM*1000,0)} ms)`);
+  T("noiseV",`${fmt(cfg.noise,3)} mm`);T("guardV",`${fmt(cfg.guard,1)} σ`);T("anomV",`${cfg.anom}`);
+  T("exposureV",`${fmt(cfg.exposure,2)} ms → blur ${fmt(VNOM*cfg.exposure/1000,3)} mm`);
+  T("latV",`${cfg.latMean} ms`);T("latJitV",`± ${cfg.latJit} ms`);T("valveV",`${cfg.valve} ms`);T("pushRelV",`${cfg.pushRel}%`);T("consecV",`${cfg.consec}`);
+  T("missV",`${cfg.miss}%`);T("dblV",`${cfg.dbl}%`);T("multiV",`${cfg.multi}%`);
+  T("lineNote",`Can pitch ${fmt(p,1)} mm, gap ${fmt(p-CAN_D,1)} mm, ${fmt(p/VNOM*1000,0)} ms between cans.`+(VNOM*60/cfg.cpm<CAN_D?" This rate is above what 66 mm cans can reach at 49 ft/min.":""));
+  T("posNote",`${cfg.dT<p?"Sensor is less than one pitch from the camera, so only one trigger is ever pending.":"More than one can sits between sensor and camera, so triggers queue up."} About ${Math.floor(cfg.dR/p)} cans sit between camera and air jet. The valve is commanded ${cfg.valve} ms early to cover its response time.`);
+  const SO=solOf(cfg),lens=lensHeight(cfg,cfg.rack),wd=lens-HEIGHT[canSizeOf(cfg)],mmpx=mmpxOf(cfg,wd),fv=fovOf(cfg,wd);
+  T("wdTV",`${cfg.wdT} mm`);
+  T("solNote",`${SO.name}: ${SO.cam}, ${SO.res[0]} × ${SO.res[1]} px, ${SO.fps} fps, ${SO.mono?"monochrome":"colour"}; lens ${cfg.sol==="teledyne"?"Arducam C-mount "+cfg.focal+" mm":SO.lens}; ${SO.sw}. Sensor: ${(SENS[cfg.sensor]||{}).note||""}.`+(fv[1]<CAN_D+2*ROI_TOL?" Field of view is too small for the can plus position tolerance; choose a shorter lens or a longer working distance.":""));
+  $("light").disabled=cfg.sol==="teledyne";$("focal").disabled=$("wdT").disabled=cfg.sol!=="teledyne";
+  T("camNote",`Lens front ${fmt(lens,1)} mm above belt. Working distance ${fmt(wd,1)} mm → ${fmt(mmpx,3)} mm/px, field of view ≈ ${fmt(fv[0],0)} × ${fmt(fv[1],0)} mm. Motion blur ≈ ${fmt(VNOM*cfg.exposure/1000/mmpx,2)} px.`);
+  T("simspeedV",`${fmt(speed,2)}×`);
+  $("sideWrap").hidden=!cfg.side;
+}
+document.addEventListener("input",e=>{if(!e.target.matches("input,select"))return;
+  if(e.target.id==="simspeed")speed=+e.target.value;
+  if(["injType","span","g3labels","g3fov"].includes(e.target.id))return;readCfg()});
+function fillSensors(){const SO=SOL[$("sol").value],cur=$("sensor").value;$("sensor").innerHTML=SO.sensors.map(k=>`<option value="${k}">${SENS[k].name}</option>`).join("");if(SO.sensors.includes(cur))$("sensor").value=cur}
+$("sol").addEventListener("change",()=>{fillSensors();const SO=SOL[$("sol").value];$("latMean").value=SO.proc[0];$("latJit").value=SO.proc[1];readCfg();S=makeSim(cfg,Date.now()%100000);renderCatalog();shotKey=null;sizeFeeds();log(S,`Switched to ${SO.name}`,"w")});
+function sizeFeeds(){const SO=solOf(cfg);for(const id of ["camLive","camShot"]){const c=$(id);c.width=1024;c.height=Math.round(1024*SO.res[1]/SO.res[0])}const h=$("hFrame");h.width=640;h.height=Math.round(640*SO.res[1]/SO.res[0])}
+function setRunning(v){running=v;$("run").textContent=running?"Pause":"Run"}
+$("run").onclick=()=>setRunning(!running);
+$("reset").onclick=()=>{S=makeSim(cfg,Date.now()%100000);readCfg();renderCatalog();shotKey=null};
+$("inj").onclick=()=>{const v=$("injType").value;
+  if(v==="good"){S.forced.push("good");log(S,"Operator queued a good can")}
+  else{const k=v==="random"?DEF[Math.floor(Math.random()*DEF.length)].k:v;S.forced.push({type:k});log(S,`Operator queued a can with ${DK[k].sec} ${DK[k].name}`,"w")}};
+document.querySelectorAll('input[name=preset]').forEach(el=>el.addEventListener("change",()=>{cfg.rack=cfg.preset;S.cfg.rack=cfg.rack;readCfg();log(S,`Quick changeover to ${cfg.preset} oz (configuration selected and camera moved together)`,"w")}));
+function setMix(fn){document.querySelectorAll('.mixbox').forEach(e=>e.checked=fn(DK[e.dataset.k]));readCfg()}
+$("mixAll").onclick=()=>setMix(()=>true);$("mixNone").onclick=()=>setMix(()=>false);$("mixTop").onclick=()=>setMix(d=>d.view==="top");
+
+const tabs=[...document.querySelectorAll('[role=tab]')];
+function showView(v){view=v;tabs.forEach(t=>{const on=t.dataset.v===v;t.setAttribute("aria-selected",on);t.tabIndex=on?0:-1;$("v-"+t.dataset.v).hidden=!on});
+  try{localStorage.setItem("ils-view",v)}catch(e){}
+  if(v==="3d")init3D();shotKey=null;renderPanels(true)}
+tabs.forEach((t,i)=>{t.onclick=()=>showView(t.dataset.v);t.onkeydown=e=>{if(e.key==="ArrowRight"||e.key==="ArrowLeft"){const n=tabs[(i+(e.key==="ArrowRight"?1:tabs.length-1))%tabs.length];n.focus();showView(n.dataset.v)}}});
+
+// ================================================================ theme tokens
+let TK=null,TKt=0;
+function tok(){if(TK&&performance.now()-TKt<500)return TK;const s=getComputedStyle(document.documentElement);const g=k=>s.getPropertyValue(k).trim();
+  TKt=performance.now();
+  return TK={bg:g("--panel"),bg2:g("--panel-2"),scene:g("--scene"),ink:g("--ink"),muted:g("--muted"),line:g("--line"),accent:g("--accent"),pass:g("--pass"),fail:g("--fail"),info:g("--info"),steel:g("--steel"),steel2:g("--steel-2"),belt:g("--belt"),glow:g("--glow"),mono:g("--f-mono"),Critical:g("--crit"),Major:g("--major"),Minor:g("--minor")}}
+function clsColor(T,k){const c=DK[k].cls;return c==="Critical"?T.Critical:c==="Major"?T.Major:T.Minor}
+
+// ================================================================ LINE view (2D side)
+const cv=$("cv"),ctx=cv.getContext("2d");
+function drawLine(){
+  const T=tok(),W=cv.width,H=cv.height,c=S.cfg;
+  const beltY=H*0.74,xa=-c.dT-230,xb=c.dR+190,s=Math.min(W/(xb-xa),(beltY-24)/420);
+  const xm=(xa+xb)/2,x0=xm-W/(2*s);
+  const X=x=>(x-x0)*s,Y=z=>beltY-z*s,fs=Math.round(13*W/1600);
+  ctx.fillStyle=T.bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=T.belt;ctx.fillRect(0,beltY,W,10*s);
+  ctx.strokeStyle=T.line;ctx.lineWidth=1;
+  const off=(S.enc%38.1);for(let x=x0-off;x<x0+W/s;x+=38.1){ctx.beginPath();ctx.moveTo(X(x),beltY+1);ctx.lineTo(X(x),beltY+10*s-1);ctx.stroke()}
+  ctx.fillStyle=T.muted;ctx.font=`${fs}px ${T.mono}`;
+  const sy=beltY+10*s+40*W/1600;
+  ctx.strokeStyle=T.muted;ctx.beginPath();ctx.moveTo(X(-c.dT),sy);ctx.lineTo(X(c.dR+VERIFY_OFF),sy);ctx.stroke();
+  for(const [x,l,al] of [[-c.dT,`trigger −${c.dT} mm`,"right"],[0,"camera 0","left"],[c.dR,`air jet +${c.dR}`,"right"],[c.dR+VERIFY_OFF,"verify","left"]]){ctx.beginPath();ctx.moveTo(X(x),sy-8);ctx.lineTo(X(x),sy+8);ctx.stroke();ctx.textAlign=al;ctx.fillText(l,X(x)+(al==="right"?-6:6),sy+26*W/1600)}
+  ctx.fillStyle=T.line;ctx.fillRect(X(c.dR+15),beltY+16*s+56*W/1600,90*s,70*s);
+  ctx.fillStyle=T.muted;ctx.textAlign="center";ctx.fillText("reject tray",X(c.dR+60),beltY+16*s+56*W/1600+90*s);
+  const lens=lensHeight(c,c.rack),lb=Y(lens),flash=S.last&&S.t-S.last.tCap<60;
+  const wd=lens-HEIGHT[canSizeOf(c)],fov=fovOf(c,wd)[0];
+  ctx.fillStyle=flash?T.glow:"rgba(120,140,160,.10)";
+  ctx.beginPath();ctx.moveTo(X(-12),lb);ctx.lineTo(X(12),lb);ctx.lineTo(X(fov/2),Y(HEIGHT[canSizeOf(c)]));ctx.lineTo(X(-fov/2),Y(HEIGHT[canSizeOf(c)]));ctx.closePath();ctx.fill();
+  ctx.fillStyle=T.ink;ctx.fillRect(X(-24),lb-30*s-75*s,48*s,75*s);
+  ctx.fillStyle=T.steel2;ctx.fillRect(X(-15),lb-30*s,30*s,30*s);
+  ctx.fillStyle=flash?T.accent:T.steel;ctx.fillRect(X(-36),lb-12*s,72*s,12*s);
+  ctx.fillStyle=T.muted;ctx.textAlign="left";ctx.fillText(`${solOf(c).cam} + ${c.sol==="teledyne"?"Arducam "+c.focal+" mm":"CV-L3"} + ${solOf(c).light} · ${c.preset} oz configuration · WD ${fmt(wd,0)} mm`,X(40),lb-60*s);
+  const showTruth=$("truth").checked;
+  for(const k of S.cans){
+    const h=HEIGHT[k.size];let cx=k.x,base=0,alpha=1;
+    if(k.removed){const p=Math.min(1,k.eject/600);cx=k.x+40*p;base=-120*p*p;alpha=1-p*0.6}
+    ctx.globalAlpha=alpha;
+    const L=X(cx-33),R=X(cx+33),top=Y(base+h),bot=Y(base);
+    ctx.fillStyle=T.steel;ctx.fillRect(L,top+10*s,R-L,bot-top-10*s);
+    ctx.beginPath();ctx.moveTo(L,top+10*s);ctx.lineTo(X(cx-28.5),top+1.5*s);ctx.lineTo(X(cx+28.5),top+1.5*s);ctx.lineTo(R,top+10*s);ctx.fill();
+    ctx.fillStyle=T.steel2;ctx.fillRect(X(cx-28.5),top,57*s,2.5*s);
+    if(showTruth&&k.defects.length){k.defects.forEach((d,i)=>{const yy=top+(18+i*22)*s;ctx.fillStyle=clsColor(T,d);ctx.fillRect(X(cx-24),yy,48*s,17*s);
+      ctx.fillStyle=T.bg;ctx.font=`600 ${fs}px ${T.mono}`;ctx.textAlign="center";ctx.fillText(DK[d].sec,X(cx),yy+12.5*s)})}
+    if(k.result){ctx.fillStyle=k.result==="PASS"?(k.flagged?T.Minor:T.pass):T.fail;ctx.fillRect(L+4*s,top-16*s,R-L-8*s,11*s)}
+    ctx.fillStyle=T.bg;ctx.textAlign="center";ctx.font=`${fs}px ${T.mono}`;
+    if(k.result)ctx.fillText(k.flagged&&k.result==="PASS"?"FLAG":k.result,X(cx),top-7*s);
+    ctx.fillStyle=T.ink;ctx.fillText(`#${k.id}`,X(cx),bot-14*s);
+    ctx.globalAlpha=1;
+  }
+  if(c.side){const z=60;ctx.globalAlpha=.85;ctx.fillStyle=T.ink;ctx.fillRect(X(-14),Y(z)-16*s,28*s,32*s);
+    ctx.fillStyle=flash?T.accent:T.steel;ctx.beginPath();ctx.arc(X(0),Y(z),9*s,0,7);ctx.fill();ctx.globalAlpha=1;
+    ctx.fillStyle=T.ink;ctx.textAlign="center";ctx.fillText("side cam",X(0),Y(z)+30*s)}
+  const bz=45;
+  const sensorBox=(x,on,label,col)=>{ctx.fillStyle=col;ctx.fillRect(X(x)-9*s,Y(bz)-12*s,18*s,24*s);
+    ctx.strokeStyle=col;ctx.globalAlpha=on?0.9:0.3;ctx.setLineDash([6,5]);ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(X(x),Y(bz)+12*s);ctx.lineTo(X(x),beltY);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+    ctx.fillStyle=T.ink;ctx.textAlign="center";ctx.font=`${fs}px ${T.mono}`;ctx.fillText(label,X(x),Y(bz)-20*s)};
+  sensorBox(-c.dT,S.sensor,"trigger",T.info);
+  if(c.verify)sensorBox(c.dR+VERIFY_OFF,S.vsensor,"verify",T.info);
+  ctx.fillStyle=T.fail;ctx.fillRect(X(c.dR)-10*s,Y(bz)-12*s,20*s,24*s);
+  if(S.lastFire!=null&&S.t-S.lastFire<120){ctx.fillStyle=T.glow;ctx.beginPath();ctx.arc(X(c.dR),Y(bz),30*s,0,7);ctx.fill()}
+  ctx.fillStyle=T.ink;ctx.fillText("air jet",X(c.dR),Y(bz)-20*s);
+}
+
+// ================================================================ CAMERA views
+const noiseCv=document.createElement("canvas");noiseCv.width=256;noiseCv.height=192;
+(()=>{const n=noiseCv.getContext("2d"),im=n.createImageData(256,192);for(let i=0;i<im.data.length;i+=4){const g=Math.random()*255;im.data[i]=im.data[i+1]=im.data[i+2]=g;im.data[i+3]=255}n.putImageData(im,0,0)})();
+const PAL={normal:{bg:26,belt:44,slat:28,rail:150,body:[48,92],sh:[118,178],fl:236,inner:62,bottom:120,dome:175},
+  multi:{bg:22,belt:40,slat:26,rail:135,body:[44,86],sh:[110,160],fl:214,inner:76,bottom:132,dome:160},
+  lumi:{bg:96,belt:104,slat:98,rail:140,body:[112,124],sh:[124,134],fl:168,inner:118,bottom:126,dome:134}};
+let camColor=false;
+const gry=g=>camColor?`rgb(${Math.min(255,g*1.02)|0},${Math.min(255,g*1.01)|0},${Math.min(255,g*0.96+6)|0})`:`rgb(${g|0},${g|0},${g|0})`;
+function camProj(W,H,lens,o){const f=(o.focal/o.px)*(W/o.resW);return(X,Y,Z)=>{const d=lens-Z;return[W/2+f*X/d,H/2+f*Y/d,f/d]}}
+function drawCanTop(g,P,can,pal,light,opts){
+  const h=HEIGHT[can.size],X=can.x,Y=can.y,a=can.ang,has=k=>can.defects.includes(k)&&can.loc[k]!=="body";
+  const br=can.defects.includes("bround")?[1+can.v.bround*0.08,1-can.v.bround*0.08]:[1,1];
+  for(let i=0;i<=8;i++){const z=(h-18)*i/8,[u,v,s]=P(X,Y,z);g.fillStyle=gry(pal.body[0]+(pal.body[1]-pal.body[0])*i/8);
+    g.beginPath();g.ellipse(u,v,33*s*br[0],33*s*br[1],0,0,7);g.fill()}
+  let ox=0,oy=0;if(has("noff")){const m=can.v.noff*7;ox=Math.cos(a)*m;oy=Math.sin(a)*m}
+  for(let i=0;i<=6;i++){const t=i/6,z=h-18+15*t,rr=33-4.2*t,[u,v,s]=P(X+ox*t,Y+oy*t,z);g.fillStyle=gry(pal.sh[0]+(pal.sh[1]-pal.sh[0])*t);g.beginPath();g.ellipse(u,v,rr*s*(t<.5?br[0]:1),rr*s*(t<.5?br[1]:1),0,0,7);g.fill()}
+  if(has("ndent")){const [u,v,s]=P(X+Math.cos(a+1)*31,Y+Math.sin(a+1)*31,h-11);g.fillStyle=gry(light==="lumi"?40:pal.sh[0]-50);g.beginPath();g.ellipse(u,v,7*s,4*s,a+1,0,7);g.fill();
+    if(light==="lumi"){g.fillStyle=gry(220);g.beginPath();g.ellipse(u+2*s,v+2*s,5*s,2*s,a+1,0,7);g.fill()}}
+  if(has("engr")){const [u,v,s]=P(X+Math.cos(a-1.2)*30,Y+Math.sin(a-1.2)*30,h-9);g.fillStyle=gry(light==="lumi"?50:80);g.fillRect(u-5*s,v-2*s,10*s,4*s)}
+  const [cu,cv2,s]=P(X+ox,Y+oy,h);
+  let fo=28.45,fi=26.2;if(has("od"))fo*=1+(can.v.od-56.9)/56.9*6;if(has("width"))fi=fo-can.v.width/2*(can.v.width>2.2?1.9:0.5)*1.07;
+  const rq=has("round")?[1+(can.v.round-0.1)*0.07,1-(can.v.round-0.1)*0.07]:[1,1];
+  g.fillStyle=gry(pal.fl);g.beginPath();g.ellipse(cu,cv2,fo*s*rq[0],fo*s*rq[1],0,0,7);g.fill();
+  if(light==="lumi"){g.strokeStyle=gry(70);g.lineWidth=1.2*s;g.beginPath();g.ellipse(cu,cv2,fo*s*rq[0],fo*s*rq[1],0,0,7);g.stroke()}
+  g.save();g.beginPath();g.ellipse(cu,cv2,fi*s*rq[0],fi*s*rq[1],0,0,7);g.clip();
+  g.fillStyle=gry(pal.inner);g.fillRect(cu-fo*s*2,cv2-fo*s*2,fo*s*4,fo*s*4);
+  const [bu,bv,bs]=P(X,Y,4);g.fillStyle=gry(pal.bottom);g.beginPath();g.arc(bu,bv,31*bs,0,7);g.fill();
+  g.strokeStyle=gry(pal.dome);g.lineWidth=2.4*bs;g.beginPath();g.arc(bu,bv,14*bs,0,7);g.stroke();
+  if(has("stain")){g.fillStyle=camColor?"rgba(120,78,30,.65)":`rgba(40,40,40,${light==="multi"?.75:.45})`;g.beginPath();g.ellipse(bu+8*bs,bv+5*bs,10*bs,6*bs,.4,0,7);g.fill()}
+  if(has("debris")){g.fillStyle=gry(245);for(const [dx,dy,rr] of [[6,-8,2.6],[-9,4,1.8],[2,10,1.4]]){g.beginPath();g.arc(bu+dx*bs,bv+dy*bs,rr*bs,0,7);g.fill()}}
+  if(has("scratch")){g.strokeStyle=gry(230);g.lineWidth=.9*bs;g.beginPath();g.moveTo(bu-14*bs,bv-6*bs);g.lineTo(bu+6*bs,bv+8*bs);g.moveTo(bu-10*bs,bv-11*bs);g.lineTo(bu+9*bs,bv+2*bs);g.stroke()}
+  g.restore();
+  if(light==="lumi"){g.strokeStyle=gry(60);g.lineWidth=1.2*s;g.beginPath();g.ellipse(cu,cv2,fi*s*rq[0],fi*s*rq[1],0,0,7);g.stroke()}
+  if(has("bent")){g.strokeStyle=gry(light==="lumi"?20:255);g.lineWidth=3*s;g.beginPath();g.ellipse(cu,cv2,(fo+1.2)*s,(fo+1.2)*s,0,a-.5,a+.5);g.stroke();
+    g.strokeStyle=gry(40);g.lineWidth=1.6*s;g.beginPath();g.ellipse(cu,cv2,(fi+.4)*s,(fi+.4)*s,0,a-.45,a+.45);g.stroke()}
+  if(has("fdent")){const dx=Math.cos(a)*fi*s,dy=Math.sin(a)*fi*s;g.fillStyle=gry(light==="lumi"?25:50);g.beginPath();g.ellipse(cu+dx*1.04,cv2+dy*1.04,3.2*s,2*s,a,0,7);g.fill()}
+  if(has("crack")){g.strokeStyle=gry(15);g.lineWidth=1.3*s;g.beginPath();g.moveTo(cu+Math.cos(a)*(fi-.5)*s,cv2+Math.sin(a)*(fi-.5)*s);
+    for(let i=1;i<=4;i++){const rr=fi+(fo-fi+1.5)*i/4,aa=a+(i%2?.04:-.04);g.lineTo(cu+Math.cos(aa)*rr*s,cv2+Math.sin(aa)*rr*s)}g.stroke()}
+  if(opts.glare){const gx=cu+Math.cos(a+2.2)*fo*.95*s,gy=cv2+Math.sin(a+2.2)*fo*.95*s,gr=g.createRadialGradient(gx,gy,0,gx,gy,9*s);gr.addColorStop(0,"rgba(255,255,255,1)");gr.addColorStop(1,"rgba(255,255,255,0)");g.fillStyle=gr;g.beginPath();g.arc(gx,gy,9*s,0,7);g.fill()}
+}
+function camOpts(c,extra){const SO=solOf(c);return Object.assign({focal:focalOf(c),px:SO.px,resW:SO.res[0],color:!SO.mono,light:c.sol==="teledyne"?"normal":c.light},extra)}
+function renderCam(cvs,cans,o){
+  camColor=!!o.color;
+  const g=cvs.getContext("2d"),W=cvs.width,H=cvs.height,pal=PAL[o.light],P=camProj(W,H,o.lens,o);
+  g.save();g.fillStyle=gry(pal.bg);g.fillRect(0,0,W,H);
+  const blur=(o.blurPx/2)+(o.focus?3.5:0);g.filter=blur>0.35?`blur(${fmt(blur,2)}px)`:"none";
+  const c1=P(-500,-37.5,0),c2=P(500,37.5,0);g.fillStyle=gry(pal.belt);g.fillRect(0,c1[1],W,c2[1]-c1[1]);
+  g.strokeStyle=gry(pal.slat);g.lineWidth=2;const off=o.enc%38.1;
+  for(let x=-400-off;x<400;x+=38.1){const a=P(x,-37.5,0),b=P(x,37.5,0);g.beginPath();g.moveTo(a[0],a[1]);g.lineTo(b[0],b[1]);g.stroke()}
+  for(const sy of [-1,1]){const a=P(-500,sy*38,30),b=P(500,sy*43,30);g.fillStyle=gry(pal.rail);g.fillRect(0,Math.min(a[1],b[1]),W,Math.abs(b[1]-a[1]))}
+  [...cans].sort((p,q)=>Math.abs(q.x)-Math.abs(p.x)).forEach(cn=>drawCanTop(g,P,cn,pal,o.light,{glare:o.glareId===cn.id}));
+  g.filter="none";g.globalAlpha=.07;g.drawImage(noiseCv,-((Math.random()*20)|0),-((Math.random()*20)|0),W+40,H+40);g.globalAlpha=1;g.restore();
+  return P;
+}
+let shotKey=null,hold=false,ovTools=true,ovHeat=false;
+for(const [id,fn] of [["ovTools",v=>ovTools=v],["ovHeat",v=>ovHeat=v],["ovHold",v=>hold=v]])$(id).onclick=e=>{const b=e.currentTarget,v=b.getAttribute("aria-pressed")!=="true";b.setAttribute("aria-pressed",v);fn(v);shotKey=null};
+function defectPos(can,k){const h=HEIGHT[can.size],a=can.ang;
+  switch(k){case"bent":case"fdent":case"crack":return[can.x+Math.cos(a)*27,can.y+Math.sin(a)*27,h];
+    case"ndent":return[can.x+Math.cos(a+1)*31,can.y+Math.sin(a+1)*31,h-11];case"engr":return[can.x+Math.cos(a-1.2)*30,can.y+Math.sin(a-1.2)*30,h-9];
+    case"stain":return[can.x+8,can.y+5,4];case"debris":return[can.x+4,can.y-2,4];case"scratch":return[can.x-4,can.y,4];
+    default:return[can.x,can.y,h]}}
+function drawCamera(){
+  const c=S.cfg,lens=lensHeight(c,c.rack),flash=S.last&&S.t-S.last.tCap<25,SO=solOf(c);
+  const wdNow=lens-HEIGHT[canSizeOf(c)],mmpx=mmpxOf(c,wdNow),fv=fovOf(c,wdNow);
+  renderCam($("camLive"),S.cans.filter(k=>!k.removed&&Math.abs(k.x)<260),camOpts(c,{lens,enc:S.enc,blurPx:S.v*c.exposure/1000/mmpx,focus:Math.abs(wdNow-wdOf(c))>15}));
+  const g=$("camLive").getContext("2d"),W=1024,LH=$("camLive").height,mono=tok().mono;
+  g.font="600 18px "+mono;g.fillStyle="rgba(0,0,0,.55)";g.fillRect(0,0,W,30);g.fillStyle="#d7dde4";g.textAlign="left";
+  g.fillText(`LIVE  ${SO.short.toUpperCase()}  ${c.preset} oz  EXP ${fmt(c.exposure,2)} ms  ${lightOf(c).name.toUpperCase()}${SO.mono?"":"  COLOUR"}`,10,21);
+  g.textAlign="right";g.fillStyle=S.sensor?"#f0a630":"#6b7480";g.fillText(S.sensor?"● TRIG":"○ TRIG",W-10,21);
+  if(flash){g.strokeStyle="#ffffff";g.lineWidth=6;g.strokeRect(3,3,W-6,LH-6)}
+  $("liveHead").textContent=`Live · ${SO.short}`;$("liveInfo").textContent=`${SO.cam} · ${fmt(fv[0],0)} × ${fmt(fv[1],0)} mm field · ${fmt(mmpx,3)} mm/px`;
+  const rec=hold&&S.lastFail?S.lastFail:S.last;
+  if(!rec||!rec.can||!rec.snap)return;
+  const key=rec.id+"|"+(rec.result||"p")+"|"+ovTools+ovHeat;if(key===shotKey)return;shotKey=key;
+  drawInspected($("camShot"),rec);
+  if(rec.side)drawSide(rec);
+  renderCapInfo(rec);
+}
+function drawInspected(cvs,rec){
+  const mono=tok().mono,W=cvs.width,H=cvs.height,k0=W/1024;
+  const P=renderCam(cvs,rec.snap,{lens:rec.lens,light:rec.sol==="teledyne"?"normal":rec.light,enc:rec.encCap,blurPx:rec.blurPx,focus:rec.focusErr,glareId:rec.glare?rec.can.id:null,focal:rec.focal,px:SOL[rec.sol].px,resW:SOL[rec.sol].res[0],color:!SOL[rec.sol].mono});
+  const sg=cvs.getContext("2d"),can=rec.snap.find(k=>k.id===rec.can.id)||rec.can,h=HEIGHT[can.size];
+  sg.save();sg.scale(k0,k0);const Wl=1024,Hl=H/k0;const Pl=(x,y,z)=>{const p=P(x,y,z);return[p[0]/k0,p[1]/k0,p[2]/k0]};
+  const [cu,cv3,s]=Pl(can.x,can.y,h);
+  if(ovHeat){for(const k of rec.fails.concat(rec.flags)){const d=DK[k];if(!d)continue;const rr=k==="round"||k==="od"||k==="width"?30:16;
+    const pos=defectPos(can,k),[hu,hv,hs]=Pl(pos[0],pos[1],pos[2]);const gr=sg.createRadialGradient(hu,hv,0,hu,hv,rr*hs);
+    gr.addColorStop(0,"rgba(255,40,40,.75)");gr.addColorStop(1,"rgba(255,40,40,0)");sg.fillStyle=gr;sg.beginPath();sg.arc(hu,hv,rr*hs,0,7);sg.fill()}}
+  if(ovTools){
+    const roiS=Pl(0,0,h)[2];sg.setLineDash([10,7]);sg.strokeStyle="#f0a630";sg.lineWidth=2;
+    sg.strokeRect(Wl/2-(33+ROI_TOL)*roiS,Hl/2-(33+ROI_TOL)*roiS,2*(33+ROI_TOL)*roiS,2*(33+ROI_TOL)*roiS);sg.setLineDash([]);
+    const fail=k=>rec.fails.includes(k);
+    sg.lineWidth=2.5;sg.strokeStyle=fail("round")?"#ff5a4a":"#3ddc84";sg.beginPath();sg.arc(cu,cv3,26.2*s,0,7);sg.stroke();
+    sg.strokeStyle=fail("od")||fail("width")?"#ff5a4a":"#5fb4ff";sg.beginPath();sg.arc(cu,cv3,28.45*s,0,7);sg.stroke();
+    sg.strokeStyle="#3ddc84";sg.lineWidth=1.5;sg.beginPath();sg.moveTo(cu-12,cv3);sg.lineTo(cu+12,cv3);sg.moveTo(cu,cv3-12);sg.lineTo(cu,cv3+12);sg.stroke();
+    for(const k of rec.fails.concat(rec.flags)){if(!DK[k])continue;const pos=defectPos(can,k),[hu,hv]=Pl(pos[0],pos[1],pos[2]);
+      sg.strokeStyle=rec.fails.includes(k)?"#ff5a4a":"#93a6e0";sg.lineWidth=3;sg.beginPath();sg.arc(hu,hv,22,0,7);sg.stroke();
+      sg.font="700 17px "+mono;sg.fillStyle=sg.strokeStyle;sg.textAlign="left";sg.fillText(DK[k].sec,hu+25,hv-12)}
+    const top=k=>{const row=rec.rows.find(r=>r.k===k);return row&&row.readings.length?row.readings[0].val:null};
+    const lines=[`OPENING  RND ${fmt(top("round"),2)} mm`,`FLANGE   OD ${fmt(top("od"),2)}  W ${fmt(top("width"),2)}`,`FLANGE   DEV ${fmt(top("bent"),2)}  DENT ${fmt(top("fdent"),2)}`,
+      `NECK     DENT ${fmt(top("ndent"),2)}  OFF ${fmt(top("noff"),2)}`,`ANOMALY  CRK ${fmt(top("crack"),0)} SCR ${fmt(top("scratch"),0)} STN ${fmt(top("stain"),0)} FM ${fmt(top("debris"),0)}`,
+      `POS      dx ${fmt(rec.offset,1)}  dy ${fmt(rec.y,1)} mm`];
+    sg.font="500 15px "+mono;sg.fillStyle="rgba(0,0,0,.6)";sg.fillRect(8,40,470,lines.length*20+12);sg.fillStyle="#d7dde4";sg.textAlign="left";
+    lines.forEach((l,i)=>sg.fillText(l,16,60+i*20));
+    const sb=10*Pl(0,0,h)[2];sg.fillStyle="#d7dde4";sg.fillRect(Wl-30-sb,Hl-28,sb,4);sg.font="500 14px "+mono;sg.textAlign="right";sg.fillText("10 mm",Wl-30,Hl-36);
+  }
+  sg.font="600 18px "+mono;sg.fillStyle="rgba(0,0,0,.55)";sg.fillRect(0,0,Wl,30);sg.fillStyle="#d7dde4";sg.textAlign="left";
+  sg.fillText(`FRAME #${rec.id}  CAN #${rec.can.id}  t=${fmt(rec.tCap/1000,3)} s${rec.glare?"  GLARE":""}${rec.focusErr?"  FOCUS":""}${rec.fovErr?"  FOV":""}`,10,21);
+  if(rec.result){const pass=rec.result==="PASS";sg.font="700 54px "+mono;sg.textAlign="right";sg.fillStyle=pass?(rec.flags.length?"#93a6e0":"#3ddc84"):"#ff5a4a";sg.fillText(pass?(rec.flags.length?"FLAG":"PASS"):"FAIL",Wl-24,Hl-60)}
+  sg.restore();
+}
+function drawSide(rec){
+  const cvs=$("camSide"),g=cvs.getContext("2d"),W=cvs.width,H=cvs.height,s=W/300,base=H-40;
+  g.fillStyle="#15181c";g.fillRect(0,0,W,H);g.fillStyle="#2b3036";g.fillRect(0,base,W,40);
+  for(const can of rec.snap){if(Math.abs(can.x)>170)continue;const h=HEIGHT[can.size],x=W/2+can.x*s,hs=Math.min(1,(H-60)/(h*s));
+    const sc=s*hs,bw=33*sc*(can.defects.includes("bround")?1+can.v.bround*0.08:1);
+    const gr=g.createLinearGradient(x-bw,0,x+bw,0);gr.addColorStop(0,"#4b525a");gr.addColorStop(.42,"#d9dee4");gr.addColorStop(.55,"#f4f6f8");gr.addColorStop(1,"#3f454c");
+    g.fillStyle=gr;g.beginPath();g.moveTo(x-bw,base);g.lineTo(x-bw,base-(h-18)*sc);g.lineTo(x-28.5*sc,base-(h-3)*sc);g.lineTo(x-28.5*sc,base-h*sc);g.lineTo(x+28.5*sc,base-h*sc);g.lineTo(x+28.5*sc,base-(h-3)*sc);g.lineTo(x+bw,base-(h-18)*sc);g.lineTo(x+bw,base);g.closePath();g.fill();
+    const has=k=>can.defects.includes(k)&&can.loc[k]!=="upper";
+    if(has("bdent")){g.fillStyle="#1d2126";g.beginPath();g.ellipse(x+bw*.35,base-h*.45*sc,9*sc,13*sc,0,0,7);g.fill();g.fillStyle="#ffffff";g.globalAlpha=.6;g.beginPath();g.ellipse(x+bw*.35+4*sc,base-h*.45*sc-3*sc,4*sc,6*sc,0,0,7);g.fill();g.globalAlpha=1}
+    if(has("scratch")){g.strokeStyle="#ffffff";g.lineWidth=1.3;g.beginPath();g.moveTo(x-15*sc,base-h*.5*sc);g.lineTo(x+10*sc,base-h*.38*sc);g.moveTo(x-11*sc,base-h*.56*sc);g.lineTo(x+12*sc,base-h*.45*sc);g.stroke()}
+    if(has("engr")){g.fillStyle="#2c3137";g.fillRect(x+5*sc,base-h*.62*sc,14*sc,5*sc)}
+    if(has("stain")){g.fillStyle="rgba(60,48,30,.6)";g.beginPath();g.ellipse(x-10*sc,base-h*.3*sc,12*sc,8*sc,0,0,7);g.fill()}
+    if(has("debris")){g.fillStyle="#efe6c8";g.beginPath();g.arc(x+6*sc,base-h*.7*sc,3*sc,0,7);g.fill()}
+    if(can.defects.includes("ndent")){g.fillStyle="#22272c";g.beginPath();g.ellipse(x-29*sc,base-(h-10)*sc,4*sc,6*sc,0,0,7);g.fill()}
+    if(can.id===rec.can.id&&rec.result){const f=rec.rows.some(r=>r.fail&&r.readings.some(q=>q.cam==="Side"&&q.bad));g.strokeStyle=f?"#ff5a4a":"#3ddc84";g.lineWidth=3;g.strokeRect(x-bw-6,base-h*sc-6,2*bw+12,h*sc+6)}}
+  g.font="600 16px "+tok().mono;g.fillStyle="#d7dde4";g.textAlign="left";g.fillText(`SIDE  FRAME #${rec.id}`,10,22);
+}
+function renderCapInfo(rec){
+  const c=rec.can,cfgL=S.cfg;
+  const truth=c.defects.length?c.defects.map(k=>`<span class="cls ${clsKey(DK[k].cls)}">${DK[k].sec}</span> ${DK[k].name}${c.loc[k]?` (${c.loc[k]==="body"?"outside of body":"inside / upper"})`:""}`).join("<br>"):'<span class="ok">good can</span>';
+  const res=rec.result?`<span class="pill ${rec.result==="PASS"?(rec.flags.length?"info":"pass"):"fail"}">${rec.result}${rec.flags.length&&rec.result==="PASS"?" · FLAG":""}</span>`:`<span class="pill">processing</span>`;
+  $("capInfo").innerHTML=`Result #${rec.id} · can ${c.id} (${c.size} oz) ${res}<br>Truth: ${truth}<br>Position ${fmt(rec.offset,1)}, ${fmt(rec.y,1)} mm · WD ${fmt(rec.wd,0)} mm · blur ${fmt(rec.blurPx,2)} px · ${rec.sol==="teledyne"?"White ring light":LIGHT[rec.light].name} · ${SOL[rec.sol].short}${rec.glare?' · <span class="gp">glare</span>':""}${rec.focusErr?' · <span class="ng">focus mismatch</span>':""}`;
+  let html=`<tr><th>Check</th><th>Camera</th><th class="num">Measured</th><th class="num">True</th><th class="num">Limit</th><th></th></tr>`,lastArea="";
+  const ord=a=>AREAS.indexOf(DK[a.k].area);
+  for(const row of [...rec.rows].sort((a,b)=>ord(a)-ord(b))){const d=DK[row.k];
+    if(d.area!==lastArea){html+=`<tr class="area"><td colspan="6">${d.area}</td></tr>`;lastArea=d.area}
+    const isDef=c.defects.includes(d.k),fm=v=>d.score?fmt(v,0):fmt(v,2),lim=d.score?`≤ ${cfgL.anom}`:d.lo!=null?`${d.lo}–${d.hi}`:`≤ ${d.hi}`;
+    if(!row.readings.length){html+=`<tr><td>${d.sec} ${d.ch}</td><td class="hint">none</td><td class="num">—</td><td class="num">${isDef?fm(c.v[d.k]):"—"}</td><td class="num">${lim}</td><td class="${isDef?"gp":"hint"}">${isDef?"NOT SEEN":"—"}</td></tr>`;continue}
+    const worst=row.readings.reduce((a,b)=>(b.bad&&!a.bad)?b:a,row.readings[0]),unseen=isDef&&!row.readings.some(x=>x.sees);
+    const verdict=row.fail?'<span class="ng">FAIL</span>':row.flag?'<span class="fl">FLAG</span>':unseen?'<span class="gp">NOT SEEN</span>':isDef?'<span class="ng">MISSED</span>':'<span class="ok">ok</span>';
+    html+=`<tr><td>${d.sec} ${d.ch}</td><td class="hint">${row.readings.map(x=>x.cam).join(" + ")}</td><td class="num">${fm(worst.val)}</td><td class="num">${fm(c.v[d.k])}</td><td class="num">${lim}</td><td>${verdict}</td></tr>`}
+  if(rec.offCentre)html+=`<tr><td colspan="5">Can outside ±${ROI_TOL} mm ROI window</td><td class="ng">FAIL</td></tr>`;
+  if(rec.fovErr)html+=`<tr><td colspan="5">Field of view smaller than the can plus position tolerance (lens / working distance)</td><td class="ng">FAIL</td></tr>`;
+  html+=`<tr><td colspan="6" class="hint">Each decision limit is the spec limit tightened by ${fmt(cfgL.guard,1)} σ for that camera, lighting and blur. Uncertain cans are rejected because a missed defect costs more than a false reject.</td></tr>`;
+  $("meas").innerHTML=html;
+}
+
+// ================================================================ 3D view (small WebGL engine)
+const g3={};
+const M4={
+  id:()=>{const m=new Float32Array(16);m[0]=m[5]=m[10]=m[15]=1;return m},
+  mul:(a,b)=>{const o=new Float32Array(16);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s}return o},
+  persp:(fov,asp,n,f)=>{const t=1/Math.tan(fov/2),o=new Float32Array(16);o[0]=t/asp;o[5]=t;o[10]=(f+n)/(n-f);o[11]=-1;o[14]=2*f*n/(n-f);return o},
+  look:(e,c,u)=>{const z=norm([e[0]-c[0],e[1]-c[1],e[2]-c[2]]),x=norm(cross(u,z)),y=cross(z,x);
+    return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,e),-dot(y,e),-dot(z,e),1])},
+  trs:(tx,ty,tz,sx=1,sy=1,sz=1)=>new Float32Array([sx,0,0,0,0,sy,0,0,0,0,sz,0,tx,ty,tz,1])
+};
+function norm(v){const l=Math.hypot(...v)||1;return v.map(x=>x/l)}
+function cross(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]}
+function dot(a,b){return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]}
+function geoBox(){const p=[],n=[],i=[];const F=[[[1,0,0],[0,1,0],[0,0,1]],[[-1,0,0],[0,-1,0],[0,0,1]],[[0,1,0],[-1,0,0],[0,0,1]],[[0,-1,0],[1,0,0],[0,0,1]],[[0,0,1],[1,0,0],[0,1,0]],[[0,0,-1],[-1,0,0],[0,1,0]]];
+  for(const [N,U,V] of F){const b=p.length/3;for(const [a,c] of [[-1,-1],[1,-1],[1,1],[-1,1]]){p.push(.5*(N[0]+a*U[0]+c*V[0]),.5*(N[1]+a*U[1]+c*V[1]),.5*(N[2]+a*U[2]+c*V[2]));n.push(...N)}i.push(b,b+1,b+2,b,b+2,b+3)}return{p,n,i}}
+function geoLathe(prof,seg=40,axis="z"){const p=[],n=[],i=[];
+  for(let s=0;s<prof.length-1;s++){const [r0,z0]=prof[s],[r1,z1]=prof[s+1];let nr=z1-z0,nz=-(r1-r0);const l=Math.hypot(nr,nz)||1;nr/=l;nz/=l;
+    const b=p.length/3;for(let k=0;k<=seg;k++){const a=k/seg*Math.PI*2,c=Math.cos(a),sn=Math.sin(a);
+      for(const [r,z] of [[r0,z0],[r1,z1]]){const P=[r*c,r*sn,z],N=[nr*c,nr*sn,nz];if(axis==="y"){p.push(P[0],P[2],P[1]);n.push(N[0],N[2],N[1])}else{p.push(...P);n.push(...N)}}}
+    for(let k=0;k<seg;k++){const a=b+k*2;i.push(a,a+1,a+3,a,a+3,a+2)}}return{p,n,i}}
+function geoTorus(R,r,s1=48,s2=12){const p=[],n=[],i=[];for(let a=0;a<=s1;a++){const A=a/s1*Math.PI*2;for(let b=0;b<=s2;b++){const B=b/s2*Math.PI*2,cx=Math.cos(A),sx=Math.sin(A),cb=Math.cos(B),sb=Math.sin(B);
+  p.push((R+r*cb)*cx,(R+r*cb)*sx,r*sb);n.push(cb*cx,cb*sx,sb)}}for(let a=0;a<s1;a++)for(let b=0;b<s2;b++){const q=a*(s2+1)+b;i.push(q,q+s2+1,q+1,q+1,q+s2+1,q+s2+2)}return{p,n,i}}
+function sphere(r){const pr=[];for(let k=0;k<=12;k++){const a=-Math.PI/2+k/12*Math.PI;pr.push([Math.cos(a)*r,Math.sin(a)*r])}return geoLathe(pr,24)}
+function canProfile(h){return[[0,1],[30,0.5],[33,4],[33,h-18],[28.45,h-3],[28.45,h],[26.2,h],[26.2,h-3],[31,h-18],[31,6],[0,8]]}
+function mkMesh(gl,g){const b=gl.createBuffer(),ib=gl.createBuffer(),d=new Float32Array(g.p.length*2);
+  for(let k=0;k<g.p.length/3;k++){d[k*6]=g.p[k*3];d[k*6+1]=g.p[k*3+1];d[k*6+2]=g.p[k*3+2];d[k*6+3]=g.n[k*3];d[k*6+4]=g.n[k*3+1];d[k*6+5]=g.n[k*3+2]}
+  gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,d,gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(g.i),gl.STATIC_DRAW);return{b,ib,count:g.i.length}}
+function hexRgb(h){h=(h||"").trim();if(h.startsWith("#")){const v=h.length===4?h.slice(1).split("").map(x=>x+x).join(""):h.slice(1);return[0,2,4].map(k=>parseInt(v.slice(k,k+2),16)/255)}
+  const m=h.match(/[\d.]+/g);return m?m.slice(0,3).map(x=>+x/255):[.5,.5,.5]}
+function init3D(){
+  if(g3.gl!==undefined)return;
+  const cvs=$("gl");let gl=null;try{gl=cvs.getContext("webgl",{antialias:true,alpha:false})}catch(e){}
+  g3.gl=gl;
+  if(!gl){$("glmsg").hidden=false;return}
+  const sh=(t,src)=>{const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(s));return s};
+  const pr=gl.createProgram();
+  gl.attachShader(pr,sh(gl.VERTEX_SHADER,`attribute vec3 p;attribute vec3 n;uniform mat4 M,VP;varying vec3 vN,vW;void main(){vec4 w=M*vec4(p,1.);vW=w.xyz;vN=mat3(M)*n;gl_Position=VP*w;}`));
+  gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,`precision mediump float;uniform vec3 C,E,eye;uniform float A,met,unlit;varying vec3 vN,vW;
+    void main(){if(unlit>.5){gl_FragColor=vec4(C,A);return;}vec3 N=normalize(vN);if(!gl_FrontFacing)N=-N;
+    vec3 L1=normalize(vec3(-.35,-.55,1.)),L2=normalize(vec3(.6,.4,.35));vec3 V=normalize(eye-vW);
+    float d=max(dot(N,L1),0.)*.7+max(dot(N,L2),0.)*.28;float hemi=.32+.2*N.z;vec3 H=normalize(L1+V);vec3 H2=normalize(L2+V);
+    float sp=pow(max(dot(N,H),0.),mix(10.,70.,met))*mix(.06,1.,met)+pow(max(dot(N,H2),0.),40.)*.35*met;
+    vec3 col=C*(hemi+d*(1.-.45*met))+vec3(sp)+E;gl_FragColor=vec4(col,A);}`));
+  gl.linkProgram(pr);gl.useProgram(pr);g3.pr=pr;
+  g3.u=Object.fromEntries(["M","VP","C","E","eye","A","met","unlit"].map(k=>[k,gl.getUniformLocation(pr,k)]));
+  g3.ap=gl.getAttribLocation(pr,"p");g3.an=gl.getAttribLocation(pr,"n");
+  g3.box=mkMesh(gl,geoBox());g3.cyl=mkMesh(gl,geoLathe([[0,0],[1,0],[1,1],[0,1]],32));g3.cylY=mkMesh(gl,geoLathe([[0,0],[1,0],[1,1],[0,1]],24,"y"));
+  g3.torus=mkMesh(gl,geoTorus(33,6));g3.band=mkMesh(gl,geoTorus(34.2,2.4,40,6));g3.sph=mkMesh(gl,sphere(1));g3.disc=mkMesh(gl,geoLathe([[0,0],[1,0]],32));
+  g3.cans={};for(const s of ["12","16","19.2"])g3.cans[s]=mkMesh(gl,geoLathe(canProfile(HEIGHT[s]),40));
+  g3.lineBuf=gl.createBuffer();
+  g3.cam={az:-58,el:26,r:1000,tgt:[110,20,80],mode:"iso"};
+  const wrap=$("glwrap");let drag=null;
+  wrap.addEventListener("pointerdown",e=>{drag=[e.clientX,e.clientY];try{wrap.setPointerCapture(e.pointerId)}catch(_){}wrap.style.cursor="grabbing"});
+  wrap.addEventListener("pointermove",e=>{if(!drag)return;const dx=e.clientX-drag[0],dy=e.clientY-drag[1];drag=[e.clientX,e.clientY];
+    if(g3.cam.mode==="pov"||g3.cam.mode==="follow"){g3.cam.mode="free";g3.cam.tgt=[120,20,90];pressView(null)}
+    g3.cam.az-=dx*0.35;g3.cam.el=clamp(g3.cam.el+dy*0.3,2,89)});
+  wrap.addEventListener("pointerup",()=>{drag=null;wrap.style.cursor=""});
+  wrap.addEventListener("wheel",e=>{e.preventDefault();g3.cam.r=clamp(g3.cam.r*(e.deltaY>0?1.1:0.9),300,4000)},{passive:false});
+  const fit=()=>{const r=wrap.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);cvs.width=Math.max(10,r.width*dpr|0);cvs.height=Math.max(10,r.height*dpr|0)};
+  new ResizeObserver(fit).observe(wrap);fit();
+  $("gl3labels").innerHTML=["Trigger sensor","Camera","Air jet","Verify sensor","Reject tray","Side camera"].map((t,i)=>`<div class="lbl3" id="lb${i}">${t}</div>`).join("");
+}
+const VIEWS={iso:{az:-58,el:26,r:1000,tgt:[110,20,80]},front:{az:-90,el:8,r:950,tgt:[110,0,90]},top:{az:-90,el:89,r:1150,tgt:[110,0,0]},along:{az:180,el:16,r:800,tgt:[0,0,90]}};
+function pressView(v){document.querySelectorAll(".vbtn").forEach(b=>b.setAttribute("aria-pressed",b.dataset.view===v))}
+function setView(v){g3.cam.mode=v;if(VIEWS[v])Object.assign(g3.cam,VIEWS[v],{tgt:[...VIEWS[v].tgt]});pressView(v)}
+document.querySelectorAll(".vbtn").forEach(b=>b.onclick=()=>{init3D();if(g3.gl)setView(b.dataset.view)});
+function draw3D(){
+  const gl=g3.gl;if(!gl)return;const c=S.cfg,T=tok(),u=g3.u,W=gl.canvas.width,H=gl.canvas.height;
+  gl.viewport(0,0,W,H);const bg=hexRgb(T.scene);gl.clearColor(bg[0],bg[1],bg[2],1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.enable(gl.DEPTH_TEST);
+  const lens=lensHeight(c,c.rack),flash=S.last&&S.t-S.last.tCap<60,tel=c.sol==="teledyne";
+  let eye,tgt,up=[0,0,1],fov=40*Math.PI/180;const cam=g3.cam;
+  if(cam.mode==="pov"){eye=[0,0,lens+5];tgt=[0,0,0];up=[0,1,0];fov=74.2*Math.PI/180}
+  else{let t=cam.tgt;if(cam.mode==="follow"){const fc=S.cans.find(k=>!k.removed&&k.x>-c.dT-60);if(fc)t=[fc.x,0,80]}
+    const az=cam.az*Math.PI/180,el=cam.el*Math.PI/180,r=cam.mode==="follow"?700:cam.r;
+    eye=[t[0]+r*Math.cos(el)*Math.cos(az),t[1]+r*Math.cos(el)*Math.sin(az),t[2]+r*Math.sin(el)];tgt=t;if(cam.el>88)up=[0,1,0]}
+  const VP=M4.mul(M4.persp(fov,W/H,10,8000),M4.look(eye,tgt,up));
+  gl.uniformMatrix4fv(u.VP,false,VP);gl.uniform3fv(u.eye,eye);
+  const ops=[],tr=[];
+  const put=(mesh,M,col,o={})=>{const it={mesh,M,col,e:o.e||[0,0,0],a:o.a??1,met:o.met??0.1,unlit:o.unlit?1:0};(it.a<1?tr:ops).push(it)};
+  const boxAt=(x0,x1,y0,y1,z0,z1,col,o)=>put(g3.box,M4.trs((x0+x1)/2,(y0+y1)/2,(z0+z1)/2,x1-x0,y1-y0,z1-z0),col,o);
+  const X0=-c.dT-420,X1=c.dR+VERIFY_OFF+380,steel=[.72,.75,.79],frame=[.55,.58,.62];
+  boxAt(X0,X1,-170,170,-60,-6,[.42,.46,.52]);
+  boxAt(X0,X1,-37.5,37.5,-6,0,[.24,.27,.31],{met:.2});
+  const off=S.enc%38.1;for(let x=X0+38.1-off;x<X1;x+=38.1)boxAt(x-1.4,x+1.4,-37.5,37.5,0,0.8,[.16,.18,.21]);
+  boxAt(X0,X1,-42.5,-37.5,10,30,steel,{met:.6});
+  boxAt(X0,c.dR-70,37.5,42.5,10,30,steel,{met:.6});boxAt(c.dR+70,X1,37.5,42.5,10,30,steel,{met:.6});
+  for(let x=X0+40;x<X1;x+=160){boxAt(x-3,x+3,-46,-42.5,-6,30,frame);if(x<c.dR-75||x>c.dR+75)boxAt(x-3,x+3,42.5,46,-6,30,frame)}
+  const tx0=c.dR-95,tx1=c.dR+95,tray=[.36,.4,.46];boxAt(tx0,tx1,45,160,-6,0,tray);boxAt(tx0,tx1,155,160,0,40,tray);boxAt(tx0,tx0+5,45,160,0,40,tray);boxAt(tx1-5,tx1,45,160,0,40,tray);
+  const post=[.3,.36,.45];
+  boxAt(-12,12,96,120,-6,lens+30+75+30,post);boxAt(-20,20,84,132,lens+30+60,lens+30+105,post);boxAt(-12,12,0,96,lens+30+75,lens+30+93,post);
+  if(tel){boxAt(-24,24,-24,24,lens+30+54,lens+30+75,[.3,.36,.45]);
+    boxAt(-22,22,-14.5,14.5,lens+30+33,lens+30+54,[.55,.08,.1],{met:.4});
+    put(g3.cyl,M4.trs(0,0,lens,15,15,63),[.1,.1,.11],{met:.5});
+    put(g3.torus,M4.trs(0,0,lens-3,.95,.95,.8),flash?[1,1,1]:[.86,.88,.9],{e:flash?[.8,.8,.8]:[.05,.05,.05],met:.2})}
+  else{boxAt(-24,24,-24,24,lens+30,lens+30+75,[.12,.2,.4],{met:.3});
+    boxAt(-15,-6,24,34,lens+60,lens+80,[.15,.15,.17]);boxAt(6,15,24,34,lens+60,lens+80,[.15,.15,.17]);
+    put(g3.cyl,M4.trs(0,0,lens,15,15,30),[.12,.12,.14],{met:.5});
+    put(g3.torus,M4.trs(0,0,lens-3),flash?[1,.85,.4]:[.85,.68,.25],{e:flash?[.9,.7,.2]:[.08,.06,0],met:.2})}
+  if($("g3fov").checked&&cam.mode!=="pov"){const zc=HEIGHT[canSizeOf(c)],wd=lens-zc,fv=fovOf(c,wd),fx=fv[0]/2,fy=fv[1]/2;
+    const pts=[];for(const [a,b] of [[1,1],[1,-1],[-1,-1],[-1,1]])pts.push([0,0,lens],[a*fx,b*fy,zc]);
+    const cr=[[fx,fy],[fx,-fy],[-fx,-fy],[-fx,fy],[fx,fy]];for(let k=0;k<4;k++)pts.push([cr[k][0],cr[k][1],zc],[cr[k+1][0],cr[k+1][1],zc]);
+    g3.lines={pts,col:flash?[1,.75,.2]:[.95,.65,.15]}}else g3.lines=null;
+  const sens=(x,on)=>{if(tel&&x<0){put(g3.cylY,M4.trs(x,-95,45,9,45,9),[.2,.2,.22],{met:.6});boxAt(x-4,x+4,-98,-90,-6,36,frame)}else boxAt(x-12,x+12,-80,-50,30,60,[.16,.38,.75],{met:.2});boxAt(x-4,x+4,-90,-80,-6,30,frame);
+    boxAt(x-.9,x+.9,-50,40,44,46,[.3,.6,1],{unlit:1,a:on?.95:.22})};
+  sens(-c.dT,S.sensor);if(c.verify)sens(c.dR+VERIFY_OFF,S.vsensor);
+  boxAt(c.dR-13,c.dR+13,-98,-70,30,60,[.72,.2,.17],{met:.2});boxAt(c.dR-4,c.dR+4,-108,-98,-6,30,frame);
+  put(g3.cylY,M4.trs(c.dR,-70,45,7,22,7),[.65,.66,.7],{met:.7});
+  if(S.lastFire!=null&&S.t-S.lastFire<160){const p=(S.t-S.lastFire)/160;put(g3.sph,M4.trs(c.dR,-35+40*p,45,10+40*p,10+40*p,10+40*p),[1,1,1],{a:.35*(1-p),unlit:1})}
+  if(c.side){boxAt(-22,22,-250,-190,60,110,[.15,.17,.2],{met:.3});put(g3.cylY,M4.trs(0,-190,85,12,25,12),[.1,.1,.12],{met:.5})}
+  const showTruth=$("truth").checked;
+  for(const k of S.cans){let x=k.x,y=k.y;
+    if(k.removed){const p=Math.min(1,k.eject/500);y=k.y+110*p;x=k.x+20*p}
+    put(g3.disc,M4.trs(x,y,0.9,36,36,1),[0,0,0],{unlit:1,a:.22});
+    put(g3.cans[k.size],M4.trs(x,y,0),[.83,.85,.88],{met:.85});
+    if(cam.mode==="pov")continue;
+    if(showTruth&&k.defects.length)k.defects.forEach((d,i)=>{const col=hexRgb(clsColor(T,d));put(g3.band,M4.trs(x,y,HEIGHT[k.size]*(.45-i*.12)),col,{met:.1,e:col.map(q=>q*.25)})});
+    if(k.result){const col=k.result==="PASS"?(k.flagged?hexRgb(T.Minor):hexRgb(T.pass)):hexRgb(T.fail);put(g3.sph,M4.trs(x,y,HEIGHT[k.size]+28,8,8,8),col,{e:col.map(q=>q*.4)})}}
+  S.pile.forEach((p,i)=>{const x=c.dR-60+(i%3)*60,y=85+Math.floor(i/3)*55;put(g3.cans[p.size],M4.trs(x,y,0),[.83,.85,.88],{met:.85})});
+  const drawIt=it=>{gl.bindBuffer(gl.ARRAY_BUFFER,it.mesh.b);gl.vertexAttribPointer(g3.ap,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(g3.an,3,gl.FLOAT,false,24,12);
+    gl.enableVertexAttribArray(g3.ap);gl.enableVertexAttribArray(g3.an);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,it.mesh.ib);
+    gl.uniformMatrix4fv(u.M,false,it.M);gl.uniform3fv(u.C,it.col);gl.uniform3fv(u.E,it.e);gl.uniform1f(u.A,it.a);gl.uniform1f(u.met,it.met);gl.uniform1f(u.unlit,it.unlit);
+    gl.drawElements(gl.TRIANGLES,it.mesh.count,gl.UNSIGNED_SHORT,0)};
+  gl.disable(gl.BLEND);ops.forEach(drawIt);
+  if(g3.lines){const d=new Float32Array(g3.lines.pts.length*6);g3.lines.pts.forEach((p,k)=>d.set([p[0],p[1],p[2],0,0,1],k*6));
+    gl.bindBuffer(gl.ARRAY_BUFFER,g3.lineBuf);gl.bufferData(gl.ARRAY_BUFFER,d,gl.DYNAMIC_DRAW);gl.vertexAttribPointer(g3.ap,3,gl.FLOAT,false,24,0);gl.vertexAttribPointer(g3.an,3,gl.FLOAT,false,24,12);
+    gl.uniformMatrix4fv(u.M,false,M4.id());gl.uniform3fv(u.C,g3.lines.col);gl.uniform1f(u.A,1);gl.uniform1f(u.unlit,1);gl.drawArrays(gl.LINES,0,g3.lines.pts.length)}
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);tr.forEach(drawIt);gl.depthMask(true);
+  const show=$("g3labels").checked&&cam.mode!=="pov",r=$("glwrap").getBoundingClientRect();
+  const pts=[[-c.dT,-65,75],[0,0,lens+150],[c.dR,-84,75],[c.dR+VERIFY_OFF,-65,75],[c.dR,110,60],[0,-220,125]];
+  $("lb0").textContent=(SENS[c.sensor]||SENS.e3z).name.replace(/,.*$/,"");$("lb1").textContent=tel?`Genie Nano C1280 + Arducam ${c.focal} mm`:"VS-C320MX + CV-L3 + CA-DRM5X";
+  pts.forEach((p,i)=>{const el=$("lb"+i);const v=[0,1,2,3].map(j=>VP[j]*p[0]+VP[4+j]*p[1]+VP[8+j]*p[2]+VP[12+j]);
+    const vis=show&&v[3]>0&&(i!==3||c.verify)&&(i!==5||c.side);el.hidden=!vis;if(vis){el.style.left=((v[0]/v[3]+1)/2*r.width)+"px";el.style.top=((1-v[1]/v[3])/2*r.height)+"px"}});
+}
+
+// ================================================================ TIMING view
+const ROWS=[["Trigger sensor"],["Trigger pulse"],["Exposure"],["Processing"],["Result"],["Valve command"],["Air at nozzle"],["Verify sensor"],["Reject failure"]];
+function drawTiming(){
+  const cvs=$("trace"),g=cvs.getContext("2d"),W=cvs.width,H=cvs.height,T=tok(),span=+$("span").value,t1=S.t,t0=t1-span;
+  const L=190,rh=(H-60)/ROWS.length,X=t=>L+(t-t0)/span*(W-L-20);
+  g.fillStyle=T.bg;g.fillRect(0,0,W,H);g.font=`16px ${T.mono}`;
+  g.strokeStyle=T.line;g.lineWidth=1;g.fillStyle=T.muted;g.textAlign="center";
+  const stepMs=span<=800?100:span<=1600?200:400;
+  for(let tt=Math.ceil(t0/stepMs)*stepMs;tt<=t1;tt+=stepMs){g.beginPath();g.moveTo(X(tt),20);g.lineTo(X(tt),H-36);g.stroke();g.fillText(fmt(tt/1000,1)+" s",X(tt),H-14)}
+  ROWS.forEach(([lab],i)=>{const y=20+i*rh;g.fillStyle=T.ink;g.textAlign="left";g.fillText(lab,10,y+rh*0.62);g.strokeStyle=T.line;g.beginPath();g.moveTo(L,y+rh);g.lineTo(W-20,y+rh);g.stroke()});
+  const lvl=(i,a,b,col,label)=>{const y=20+i*rh,x0=Math.max(L,X(a)),x1=Math.min(W-20,Math.max(X(b),X(a)+2));if(x1<L)return;g.fillStyle=col;g.fillRect(x0,y+rh*.22,x1-x0,rh*.56);
+    if(label&&x1-x0>16){g.fillStyle=T.bg;g.textAlign="center";g.font=`600 14px ${T.mono}`;g.fillText(label,(x0+x1)/2,y+rh*.62);g.font=`16px ${T.mono}`}};
+  const tick=(i,t,col,label)=>{const y=20+i*rh,x=X(t);if(x<L)return;g.strokeStyle=col;g.lineWidth=3;g.beginPath();g.moveTo(x,y+rh*.15);g.lineTo(x,y+rh*.85);g.stroke();g.lineWidth=1;
+    if(label){g.fillStyle=col;g.textAlign="left";g.font=`600 14px ${T.mono}`;g.fillText(label,x+4,y+rh*.4);g.font=`16px ${T.mono}`}};
+  const pair=(on,off,row,col)=>{let start=null,id=null;
+    for(const e of S.ev){if(e.k!==on&&e.k!==off)continue;if(e.k===on){start=e.t;id=e.id}else if(start!=null){if(e.t>=t0)lvl(row,start,e.t,col,id!=null?String(id):"");start=null}}
+    if(start!=null)lvl(row,start,t1,col,id!=null?String(id):"")};
+  pair("son","soff",0,T.info);pair("von","voff",7,T.info);
+  for(const e of S.ev){if((e.t2||e.t)<t0-50)continue;
+    if(e.k==="trig")tick(1,e.t,T.accent,String(e.id));
+    else if(e.k==="exp")lvl(2,e.t,e.t2,T.ink,String(e.id));
+    else if(e.k==="proc")lvl(3,e.t,e.t2,T.steel2,String(e.id));
+    else if(e.k==="res")lvl(4,e.t,e.t+10,e.v==="PASS"?T.pass:T.fail,String(e.id));
+    else if(e.k==="cmd")tick(5,e.t,T.fail,String(e.id));
+    else if(e.k==="air")lvl(6,e.t,e.t2,T.fail,String(e.id));
+    else if(e.k==="ver")tick(8,e.t,T.fail,"#"+e.id)}
+  g.strokeStyle=T.accent;g.beginPath();g.moveTo(X(t1),20);g.lineTo(X(t1),H-36);g.stroke();
+}
+function outcomePill(o){return{TP:'<span class="pill pass">correct reject</span>',TN:'<span class="pill pass">correct pass</span>',FP:'<span class="pill warn">false reject</span>',FN:'<span class="pill fail">missed</span>',FLAG:'<span class="pill info">flagged</span>'}[o]||""}
+function renderTimingPanels(){
+  const c=S.cfg,m=S.m,v=S.v,p=pitch(c),lat=m.latN?m.latSum/m.latN:c.latMean,latMax=m.latMax||lat;
+  const items=[["Can-to-can interval",p/v*1000,"var(--steel-2)"],["Trigger → capture",(c.dT+R_EFF)/v*1000,"var(--info)"],["Exposure",c.exposure,"var(--ink)"],
+    ["Processing (mean)",lat,"var(--steel-2)"],["Processing (max seen)",latMax,"var(--steel-2)"],["Capture → jet travel",c.dR/v*1000,"var(--accent)"],["Valve lead",c.valve,"var(--fail)"]];
+  const margin=c.dR/v*1000-latMax-c.valve;const maxV=Math.max(...items.map(i=>i[1]),margin);
+  $("budget").innerHTML=items.map(([l,val,col])=>`<div class="row"><span>${l}</span><span class="bar2"><i style="left:0;width:${clamp(val/maxV*100,0.4,100)}%;background:${col}"></i></span><span>${fmt(val,val<1?2:0)} ms</span></div>`).join("")+
+    `<div class="row"><span><b>Margin before the can reaches the jet</b></span><span class="bar2"><i style="left:0;width:${clamp(Math.max(0,margin)/maxV*100,0.4,100)}%;background:${margin>0?"var(--pass)":"var(--fail)"}"></i></span><span class="${margin>0?"ok":"ng"}">${fmt(margin,0)} ms</span></div>`;
+  $("budgetNote").textContent=`A result later than this margin cannot be acted on (late results so far: ${m.late}). The ${solOf(c).cam} can start a new exposure every ${fmt(1000/solOf(c).fps,1)} ms at ${solOf(c).fps} fps (dropped captures: ${m.dropped}).`;
+  $("ttable").innerHTML=`<tr><th>Can</th><th class="num">Trigger</th><th class="num">Capture</th><th class="num">Result</th><th class="num">Air jet</th><th>Outcome</th></tr>`+
+    [...S.hist].reverse().slice(0,10).map(h=>`<tr><td class="num">#${h.id}</td><td class="num">${h.tTrig!=null?fmt(h.tTrig/1000,3)+" s":"—"}</td><td class="num">${h.tCap!=null?"+"+fmt(h.tCap-h.tTrig,0)+" ms":"—"}</td><td class="num">${h.tRes?"+"+fmt(h.tRes-h.tTrig,0)+" ms":"—"}</td><td class="num">${h.tJet?"+"+fmt(h.tJet-h.tTrig,0)+" ms":"—"}</td><td>${outcomePill(h.outcome)}</td></tr>`).join("");
+}
+
+// ================================================================ DASHBOARD
+function svgLine(series,opts){const W=600,H=230,l=44,r=44,t=14,b=30,T=tok();
+  const n=Math.max(2,series[0].pts.length),X=i=>l+i/(n-1)*(W-l-r);
+  let s=`<svg class="svgchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${opts.label}">`;
+  for(let k=0;k<=4;k++){const y=t+k*(H-t-b)/4;s+=`<line x1="${l}" x2="${W-r}" y1="${y}" y2="${y}" stroke="${T.line}"/>`;
+    s+=`<text x="${l-6}" y="${y+4}" fill="${T.muted}" font-size="11" text-anchor="end" font-family="${T.mono}">${fmt(series[0].max*(1-k/4),0)}</text>`;
+    if(series[1])s+=`<text x="${W-r+6}" y="${y+4}" fill="${T.muted}" font-size="11" font-family="${T.mono}">${fmt(series[1].max*(1-k/4),0)}%</text>`}
+  series.forEach(sr=>{const Y=v=>t+(1-v/sr.max)*(H-t-b);const pts=sr.pts.map((v,i)=>`${X(i)},${Y(v)}`).join(" ");
+    if(sr.fill)s+=`<polygon points="${X(0)},${H-b} ${pts} ${X(sr.pts.length-1)},${H-b}" fill="${sr.color}" opacity=".12"/>`;
+    s+=`<polyline points="${pts}" fill="none" stroke="${sr.color}" stroke-width="2"/>`;
+    const lv=sr.pts[sr.pts.length-1];if(lv!=null)s+=`<circle cx="${X(sr.pts.length-1)}" cy="${Y(lv)}" r="3.5" fill="${sr.color}"/>`});
+  s+=`<text x="${l}" y="${H-8}" fill="${T.muted}" font-size="11" font-family="${T.mono}">${opts.xlab}</text>`;
+  s+=series.map((sr,i)=>`<text x="${W-r-(i?0:100)}" y="${H-8}" fill="${sr.color}" font-size="11" text-anchor="end" font-family="${T.mono}">● ${sr.name}</text>`).join("");
+  return s+"</svg>"}
+function svgBars(rows,opts){const T=tok(),W=600,rh=24,l=opts.l||190,H=rows.length*rh+10;const max=Math.max(1,...rows.map(r=>r.parts.reduce((a,p)=>a+p.v,0)));
+  let s=`<svg class="svgchart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${opts.label}">`;
+  rows.forEach((r,i)=>{const y=5+i*rh;s+=`<text x="${l-8}" y="${y+16}" fill="${T.ink}" font-size="12" text-anchor="end">${esc(r.label)}</text>`;let x=l;
+    r.parts.forEach(p=>{const w=p.v/max*(W-l-60);if(w>0)s+=`<rect x="${x}" y="${y+4}" width="${w}" height="${rh-9}" rx="2" fill="${p.c}"/>`;x+=w});
+    s+=`<text x="${x+6}" y="${y+16}" fill="${T.muted}" font-size="11" font-family="${T.mono}">${r.parts.reduce((a,p)=>a+p.v,0)}</text>`});
+  return s+"</svg>"}
+function renderDash(){
+  const T=tok(),w=S.win,m=S.m;
+  const rate=[],rej=[];for(let i=1;i<w.length;i++){const a=w[i-1],b=w[i],fin=b.fin-a.fin;rate.push(fin/2*60);rej.push(fin?(b.rej-a.rej)/fin*100:0)}
+  $("chartRate").innerHTML=rate.length<2?'<p class="hint">Collecting data, one point every 2 s of line time.</p>':svgLine([{name:"cans/min",pts:rate,max:Math.max(240,...rate),color:T.info,fill:true},{name:"reject %",pts:rej,max:Math.max(30,...rej),color:T.fail}],{label:"Throughput and reject rate over time",xlab:`last ${fmt(rate.length*2,0)} s of line time`});
+  const rows=DEF.map(d=>({label:`${d.sec} ${d.name}`,st:S.ds[d.k]})).filter(r=>r.st.n).sort((a,b)=>b.st.n-a.st.n)
+    .map(r=>({label:r.label,parts:[{v:r.st.rej,c:T.pass},{v:r.st.miss,c:T.fail},{v:r.st.gap,c:T.accent},{v:r.st.flag,c:T.Minor}]}));
+  $("chartPareto").innerHTML=rows.length?svgBars(rows,{label:"Defect outcomes by type",l:250})+`<div class="keys"><span><i style="background:var(--pass)"></i>rejected</span><span><i style="background:var(--fail)"></i>missed</span><span><i style="background:var(--accent)"></i>outside view</span><span><i style="background:var(--minor)"></i>flagged</span></div>`:'<p class="hint">No defective cans finished yet.</p>';
+  const cs={Critical:{n:0,r:0,m:0,g:0},Major:{n:0,r:0,m:0,g:0},Minor:{n:0,r:0,m:0,g:0}};
+  for(const d of DEF){const st=S.ds[d.k],key=d.cls==="Minor / Major"?"Minor":d.cls;cs[key].n+=st.n;cs[key].r+=st.rej;cs[key].m+=st.miss;cs[key].g+=st.gap}
+  $("chartClass").innerHTML=svgBars(Object.entries(cs).map(([k,v])=>({label:k,parts:[{v:v.r,c:T.pass},{v:v.m,c:T.fail},{v:v.g,c:T.accent}]})),{label:"Detection by class",l:90});
+  const fp=Object.entries(m.fpByCh).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:DK[k]?`${DK[k].sec} ${DK[k].ch}`:k==="roi"?"Off-centre in ROI":"Focus mismatch",parts:[{v,c:T.accent}]}));
+  if(m.fpCause["jet hit the wrong can"])fp.push({label:"Jet hit the wrong can",parts:[{v:m.fpCause["jet hit the wrong can"],c:T.fail}]});
+  $("chartFP").innerHTML=fp.length?svgBars(fp,{label:"Checks that rejected good cans",l:200}):'<p class="hint">No false rejects yet.</p>';
+  const fn=Object.entries(m.missCause).sort((a,b)=>b[1]-a[1]).map(([k,v])=>({label:k,parts:[{v,c:k==="outside camera view"?T.accent:T.fail}]}));
+  $("chartFN").innerHTML=fn.length?svgBars(fn,{label:"Causes of missed defects",l:200}):'<p class="hint">No missed defects yet.</p>';
+}
+
+// ================================================================ DEFECTS catalog
+function rateBar(st){const n=st.n||1;
+  return `<div class="rate"><div class="track"><i class="r" style="width:${st.rej/n*100}%"></i><i class="m" style="width:${st.miss/n*100}%"></i><i class="g" style="width:${st.gap/n*100}%"></i><i class="q" style="width:${st.flag/n*100}%"></i></div><span>${st.n?fmt(st.rej/st.n*100,0)+"%":"—"}</span></div>`}
+function seenBy(d,side){
+  if(d.view==="top")return"Top";
+  if(d.view==="side")return side?"Side":'<span class="gp">no camera</span>';
+  if(d.view==="silh")return side?"Side + top silhouette":"Top silhouette (coarse)";
+  return side?"Top (inside) + side (outside)":'Top inside only <span class="gp">· body side unseen</span>';
+}
+const limText=d=>d.score?`score ≤ ${cfg.anom}`:d.lo!=null?`${fmt(d.lo)}–${fmt(d.hi)} ${d.u}`:`≤ ${fmt(d.hi)} ${d.u}`;
+function renderCatalog(){
+  const checked=new Set(cfg.mix);
+  let html=`<tr><th>§</th><th>Defect</th><th>Class</th><th>PASS / FAIL limit</th><th>Seen by</th><th>Lighting</th><th>In mix</th><th class="num">Seen</th><th class="num">Rejected</th><th class="num">Missed</th><th class="num">Gap</th><th>Rejected share</th><th></th></tr>`;
+  for(const d of DEF){const st=S.ds[d.k];
+    html+=`<tr><td class="sec">${d.sec}</td><td>${d.name}<div class="hint">${d.area}</div></td><td><span class="cls ${clsKey(d.cls)}">${d.cls}</span></td><td class="num">${limText(d)}</td><td>${seenBy(d,cfg.side)}</td>
+      <td class="hint">${SHAPE.has(d.k)?"LumiTrax helps":CONTRAST.has(d.k)?"Multi-Spectrum helps":"—"}</td>
+      <td><input type="checkbox" class="mixbox" data-k="${d.k}" id="mix_${d.k}" ${checked.has(d.k)?"checked":""} aria-label="Include ${d.name} in the random mix"></td>
+      <td class="num">${st.n}</td><td class="num">${st.rej}</td><td class="num">${st.miss}</td><td class="num">${st.gap}</td><td>${rateBar(st)}</td>
+      <td><button class="sm injone" data-k="${d.k}">Inject</button></td></tr>`;}
+  html+=`<tr class="area"><td colspan="13">Listed in the Defect Requirements but not checked at this station</td></tr>`;
+  for(const o of OOS)html+=`<tr class="oos"><td class="sec">${o[0]}</td><td>${o[1]}</td><td>${o[2]}</td><td colspan="10">${o[3]}</td></tr>`;
+  $("catalog").innerHTML=html;
+  document.querySelectorAll(".injone").forEach(b=>b.onclick=()=>{const k=b.dataset.k;S.forced.push({type:k});log(S,`Operator queued a can with ${DK[k].sec} ${DK[k].name}`,"w")});
+}
+function updateCatalogCounts(){const rows=$("catalog").rows;
+  DEF.forEach((d,i)=>{const st=S.ds[d.k],tr=rows[i+1];if(!tr)return;
+    tr.cells[7].textContent=st.n;tr.cells[8].textContent=st.rej;tr.cells[9].textContent=st.miss;tr.cells[9].className="num "+(st.miss?"ng":"");
+    tr.cells[10].textContent=st.gap;tr.cells[10].className="num "+(st.gap?"gp":"");tr.cells[11].innerHTML=rateBar(st);tr.cells[4].innerHTML=seenBy(d,cfg.side);tr.cells[3].textContent=limText(d)})}
+
+// ================================================================ panels (status + Line tab)
+function renderStatus(){
+  const m=S.m,fin=m.TP+m.TN+m.FP+m.FN+m.flagAcc,w=S.win;let rate=0;
+  if(w.length>=2){const a=w[Math.max(0,w.length-6)],b=w[w.length-1];rate=(b.fin-a.fin)/((b.t-a.t)/60000)}
+  const good=m.TN+m.FP;
+  const tiles=[["Cans finished",fin],["Throughput",rate?fmt(rate,0)+"/min":"—"],["Rejected",m.TP+m.FP],["Missed (visible)",m.FN-m.FNgap,m.FN-m.FNgap>0?"hot":""],
+    ["Coverage gap",m.FNgap,m.FNgap?"gapc":""],["False rejects",`${m.FP}${good?" · "+fmt(m.FP/good*100,1)+"%":""}`],["Alarms",m.alarms,m.alarms?"hot":""]];
+  $("status").innerHTML=tiles.map(([k,v,c])=>`<div class="${c||""}">${k}<b>${v}</b></div>`).join("");
+  $("clock").textContent=`t = ${fmt(S.t/1000,3)} s · ${fmt(S.enc/1000,2)} m of belt · ${fmt(S.v,1)} mm/s`;
+}
+function renderLinePanels(){
+  const m=S.m;
+  $("mTN").textContent=m.TN;$("mFP").textContent=m.FP;$("mFN").textContent=m.FN;$("mTP").textContent=m.TP;
+  $("mFNs").textContent=m.FNgap?`missed · ${m.FNgap} outside view`:"missed defect";
+  const cs={Critical:{n:0,r:0},Major:{n:0,r:0},Minor:{n:0,r:0}};
+  for(const d of DEF){const st=S.ds[d.k],key=d.cls==="Minor / Major"?"Minor":d.cls;cs[key].n+=st.n;cs[key].r+=st.rej}
+  $("classsum").innerHTML=Object.entries(cs).map(([k,v])=>`<div><span class="cls ${k}">${k}</span><b>${v.r} / ${v.n}</b>rejected</div>`).join("");
+  const rows=[["Minor defects passed with a flag",m.flagAcc],["Triggers accepted",m.trig],["Triggers ignored by lockout",m.ignored],["Captures dropped (62 fps)",m.dropped,m.dropped>0],
+    ["Cans never inspected",m.uninspected,m.uninspected>0],["Cans inspected twice",m.multi,m.multi>0],["Air-jet pulses",m.fires],["Pushes that failed",m.pushFail,m.pushFail>0],
+    ["Results too late for the jet",m.late,m.late>0],["Jet hit the wrong can",m.wrongHit,m.wrongHit>0],["FAIL cans that escaped",m.escapedFail,m.escapedFail>0],
+    ["Verify-sensor alarms",m.verifyAlarm,m.verifyAlarm>0],["Glare in image",m.glare],["Off-centre images",m.offCentre,m.offCentre>0],["Out-of-focus images",m.focus,m.focus>0]];
+  for(const [k,v] of Object.entries(m.missCause))rows.push([`Missed: ${k}`,v,k==="outside camera view"?"gap":true]);
+  $("kv").innerHTML=rows.map(([k,v,a])=>`<span>${k}</span><span class="${a==="gap"?"gapc":a?"alert":""}">${v}</span>`).join("");
+  const q=[...S.cans].filter(c=>c.x>-S.cfg.dT-40).sort((a,b)=>b.x-a.x).slice(0,9);
+  $("queue").innerHTML=`<tr><th>Can</th><th>Position</th><th>Result</th><th>Next action</th></tr>`+q.map(c=>{
+    const res=c.result;let act="—";
+    if(c.removed)act='<span class="pill fail">rejected</span>';
+    else if(res==="FAIL")act=c.x>S.cfg.dR+JET_HALF?'<span class="ng">escaped</span>':`jet in ${fmt(Math.max(0,S.cfg.dR-c.x),0)} mm`;
+    else if(res==="PASS")act=c.flagged?"to filler, flagged":"to filler";
+    else if(c.x<0)act="awaiting capture";else act="processing";
+    return`<tr><td class="num">#${c.id}</td><td class="num">${fmt(c.x,0)} mm</td><td>${res?`<span class="pill ${res==="PASS"?(c.flagged?"info":"pass"):"fail"}">${res}</span>`:'<span class="pill">—</span>'}</td><td>${act}</td></tr>`}).join("");
+  $("alarms").innerHTML=S.alarms.length?[...S.alarms].reverse().slice(0,8).map(a=>`<div class="alarm"><time>${fmt(a.t/1000,2)} s</time><span>${esc(a.msg)}</span></div>`).join(""):"No alarms.";
+  const lg=$("log");const atBottom=lg.scrollHeight-lg.scrollTop-lg.clientHeight<20;
+  lg.innerHTML=S.log.slice(-90).map(e=>`<div class="${e.cls||""}">${fmt(e.t/1000,3)} s  ${esc(e.msg)}</div>`).join("");
+  if(atBottom)lg.scrollTop=lg.scrollHeight;
+}
+let slowT=0;
+function renderPanels(force){
+  renderStatus();
+  if(view==="hmi")renderHmi(force);
+  if(view==="line")renderLinePanels();
+  if(view==="timing")renderTimingPanels();
+  if(view==="defects")updateCatalogCounts();
+  if(view==="dash"&&(force||performance.now()-slowT>700)){slowT=performance.now();renderDash()}
+}
+
+// ================================================================ OPERATOR HMI
+const hmi={p:"startup",done:{},sel:null,off:false};
+function hmiState(){
+  if(hmi.off)return["STOPPED","Shut down. Run the startup procedure to start again."];
+  if(S.fault)return["FAULT",S.fault];
+  if(cfg.rack!==cfg.preset)return["NOT READY",`Camera is at the ${cfg.rack} oz height but the ${cfg.preset} oz configuration is selected. Move the camera (changeover step 3).`];
+  if(running)return["RUNNING","Inspecting every can"];
+  return[S.everStarted?"STOPPED":"READY",S.everStarted?"Inspection stopped by the operator":"Ready to start"];
+}
+$("hStart").onclick=()=>{const [st,why]=hmiState();if(st==="FAULT"||st==="NOT READY"){$("hStateWhy").textContent="Cannot start: "+why;return}hmi.off=false;S.everStarted=true;setRunning(true);log(S,"Operator started inspection","w")};
+$("hStop").onclick=()=>{setRunning(false);S.everStarted=true;log(S,"Operator stopped inspection","w")};
+$("hAck").onclick=()=>{if(S.fault){log(S,"Operator reset the fault: "+S.fault,"w");S.fault=null}};
+document.querySelectorAll(".pbtn").forEach(b=>b.onclick=()=>{hmi.p=b.dataset.p;hmi.done={};document.querySelectorAll(".pbtn").forEach(x=>x.setAttribute("aria-pressed",x===b));$("hTargetWrap").hidden=hmi.p!=="change";renderHmi(true)});
+$("hTarget").addEventListener("change",()=>{hmi.done={};renderHmi(true)});
+function selectConfig(p){const el=document.querySelector(`input[name=preset][value="${p}"]`);el.checked=true;readCfg();log(S,`Configuration ${p} oz selected (${solOf(cfg).prog(p)})`,"w")}
+function moveCamera(p){cfg.rack=p;S.cfg.rack=p;readCfg();log(S,`Camera moved: lens front ${fmt(lensHeight(cfg,p),1)} mm above the belt for ${p} oz`,"w")}
+function procSteps(){
+  const tgt=$("hTarget").value,lensT=fmt(lensHeight(cfg,hmi.p==="change"?tgt:cfg.preset),1),SO=solOf(cfg);
+  const pendFail=S.cans.some(c=>c.result==="FAIL"&&!c.removed&&c.x<=cfg.dR+JET_HALF);
+  if(hmi.p==="startup")return[
+    {t:`Power on the ${SO.cam}, lighting, presence sensor and air supply`,b:"Confirm",do:()=>{hmi.off=false;hmi.done.p=1},ok:hmi.done.p},
+    {t:`Select the can-size configuration (now ${cfg.preset} oz · ${SO.prog(cfg.preset)})`,b:"Confirm",do:()=>hmi.done.c=1,ok:hmi.done.c},
+    {t:`Check camera position: lens front ${lensT} mm above the belt`,b:"Move camera",do:()=>moveCamera(cfg.preset),ok:cfg.rack===cfg.preset},
+    {t:"Check the trigger: the sensor LED switches as a can passes",b:"Confirm",do:()=>hmi.done.tr=1,ok:hmi.done.tr},
+    {t:"Verify the inspection view on the camera screen",b:"Confirm",do:()=>hmi.done.v=1,ok:hmi.done.v},
+    {t:"System READY: start inspection",b:"Start",do:()=>$("hStart").click(),ok:running}];
+  if(hmi.p==="change")return[
+    {t:"Stop inspection",b:"Stop",do:()=>$("hStop").click(),ok:!running},
+    {t:`Select the ${tgt} oz configuration (${SO.prog(tgt)})`,b:"Select",do:()=>selectConfig(tgt),ok:cfg.preset===tgt},
+    {t:`Move the camera to ${lensT} mm above the belt`,b:"Move camera",do:()=>moveCamera(tgt),ok:cfg.rack===tgt},
+    {t:"Run a test can and verify the inspection view",b:"Send test can",do:()=>{S.forced.push("good");hmi.done.v=1;log(S,"Changeover test can queued; check its frame on the Camera tab after start","w")},ok:hmi.done.v},
+    {t:"Start production inspection",b:"Start",do:()=>$("hStart").click(),ok:running&&cfg.preset===tgt}];
+  return[
+    {t:"Stop inspection",b:"Stop",do:()=>$("hStop").click(),ok:!running},
+    {t:"Wait until every tracked FAIL can has passed the air jet",b:null,ok:!pendFail},
+    {t:"Save the counters and the failed-inspection log",b:"Confirm",do:()=>hmi.done.s=1,ok:hmi.done.s},
+    {t:`Power down the ${SO.cam}, lighting and sensor`,b:"Power down",do:()=>{hmi.off=true;setRunning(false);log(S,"Station shut down","w")},ok:hmi.off}];
+}
+let hmiKey="";
+function renderHmi(force){
+  const [st,why]=hmiState(),SO=solOf(cfg),m=S.m;
+  $("hState").textContent=st;$("hState").className="state "+st.split(" ")[0];$("hStateWhy").textContent=why;
+  $("hConf").textContent=`${cfg.preset} oz`;$("hProg").textContent=`${SO.prog(cfg.preset)} · ${SO.name}`;
+  const L=S.last;$("hRes").textContent=L&&L.result?L.result:"—";$("hRes").className="bigres "+(L&&L.result||"");
+  $("hResWhy").textContent=L&&L.result?`Can #${L.can.id}`+(L.fails.length?` · ${L.fails.map(k=>DK[k]?DK[k].sec+" "+DK[k].ch:k==="roi"?"off-centre":k==="fov"?"field of view":"focus").join(", ")}`:""):"";
+  const w=S.win;let rate=0;if(w.length>=2){const a=w[Math.max(0,w.length-6)],b=w[w.length-1];rate=(b.fin-a.fin)/((b.t-a.t)/60000)}
+  $("hCounts").innerHTML=[["Inspected (FR-36)",m.inspected],["PASS",m.passN],["FAIL",m.failN],["Rejected",m.rejN],["Reject rate",m.inspected?fmt(m.failN/m.inspected*100,1)+"%":"—"],["Throughput",rate?fmt(rate,0)+"/min":"—"]]
+    .map(([k,v])=>`<div class="hmi-tile"><small>${k}</small><b>${v}</b></div>`).join("");
+  const key=S.failLog.map(r=>r.id).join(",")+"|"+hmi.sel;
+  if(force||key!==hmiKey){hmiKey=key;
+    $("hFails").innerHTML=S.failLog.length?S.failLog.map(r=>`<button data-id="${r.id}" aria-pressed="${hmi.sel===r.id}"><span class="pill fail">FAIL</span><span><b>Can #${r.can.id}</b> · ${fmt(r.tCap/1000,2)} s<br><span class="hint">${r.fails.map(k=>DK[k]?`${DK[k].sec} ${DK[k].ch} ${fmt(r.rows.find(x=>x.k===k).readings.find(q=>q.bad)?.val??0,DK[k].score?0:2)} (limit ${DK[k].score?"≤ "+cfg.anom:DK[k].lo!=null?DK[k].lo+"–"+DK[k].hi:"≤ "+DK[k].hi})`:k==="roi"?"Can off-centre in ROI":k==="fov"?"Can larger than field of view":"Focus mismatch").join(" · ")}</span></span><span class="hint">${r.can.defects.length?"true defect":"good can"}</span></button>`).join(""):'<p class="hint">No failed inspections yet.</p>';
+    document.querySelectorAll("#hFails button").forEach(b=>b.onclick=()=>{hmi.sel=+b.dataset.id;renderHmi(true)});
+    const r=S.failLog.find(x=>x.id===hmi.sel)||S.failLog[0];
+    if(r&&r.snap){drawInspected($("hFrame"),r);$("hFrameInfo").textContent=`Frame #${r.id} · can #${r.can.id} · ${r.can.size} oz · ${SOL[r.sol].cam} · truth: ${r.can.defects.length?r.can.defects.map(k=>DK[k].sec+" "+DK[k].name).join(", "):"good can (false reject)"}`}
+  }
+  const steps=procSteps();
+  $("hSteps").innerHTML=steps.map((x,i)=>`<li class="${x.ok?"done":""}"><span class="ck">${x.ok?"✓":""}</span><span>${i+1}. ${x.t}</span>${x.b?`<button class="sm" data-i="${i}">${x.b}</button>`:'<span class="hint">automatic</span>'}</li>`).join("");
+  document.querySelectorAll("#hSteps button").forEach(b=>b.onclick=()=>{steps[+b.dataset.i].do();renderHmi(true)});
+  $("hProcNote").textContent={startup:"FR-44 / TR-44 and FR-45 / TR-45: power-up, configuration, camera position, trigger and view checks before production.",change:"FR-46 / TR-46 and FR-K10 / FR-T9: select the configuration, move the camera, verify, restart. The station stays NOT READY until the camera height matches the configuration.",shutdown:"FR-47 / TR-47: stop, let tracked FAIL cans clear the jet, save data, power down."}[hmi.p];
+  const hw=cfg.sol==="keyence"?[
+    ["Camera","KEYENCE VS-C320MX","IP67","ok"],["Lens","KEYENCE CV-L3 (3.5 mm)","covered by camera hood / check","warn"],["Lighting","KEYENCE CA-DRM5X","rated 0–40 °C, max 65% RH: protect or enclose","warn"],
+    ["Presence sensor",(SENS[cfg.sensor]||SENS.e3z).name,cfg.sensor==="e3z"?"IP67":"confirm rating",cfg.sensor==="e3z"?"ok":"warn"],["Software","VS Creator + VS-AD1 AI add-in license","—",""],["Operator interface","KEYENCE dedicated display","mount away from washdown or enclose","warn"],["Rejector","Yards pneumatic air-shot rejector","provided by Yards","ok"]]:[
+    ["Camera","Teledyne Genie Nano G3-GC10-C1280","no IP rating listed: enclosure required","warn"],["Lens",`Arducam C-mount ${cfg.focal} mm (≥ 1/2-inch)`,"inside the camera enclosure","warn"],["Lighting","White LED ring light","choose an IP67 light or enclose","warn"],
+    ["Presence sensor","HiLetgo E18-D80NK","no IP rating: protect or replace","warn"],["Computer","Windows PC, Python / OpenCV","install in a protected panel","warn"],["Operator interface","Custom PC application","—",""],["Rejector","Yards pneumatic air-shot rejector","provided by Yards","ok"]];
+  $("hHw").innerHTML=`<tr><th>Item</th><th>Selection</th><th>FR-52 (IP67 / IP68)</th></tr>`+hw.map(([a,b,c,k])=>`<tr><td>${a}</td><td>${b}</td><td class="${k==="ok"?"okc":k==="warn"?"warnc":""}">${c}</td></tr>`).join("");
+}
+
+// ================================================================ main loop
+let lastTs=null,panelT=0;
+function frame(ts){
+  if(lastTs==null)lastTs=ts;const real=Math.min(100,ts-lastTs);lastTs=ts;
+  if(running){let simMs=real*speed;while(simMs>0){const d=Math.min(1,simMs);step(S,d);simMs-=d}}
+  try{if(view==="line")drawLine();else if(view==="camera")drawCamera();else if(view==="3d")draw3D();else if(view==="timing")drawTiming()}catch(e){console.error(e)}
+  panelT+=real;if(panelT>150){panelT=0;renderPanels()}
+  requestAnimationFrame(frame);
+}
+
+// ================================================================ virtual test bench
+function runCase(over,opts){
+  const c={...cfg,cpm:220,defect:0,dev:0,speedMode:"offset",spacing:"steady",lateral:1.5,dT:45,dR:240,camMode:"preset",noise:0.03,guard:3,anom:200,
+    exposure:0.1,light:"normal",latMean:40,latJit:10,valve:10,pushRel:100,verify:true,consec:5,
+    track:"time",lockout:true,miss:0,dbl:0,actual:"match",preset:"12",sev:"mixed",multi:10,minor:"reject",side:false,mix:DEF.map(d=>d.k),
+    sol:"keyence",sensor:"e3z",focal:8,wdT:160,...over};
+  if(over.rack==null)c.rack=c.preset;
+  if(c.sol==="teledyne"&&over.sensor==null)c.sensor="e18";
+  if(c.sol==="teledyne"&&over.latMean==null){c.latMean=SOL.teledyne.proc[0];c.latJit=SOL.teledyne.proc[1]}
+  const T=makeSim(c,opts.seed||7);T.headless=true;
+  (opts.forced||[]).forEach(f=>T.forced.push(f));
+  const total=opts.cans;let guard=0;
+  const done=()=>T.m.TN+T.m.TP+T.m.FN+T.m.FP+T.m.flagAcc;
+  while(done()<total&&guard<8e6){
+    if(opts.switchAt&&T.m.cans>=opts.switchAt&&T.cfg.preset!==opts.switchTo){T.cfg.preset=opts.switchTo;T.cfg.rack=opts.switchTo}
+    if(T.m.cans>=total)T.paused=true;
+    step(T,1);guard++}
+  T.m.ds=T.ds;return T.m;
+}
+const visMiss=m=>m.FN-m.FNgap;
+const everyType=(sev,n)=>{const f=[];for(const d of DEF)for(let i=0;i<n;i++)f.push({type:d.k,sev});return f};
+const TOPK=DEF.filter(d=>d.view==="top").map(d=>d.k);
+function typeSummary(m,keys){let n=0,r=0;for(const k of keys){n+=m.ds[k].n;r+=m.ds[k].rej}return`${r}/${n}`}
+function missedOf(m,keys){return keys.reduce((a,k)=>a+m.ds[k].miss,0)}
+const TESTS=[
+ {id:"VP-01",req:"FR-9, FR-10",name:"Single good can",exp:"PASS, continues to filler, no jet pulse",run:()=>runCase({},{cans:1,forced:["good"]}),ok:m=>m.TN===1&&m.fires===0,show:m=>`correct pass ${m.TN}, pulses ${m.fires}`},
+ {id:"VP-02",req:"FR-11, FR-16",name:"Single defective can (1.1 bent flange, 1.2 mm)",exp:"FAIL, tracked, removed by air jet",run:()=>runCase({},{cans:1,forced:[{type:"bent",val:1.2}]}),ok:m=>m.TP===1&&m.FN===0,show:m=>`correct reject ${m.TP}, missed ${m.FN}`},
+ {id:"VP-03",req:"FR-6, FR-7",name:"Each defect type, 20 cans each (280 cans), top camera only",exp:"100% of top-visible types rejected; body-only defects reported as a coverage gap",run:()=>runCase({},{cans:DEF.length*20,seed:21,forced:everyType("mixed",20)}),
+   ok:m=>TOPK.every(k=>m.ds[k].rej===m.ds[k].n)&&visMiss(m)===0&&m.ds.bdent.gap>0,show:m=>`top-visible types ${typeSummary(m,TOPK)} rejected; missed (visible) ${visMiss(m)}; coverage gap ${m.FNgap} (3.1 body dent ${m.ds.bdent.gap}/${m.ds.bdent.n})`},
+ {id:"VP-04",req:"FR-6, FR-7",name:"Same 280 cans with the side evaluation camera added",exp:"every defect type rejected, coverage gap 0",run:()=>runCase({side:true},{cans:DEF.length*20,seed:21,forced:everyType("mixed",20)}),
+   ok:m=>m.FN===0&&DEF.every(d=>m.ds[d.k].rej===m.ds[d.k].n),show:m=>`all types ${typeSummary(m,DEF.map(d=>d.k))} rejected; missed ${m.FN}`},
+ {id:"VP-05",req:"FR-12, FR-39, FR-40",name:"Mixed production, 400 cans, 15% defective (all types, 10% double defects), 220 cans/min",exp:"0 missed visible defects, 0 wrong-can hits, 0 missed or double triggers",run:()=>runCase({defect:15},{cans:400,seed:11}),
+   ok:m=>visMiss(m)===0&&m.wrongHit===0&&m.uninspected===0&&m.multi===0,show:m=>`TP ${m.TP}, missed visible ${visMiss(m)}, gap ${m.FNgap}, FP ${m.FP}, TN ${m.TN}`},
+ {id:"VP-06",req:"FR-12, TR-12",name:"Negative control: marginal defects, no guard band",exp:"missed defects appear near the limits",run:()=>runCase({side:true,guard:0},{cans:280,seed:13,forced:everyType("marginal",20)}),ok:m=>visMiss(m)>0,show:m=>`missed ${visMiss(m)} of 280`},
+ {id:"VP-07",req:"FR-12, TR-12",name:"Marginal defects with 3σ guard band",exp:"0 missed defects",run:()=>runCase({side:true,guard:3},{cans:280,seed:13,forced:everyType("marginal",20)}),ok:m=>visMiss(m)===0,show:m=>`missed ${visMiss(m)} of 280`},
+ {id:"VP-08",req:"FR-8",name:"Minor policy “flag only”: 20 stains on top-visible surfaces",exp:"stains pass with a flag, nothing else is missed",run:()=>runCase({minor:"flag"},{cans:20,seed:6,forced:Array.from({length:20},()=>({type:"stain",loc:"upper"}))}),ok:m=>m.flagAcc>=18&&m.FN===0,show:m=>`flagged and passed ${m.flagAcc}, missed ${m.FN}`},
+ {id:"VP-09",req:"FR-4, TR-4",name:"Back-to-back cans at 226 cans/min (≈0 mm gap)",exp:"one trigger per can, 0 missed visible defects",run:()=>runCase({cpm:226,defect:15},{cans:250,seed:5}),ok:m=>m.uninspected===0&&m.multi===0&&visMiss(m)===0,show:m=>`triggers ${m.trig}, never inspected ${m.uninspected}, missed visible ${visMiss(m)}`},
+ {id:"VP-10",req:"FR-40, TR-40",name:"Random gaps, then surges, at 220 cans/min",exp:"one trigger per can, 0 missed visible defects",run:()=>{const a=runCase({defect:15,spacing:"random"},{cans:200,seed:17}),b=runCase({defect:15,spacing:"surge"},{cans:200,seed:17});return{...b,_a:a}},
+   ok:m=>[m,m._a].every(x=>x.uninspected===0&&x.multi===0&&visMiss(x)===0),show:m=>`random gaps: missed ${visMiss(m._a)}, never inspected ${m._a.uninspected}; surges: missed ${visMiss(m)}, never inspected ${m.uninspected}`},
+ {id:"VP-11",req:"FR-22 – FR-24",name:"Preset switch 12 → 19.2 oz mid-run",exp:"0 missed visible defects; cans in transit flagged out-of-focus and rejected",run:()=>runCase({defect:10},{cans:80,seed:3,switchAt:40,switchTo:"19.2"}),ok:m=>visMiss(m)===0&&m.focus<=6,show:m=>`missed visible ${visMiss(m)}, out-of-focus ${m.focus}`},
+ {id:"VP-12",req:"FR-24, TR-24",name:"Negative control: 19.2 oz cans run on the 12 oz preset",exp:"focus mismatch flagged on every image",run:()=>runCase({defect:10,actual:"19.2"},{cans:40,seed:3}),ok:m=>m.focus>=38,show:m=>`out-of-focus ${m.focus} of 40`},
+ {id:"VP-13",req:"TR-14 fallback",name:"If the belt ran 12% fast: encoder tracking",exp:"0 wrong-can hits, 0 missed visible defects",run:()=>runCase({defect:15,dev:12,track:"encoder"},{cans:250,seed:9}),ok:m=>m.wrongHit===0&&visMiss(m)===0,show:m=>`wrong hits ${m.wrongHit}, missed visible ${visMiss(m)}`},
+ {id:"VP-14",req:"TR-14 fallback",name:"If the belt speed oscillated ±12%: encoder tracking",exp:"0 wrong-can hits, 0 missed visible defects",run:()=>runCase({defect:15,dev:12,speedMode:"osc",track:"encoder"},{cans:250,seed:19}),ok:m=>m.wrongHit===0&&visMiss(m)===0,show:m=>`wrong hits ${m.wrongHit}, missed visible ${visMiss(m)}`},
+ {id:"VP-15",req:"TR-14, TR-42",name:"Negative control: calibrated delay when the belt runs 12% faster than calibrated",exp:"reject timing errors appear",run:()=>runCase({defect:15,dev:12,track:"time"},{cans:250,seed:9}),ok:m=>m.wrongHit>0||m.escapedFail>0,show:m=>`FAIL cans escaped ${m.escapedFail}, wrong hits ${m.wrongHit}`},
+ {id:"VP-16",req:"TR-4",name:"5% double-trigger glitches, lockout on",exp:"no can inspected twice",run:()=>runCase({defect:10,dbl:5},{cans:250,seed:4}),ok:m=>m.multi===0,show:m=>`inspected twice ${m.multi}, ignored ${m.ignored}`},
+ {id:"VP-17",req:"TR-4",name:"Negative control: double triggers, lockout off",exp:"duplicate triggers reach the camera (inspected twice, or dropped because the camera is still busy)",run:()=>runCase({defect:10,dbl:5,lockout:false},{cans:250,seed:4}),ok:m=>m.multi>0||m.dropped>0,show:m=>`inspected twice ${m.multi}, captures dropped (camera busy) ${m.dropped}`},
+ {id:"VP-18",req:"FR-2, TR-2",name:"Negative control: 2% missed triggers",exp:"uninspected cans are counted",run:()=>runCase({defect:15,miss:2},{cans:300,seed:8}),ok:m=>m.uninspected>0,show:m=>`never inspected ${m.uninspected}, missed ${m.FN}`},
+ {id:"VP-19",req:"TR-39",name:"Negative control: 1.0 ms exposure vs 0.1 ms (motion blur), marginal defects, no guard band",exp:"long exposure raises missed defects or false rejects",run:()=>{const a=runCase({side:true,guard:0,exposure:0.1},{cans:280,seed:23,forced:everyType("marginal",20)}),b=runCase({side:true,guard:0,exposure:1.0},{cans:280,seed:23,forced:everyType("marginal",20)});return{...b,_a:a}},
+   ok:m=>visMiss(m)+m.FP>visMiss(m._a)+m._a.FP,show:m=>`0.1 ms: missed ${visMiss(m._a)}, false rejects ${m._a.FP} · 1.0 ms: missed ${visMiss(m)}, false rejects ${m.FP}`},
+ {id:"VP-20",req:"TR-6",name:"Lighting comparison, marginal shape and contrast defects, no guard band",exp:"LumiTrax misses no more shape defects than Normal; Multi-Spectrum misses no more contrast defects than Normal (illustrative factors)",
+   run:()=>{const shapeK=[...SHAPE].filter(k=>DK[k].view!=="side"),conK=[...CONTRAST];const out={};
+     for(const L of ["normal","multi","lumi"]){const m=runCase({side:true,guard:0,light:L},{cans:280,seed:29,forced:everyType("marginal",20)});out[L]={s:missedOf(m,shapeK),c:missedOf(m,conK)}}return out},
+   ok:m=>m.lumi.s<=m.normal.s&&m.multi.c<=m.normal.c,show:m=>`shape missed: Normal ${m.normal.s}, Multi-Spectrum ${m.multi.s}, LumiTrax ${m.lumi.s} · contrast missed: Normal ${m.normal.c}, Multi-Spectrum ${m.multi.c}, LumiTrax ${m.lumi.c}`},
+ {id:"VP-21",req:"FR-16, FR-17",name:"Air jet only 95% reliable, verify sensor on",exp:"every FAIL can that escapes raises a verify alarm",run:()=>runCase({defect:20,pushRel:95},{cans:400,seed:31}),ok:m=>m.pushFail>0&&m.verifyAlarm===m.escapedFail,show:m=>`push failures ${m.pushFail}, escaped FAIL cans ${m.escapedFail}, verify alarms ${m.verifyAlarm}`},
+ {id:"VP-22",req:"FR-41, TR-41",name:"Negative control: processing time 1000 ± 40 ms (jet is 964 ms away)",exp:"late results appear and those cans escape",run:()=>runCase({defect:20,latMean:1000,latJit:40},{cans:150,seed:33}),ok:m=>m.late>0,show:m=>`late results ${m.late}, missed ${m.FN}`},
+
+ {id:"VP-23",req:"TR-14, TR-42",name:"Calibrated reject delay at constant normal speed, 400 cans, no gaps",exp:"0 wrong-can hits, 0 FAIL cans escape, 0 missed visible defects",run:()=>runCase({defect:15,track:"time"},{cans:400,seed:41}),ok:m=>m.wrongHit===0&&m.escapedFail===0&&visMiss(m)===0,show:m=>`wrong hits ${m.wrongHit}, escaped ${m.escapedFail}, missed visible ${visMiss(m)}, rejected ${m.rejN}`},
+ {id:"VP-24",req:"FR-T10, FR-6, FR-7",name:"Solution 2 (Teledyne): each defect type, 20 cans each",exp:"100% of top-visible types rejected",run:()=>runCase({sol:"teledyne"},{cans:DEF.length*20,seed:21,forced:everyType("mixed",20)}),
+   ok:m=>TOPK.every(k=>m.ds[k].rej===m.ds[k].n)&&visMiss(m)===0,show:m=>`top-visible types ${typeSummary(m,TOPK)} rejected; missed (visible) ${visMiss(m)}; coverage gap ${m.FNgap}`},
+ {id:"VP-25",req:"FR-T10, FR-39, FR-40",name:"Solution 2 (Teledyne): mixed production, 400 cans at 220 cans/min",exp:"0 missed visible defects, one inspection per can",run:()=>runCase({sol:"teledyne",defect:15},{cans:400,seed:11}),
+   ok:m=>visMiss(m)===0&&m.uninspected===0&&m.multi===0&&m.dropped===0,show:m=>`TP ${m.TP}, missed visible ${visMiss(m)}, FP ${m.FP}, TN ${m.TN}, dropped ${m.dropped}`},
+ {id:"VP-26",req:"TR-6",name:"Marginal defects, KEYENCE vs Teledyne, no guard band",exp:"reports which camera misses more marginal defects (Teledyne: colour sensor, assumed 1.3× edge noise)",run:()=>{const a=runCase({side:true,guard:0},{cans:280,seed:43,forced:everyType("marginal",20)}),b=runCase({sol:"teledyne",side:true,guard:0},{cans:280,seed:43,forced:everyType("marginal",20)});return{...b,_a:a}},
+   ok:m=>true,show:m=>`KEYENCE missed ${visMiss(m._a)}, false rejects ${m._a.FP} · Teledyne missed ${visMiss(m)}, false rejects ${m.FP}`},
+ {id:"VP-27",req:"TR-6",name:"Negative control: Teledyne with 16 mm lens at 160 mm (field of view 49 mm)",exp:"every can fails because it does not fit the image",run:()=>runCase({sol:"teledyne",focal:16,defect:10},{cans:40,seed:45}),ok:m=>m.fovErr>=38,show:m=>`field-of-view failures ${m.fovErr} of 40`},
+ {id:"VP-28",req:"TR-3, TR-5",name:"Trigger sensor response: LR-ZB250 1.5 ms vs 50 ms mode",exp:"slow response spreads the capture position",run:()=>{const a=runCase({defect:10,sensor:"lrz"},{cans:150,seed:47}),b=runCase({defect:10,sensor:"lrz50"},{cans:150,seed:47});return{...b,_a:a}},
+   ok:m=>m.maxOff>m._a.maxOff,show:m=>`largest capture offset: 1.5 ms ${fmt(m._a.maxOff,1)} mm, 50 ms ${fmt(m.maxOff,1)} mm`},
+ {id:"VP-29",req:"FR-24, TR-24, FR-K10",name:"Negative control: changeover to 19.2 oz without moving the camera",exp:"every image flagged out of focus; HMI shows NOT READY",run:()=>runCase({defect:10,preset:"19.2",rack:"12"},{cans:40,seed:49}),ok:m=>m.focus>=38,show:m=>`out-of-focus ${m.focus} of 40`},
+];
+function renderTests(results){
+  $("tests").innerHTML=`<tr><th>ID</th><th>Requirement</th><th>Scenario</th><th>Expected</th><th>Observed</th><th>Result</th></tr>`+TESTS.map(t=>{const r=results&&results[t.id];
+    return`<tr><td>${t.id}</td><td class="hint">${t.req||""}</td><td>${t.name}</td><td class="exp">${t.exp}</td><td>${r?t.show(r.m):"—"}</td><td>${r?`<span class="pill ${r.pass?"pass":"fail"}">${r.pass?"PASS":"FAIL"}</span>`:'<span class="pill">not run</span>'}</td></tr>`}).join("")}
+$("runTests").onclick=()=>{$("runTests").textContent="Running…";
+  setTimeout(()=>{const res={};for(const t of TESTS){const m=t.run();res[t.id]={m,pass:t.ok(m)}}renderTests(res);$("runTests").textContent="Run all virtual tests"},30)};
+
+// ================================================================ boot
+fillSensors();renderTests(null);renderCatalog();readCfg();sizeFeeds();
+let start="hmi";try{start=localStorage.getItem("ils-view")||"hmi"}catch(e){}
+const hsh=(location.hash||"").slice(1);if(tabs.some(t=>t.dataset.v===hsh))start=hsh;
+showView(tabs.some(t=>t.dataset.v===start)?start:"line");
+requestAnimationFrame(frame);
+window.__runTests=()=>{const res={};for(const t of TESTS){const m=t.run();res[t.id]={obs:t.show(m),pass:t.ok(m),req:t.req,name:t.name,exp:t.exp}}return res};
+window.__show=showView;window.__S=()=>S;window.__hmi=hmi;window.__runCase=runCase;window.__setView=v=>{init3D();if(g3.gl)setView(v)};
+})();
+</script>
+
+</body></html>
