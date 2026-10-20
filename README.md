@@ -128,3 +128,7 @@ The project is currently exploring two primary inspection approaches:
    - Performance evaluation using labeled can images
 
 The OpenCV-based approach currently serves as the primary budget solution, while Keyence continues to be evaluated as a complementary AI-driven inspection method.
+
+
+References / Important Links:
+- https://www.etechnophiles.com/raspberry-pi-5-gpio-pinout/
