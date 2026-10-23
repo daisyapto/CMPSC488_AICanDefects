@@ -1,0 +1,18 @@
+# PC / laptop - install with THIS command (it uses the same Python that runs the app):
+#     python -m pip install -r requirements.txt        (Windows: py -m pip install -r requirements.txt)
+# Raspberry Pi: use apt instead (see README) - pip OpenCV builds are slow/heavy on the Pi.
+# Python 3.10 or newer.
+
+flask>=2.3          # web dashboard
+numpy>=1.24         # image processing
+opencv-python>=4.8  # camera + image processing (webcam, synthetic, image folder)
+pillow>=10.0        # only for the older --tk dashboard
+
+# Optional - only for the YOLO detection engine (large download, pulls in PyTorch):
+#   ultralytics        - pip install ultralytics      (Pi: also "pip install ncnn" for the fast NCNN format)
+
+# Not on pip / not needed on a PC:
+#   Genie Nano camera  - needs Aravis (Linux / Raspberry Pi, installed with apt - see README).
+#                        On a PC, use the Webcam, Synthetic or Image folder source instead.
+#   gpiozero           - Raspberry Pi only (preinstalled on Raspberry Pi OS).
+#   tkinter            - comes with Python on Windows / macOS (Linux: sudo apt install python3-tk).

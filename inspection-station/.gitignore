@@ -1,0 +1,11 @@
+# created by the station at run time
+data/
+config.json
+config.tmp
+recipes.json
+__pycache__/
+*.pyc
+# trained models are large - share them separately (or use Git LFS)
+models/*.pt
+models/*.onnx
+models/*_ncnn_model/

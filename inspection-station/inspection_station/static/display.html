@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Line Display · Can Inspection</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6'/%3E%3Crect x='10' y='6' width='12' height='20' rx='3' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/display.css">
+</head>
+<body>
+  <!-- Station display: a read-only, glanceable view for a monitor next to the line.
+       /display            last inspected can + counters (default, lightest on the Pi)
+       /display?live=1     live camera instead of the last can
+       /display?controls=1 Start / Stop / Reset / Acknowledge / E-stop buttons (touch screen on the station) -->
+  <header class="banner neutral" id="banner">
+    <div class="b-state">
+      <span class="b-dot"></span>
+      <div class="b-text"><div class="b-title" id="bTitle">Connecting…</div><div class="b-sub" id="bSub">&nbsp;</div></div>
+    </div>
+    <div class="b-right">
+      <div class="b-recipe"><span>Recipe</span><b id="bRecipe">—</b></div>
+      <div class="b-recipe" id="bLotBox"><span>Lot</span><b id="bLot">—</b></div>
+      <div class="b-clock" id="bClock">--:--</div>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel can-panel">
+      <div class="p-head"><span id="canTitle">Last inspected can</span><span class="spacer"></span><span class="tag" id="canTag"></span></div>
+      <div class="can-view" id="canView">
+        <img id="canImg" alt="">
+        <svg class="tower" id="tower" viewBox="0 0 84 236" aria-label="Stack light"></svg>
+        <div class="can-empty" id="canEmpty">Waiting for the first can…</div>
+      </div>
+      <div class="can-foot" id="canFoot">&nbsp;</div>
+    </section>
+
+    <section class="kpis">
+      <div class="kpi"><span>Inspected</span><b id="kN">0</b><small id="kNsub">&nbsp;</small></div>
+      <div class="kpi red"><span>Rejected</span><b id="kFail">0</b><small id="kFailSub">&nbsp;</small></div>
+      <div class="kpi"><span>Yield</span><b id="kYield">—</b><div class="ybar"><i id="kYieldBar"></i></div></div>
+      <div class="kpi"><span>Cans / min</span><b id="kRate">0</b><small>last 60 s</small></div>
+    </section>
+
+    <section class="panel side-panel" id="sidePanel">
+      <div class="p-head"><span id="sideTitle">Defects this session</span></div>
+      <div class="side-body" id="sideBody"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="strip" id="strip"></div>
+    <div class="chips" id="chips"></div>
+  </footer>
+
+  <div class="controls hidden" id="controls">
+    <button data-cmd="start" class="go">Start</button>
+    <button data-cmd="stop" class="stop">Stop</button>
+    <button data-cmd="reset">Reset</button>
+    <button data-cmd="ack" class="warn">Acknowledge</button>
+    <button data-cmd="estop" class="estop">E-STOP</button>
+  </div>
+
+  <div class="offline hidden" id="offline"><div><b>Connection to the station lost</b><span>Reconnecting…</span></div></div>
+  <script src="/static/display.js"></script>
+</body>
+</html>
