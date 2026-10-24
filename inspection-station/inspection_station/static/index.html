@@ -136,6 +136,7 @@
               <button data-v="focus" title="Full-resolution centre + sharpness score, for focusing the lens">Focus</button>
             </div>
             <div class="head-actions">
+              <button class="btn btn-sm btn-quiet" id="btnArea" title="Draw where the can is - detection ignores everything outside">Area</button>
               <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" title="Set the exposure so the picture is bright enough">Auto exposure</button>
               <button class="btn btn-sm btn-quiet" data-cmd="snapshot" title="Save a full-resolution frame">Snapshot</button>
               <button class="btn btn-sm btn-quiet" id="btnPause" data-cmd="pause">Pause</button>
@@ -145,6 +146,15 @@
             <img id="liveImg" alt="">
             <div class="vp-badge" id="vpBadge"><span class="rec"></span><span id="vpBadgeText">LIVE</span></div>
             <div class="vp-info" id="vpInfo"></div>
+            <div class="area-draw hidden" id="areaDraw">
+              <div class="area-box hidden" id="areaBox"></div>
+              <div class="area-bar">
+                <span>Drag a box around where the can is. Everything outside is ignored.</span>
+                <button class="btn btn-sm btn-primary" id="areaSave">Save area</button>
+                <button class="btn btn-sm btn-quiet" id="areaFull">Whole view</button>
+                <button class="btn btn-sm btn-quiet" id="areaCancel">Cancel</button>
+              </div>
+            </div>
             <div class="vp-msg" id="vpMsg">
               <svg viewBox="0 0 24 24"><path d="M3 7h3l2-3h8l2 3h3v13H3z"/><circle cx="12" cy="13" r="4"/></svg>
               <div id="vpMsgText">Connecting to camera…</div>

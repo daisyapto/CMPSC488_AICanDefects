@@ -246,7 +246,8 @@ plus a CSV of every can. Stored in `data/batches/`.
 | `inspection_station/audit.py` | Audit trail | rarely |
 | `inspection_station/alarms.py` | Alarm history + "what to check" steps | troubleshooting text |
 | `inspection_station/history.py` | Per-day totals for the History page | rarely |
-| `team_vision.py` | **The team's own OpenCV detection** - `detect(image)` | **vision team** |
+| `team_vision.py` | **Can detection (default engine)**: rim circles, dents, out-of-round, flange, side wall, bottom | **vision team** |
+| `inspection_station/syncan.py` | Realistic generated can-top images (Synthetic camera + tests) | - |
 | `inspection_station/inspectors.py` | PASS/FAIL decision per can | AI model goes here |
 | `inspection_station/vision.py` | Image processing: find can, detect + classify defects | tuning / vision work |
 | `camera_bridge.py` | Windows / macOS: streams the Genie Nano through Aravis in MSYS2 to the dashboard | - |
@@ -542,36 +543,58 @@ The camera frame used is the first one taken `capture delay` ms after the
 sensor. Inspection time (shown per can) must stay below the reject delay,
 otherwise the can is logged as MISSED.
 
-### Using the team's OpenCV code (`team_vision.py`)
+### Inspection area
 
-The station has two detection engines (Settings → Detection → *Detection engine*):
+Camera card → **Area** → drag a box around where the can sits → **Save area**.
+Every detection engine then looks only inside that box; rails, bolts, the
+next can and anything else outside it are ignored (shown dimmed in the live
+view). **Whole view** removes it. Draw it with some margin around the can
+(the can moves a little from can to can) but tight enough that the can fills
+most of it - that also keeps more camera pixels for thin scratches.
 
-* **Built-in** - the pipeline in `inspection_station/vision.py`.
-* **Team** - calls `detect(image)` in `team_vision.py` (project folder, next to `run.py`).
+### Can detection (`team_vision.py`, the default engine)
 
-The team engine drives everything the built-in one does: PASS / FAIL, the air
-reject, boxes in the live view, saved images, review page and reports. The
-station only needs this from your code:
+Settings → Detection → *Detection engine*: **Team** (default) runs
+`detect(image)` in `team_vision.py`; **Built-in** is the older generic
+spot detector in `vision.py`; **YOLO** a trained model.
+
+`team_vision.py` builds on the team's `edgeDetection.py` / `edgeFaultDetection.py`
+(Hough circle for the rim, circularity, size against a reference) and inspects
+an open can from above in zones:
+
+| Step | What it does | Finds |
+|---|---|---|
+| Find the can | Hough candidates inside the area, the one with the most complete rim edge; the outermost complete ring is the can (the bottom rim is a circle too) | "No can in area" (rejected) |
+| Outer rim | 720 rays from the centre, sub-pixel edge on each, robust circle + ellipse fit | **Rim dent** (local bump/dip), **Out of round**, **Flange damage** (edge missing) , **Wrong size** (if a reference diameter is set) |
+| Inner circles | flange inner edge and bottom rim found the same way | **Crushed / off-centre** (circles not concentric) |
+| Surfaces | the can is "unrolled" around its centre; each spot is compared with the same radius at the angles around it, relative to the local brightness | **Flange damage**, **Side wall dent**, bottom: **Scratch**, **Contamination**, **Bottom dent** |
+
+The live view draws the three circles (outer, flange inner, bottom); the Last
+inspected can panel lists the measurements (diameter, roundness, oval, centre
+offset, rim edge seen, time). Tune the numbers in **SETTINGS** at the top of
+`team_vision.py` (tolerances in % of the radius, surface sensitivity in % of
+brightness, minimum defect size, optional reference diameter / px per mm).
+
+Tested on generated can images (`inspection_station/syncan.py`; the Synthetic
+camera source uses them too) with uneven light, exposure changes, blur and
+noise: all defect types caught, no false rejects, ~45 ms per can on a laptop
+(expect 2-3x on the Pi). `python team_vision.py --demo` repeats the test;
+`python team_vision.py folder/` runs it on real photos and writes `*_result.png`.
+**Real cans and lighting will need tuning** - collect images with the station
+(Save images: All), run them through `team_vision.py`, adjust SETTINGS.
+
+The contract, if you replace it with your own code:
 
 ```python
-def detect(image):            # image: BGR numpy array, full camera resolution
-    ...
+def detect(image):            # BGR numpy array (inside the inspection area)
     return []                 # good can
-    return [{"label": "Dent", "box": (x, y, w, h), "confidence": 0.93}]   # defects
-    # also accepted: [("Dent", x, y, w, h, 0.93)]  or  True / False
+    return [{"label": "Dent", "box": (x, y, w, h), "confidence": 0.93}]
+    return {"defects": [...], "circles": [{"x", "y", "r", "label"}], "measurements": {"Diameter": "512 px"}}
 ```
 
-* Must finish well inside the reject delay - aim for < 50 ms on the Pi.
-* If it raises, the can is **rejected** (fail-safe), the stack light goes red and
-  the error is shown under the engine selector. Fix the file and it recovers.
-* The file reloads automatically when saved - no restart needed.
-* No `cv2.imshow` or camera reading inside `detect()`; the station supplies the image.
-
-Test on a laptop with no hardware: `python team_vision.py path/to/images/`
-prints PASS/FAIL per image and writes `*_result.png` with boxes drawn
-(`--show` opens a window). Good test images: `data/images/` from the station,
-or *Snapshot* on the Camera panel. The file ships with a working example
-detector so the engine runs out of the box.
+If it raises, the can is **rejected** (fail-safe) and the error shows under the
+engine selector. The file reloads automatically when saved. While a can is
+being inspected the live view waits, so the live view never delays a reject.
 
 ### YOLO models
 

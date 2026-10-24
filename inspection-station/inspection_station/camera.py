@@ -369,35 +369,27 @@ class SyntheticCamera:
         self._new_can(random.random() < self.defect_rate)
 
     def _new_can(self, defective: bool):
-        W, H, xx, yy = self.W, self.H, self.xx, self.yy
-        cx, cy = W / 2 + random.uniform(-30, 30), H / 2 + random.uniform(-20, 20)
-        R = H * 0.40
-        d = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
-        img = 55 + 15 * (yy / H)                                   # conveyor
-        img = np.where(d < R, 150 + 50 * (d / R) ** 2, img)        # can bottom, smooth shading
-        img = np.where((d >= R * 0.94) & (d < R), 228, img)       # rim
-        self.truth = ""
-        if defective:
-            layer = np.zeros_like(img)
-            kind = random.choice(["Dent", "Scratch", "Contamination"])
-            ang, rad = random.uniform(0, 2 * np.pi), random.uniform(0, 0.6 * R)
-            px, py = cx + rad * np.cos(ang), cy + rad * np.sin(ang)
-            if kind == "Dent":
-                sx, sy = random.uniform(12, 18), random.uniform(12, 18)
-                amp = random.choice([-70, 60])
-                layer += amp * np.exp(-((xx - px) ** 2 / (2 * sx ** 2) + (yy - py) ** 2 / (2 * sy ** 2)))
-            elif kind == "Scratch":
-                length, a2 = random.uniform(70, 140), random.uniform(0, np.pi)
-                p1 = (int(px), int(py))
-                p2 = (int(px + length * np.cos(a2)), int(py + length * np.sin(a2)))
-                cv2.line(layer, p1, p2, -120, 4, cv2.LINE_AA)
-            else:
-                for _ in range(random.randint(2, 4)):
-                    c = (int(px + random.uniform(-35, 35)), int(py + random.uniform(-35, 35)))
-                    cv2.circle(layer, c, random.randint(7, 10), -110, -1, cv2.LINE_AA)
-            img = img + np.where(d < R * 0.85, layer, 0)
-            self.truth = kind
-        self.base = np.clip(img, 0, 255).astype(np.int16)
+        """Next can from a pool of realistic can-top images (syncan.py), rendered in the background
+        so a trigger never waits for drawing."""
+        from .syncan import KINDS, render_can
+        if not getattr(self, "_pool_started", False):
+            self._pool_started = True
+            self._pool = {"good": [], "bad": []}
+
+            def fill():
+                grid = (self.xx, self.yy)
+                for i in range(40):
+                    kind = None if i % 2 == 0 else KINDS[(i // 2) % len(KINDS)]
+                    img, truth = render_can(kind, self.W, self.H, seed=random.randint(0, 10**9), grid=grid)
+                    self._pool["bad" if kind else "good"].append((img.astype(np.int16), truth["kind"]))
+            threading.Thread(target=fill, daemon=True, name="synthetic-cans").start()
+        pool = self._pool["bad" if defective else "good"]
+        if pool:
+            self.base, self.truth = random.choice(pool)
+            return
+        kind = random.choice(KINDS) if defective else None           # pool not ready yet: draw one now
+        img, truth = render_can(kind, self.W, self.H, seed=random.randint(0, 10**9), grid=(self.xx, self.yy))
+        self.base, self.truth = img.astype(np.int16), truth["kind"]
 
     def read(self):
         now = time.monotonic()
@@ -767,6 +759,7 @@ class CameraManager:
     @property
     def params(self) -> VisionParams:
         return VisionParams(self.s.vision_sensitivity, self.s.vision_min_area,
+                            area=tuple(self.s.inspect_area or (0, 0, 1, 1)),
                             engine=self.s.vision_engine, yolo_model=self.s.yolo_model,
                             yolo_conf=self.s.yolo_conf / 100, yolo_imgsz=self.s.yolo_imgsz,
                             yolo_crop=self.s.yolo_crop)
@@ -1035,8 +1028,8 @@ class CameraManager:
             with self._live_lock:
                 self._live = (img, res, seq)
             cap = {"normal": 15, "reduced": 5, "raw": 2}.get(mode, 15)   # live view fps by heat level
-            if self.s.vision_engine == "yolo" and view != "raw":
-                cap = min(cap, 4)                                    # YOLO is heavy: keep the Pi cool
+            if self.s.vision_engine in ("yolo", "team") and view not in ("raw", "focus"):
+                cap = min(cap, 4)            # heavy engines: inspections first, keep the Pi cool
             spare = 1 / cap - (time.monotonic() - t0)
             if spare > 0:
                 self._stop.wait(spare)

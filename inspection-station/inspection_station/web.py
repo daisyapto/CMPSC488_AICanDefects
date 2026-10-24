@@ -235,6 +235,7 @@ class Hub:
         return {"id": last["can_id"], "pass": r.passed, "summary": r.summary(),
                 "conf": round(r.confidence, 3), "ms": round(r.ms, 1), "method": r.method,
                 "defects": [{"label": d.label, "area": d.area} for d in r.defects[:6]],
+                "measures": r.measures,
                 "img": path, "t": last["time"].strftime("%H:%M:%S")}
 
     def _status_loop(self):
@@ -322,6 +323,18 @@ def apply_setting(ctl, key, value):
         ctl.settings.yolo_model = value.strip()
         if m is not None:
             m.preload_model()
+    elif key == "inspect_area":
+        if value is not None:
+            if not (isinstance(value, list) and len(value) == 4 and
+                    all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)):
+                raise ValueError("expected [x0, y0, x1, y1] between 0 and 1")
+            x0, y0, x1, y1 = (min(1.0, max(0.0, float(v))) for v in value)
+            x0, x1, y0, y1 = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
+            if x1 - x0 < 0.05 or y1 - y0 < 0.05:
+                raise ValueError("the area is too small")
+            value = None if (x0 <= 0.001 and y0 <= 0.001 and x1 >= 0.999 and y1 >= 0.999) else \
+                [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]
+        ctl.settings.inspect_area = value
     elif key == "live_view":
         if m is None or value not in ("detect", "raw", "mask", "edges", "focus"):
             raise ValueError("unknown view")

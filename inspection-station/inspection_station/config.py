@@ -101,12 +101,13 @@ class Settings:
     camera_delay_ms: int = 30          # sensor -> can centred under the camera
     exposure_us: int = 2000
     gain_db: int = 0
-    vision_engine: str = "builtin"     # "builtin" (vision.py) | "team" (team_vision.py) | "yolo"
+    vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo"
     yolo_model: str = "models/can_defects.pt"   # .pt / .onnx / *_ncnn_model folder (relative to the project)
     yolo_conf: int = 50                # % - detections below this confidence are ignored
     yolo_imgsz: int = 640              # model input size (smaller = faster, misses small defects)
     yolo_crop: bool = True             # crop to the can before YOLO (small defects stay visible)
     active_cooler: bool = False        # Pi 5 active cooler fitted? Without it, YOLO runs only on inspected cans
+    inspect_area: list = None          # [x0, y0, x1, y1] fractions of the image; None = whole view
     vision_sensitivity: int = 50       # 1..100
     vision_min_area: int = 40          # px at 640 px image width
     save_images: str = "fails"         # "off" | "fails" | "all"
@@ -146,6 +147,11 @@ class Settings:
             if f.name not in data:
                 continue
             default, value = getattr(s, f.name), data[f.name]
+            if f.name == "inspect_area":
+                if value is None or (isinstance(value, list) and len(value) == 4 and
+                                     all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in value)):
+                    setattr(s, f.name, value)
+                continue
             if isinstance(default, bool):
                 ok = isinstance(value, bool)
             elif isinstance(default, int):

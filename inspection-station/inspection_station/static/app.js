@@ -390,7 +390,8 @@ function renderCamera(st) {
       <dt>Confidence</dt><dd>${Math.round(last.conf * 100)}%</dd>
       <dt>Processing</dt><dd>${last.ms.toFixed(0)} ms · ${esc(last.method)}</dd>
       <dt>Time</dt><dd>${esc(last.t)}</dd>
-      <dt>Saved</dt><dd>${last.img ? "yes" : "no"}</dd>`;
+      <dt>Saved</dt><dd>${last.img ? "yes" : "no"}</dd>` +
+      Object.entries(last.measures || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
     $("#lastThumb").dataset.img = last.img || "";
   }
 }
@@ -734,7 +735,8 @@ function applyPermissions() {
      "#ipApply, #folderApply, #recipeSave, #recipeCreate, #recipeDelete, #pinSave").forEach((el) => (el.disabled = !eng));
   $("#drawerLock").classList.toggle("hidden", eng || !S.canControl);
   $$("#viewSeg button, #btnPause, #btnWake").forEach((el) => (el.disabled = !op));
-  $$('.camera-card [data-cmd="snapshot"], .camera-card [data-cmd="auto_exposure"], .ref-box [data-cmd], #btnClear').forEach((el) => (el.disabled = !eng));
+  $$('.camera-card [data-cmd="snapshot"], .camera-card [data-cmd="auto_exposure"], #btnArea, .ref-box [data-cmd], #btnClear').forEach((el) => (el.disabled = !eng));
+  if (!eng && AREA.on) areaMode(false);
   $$("#pageDiag .stepper button, #pageDiag .stepper input, #pageDiag [data-cmd=cleanup]").forEach((el) => (el.disabled = !eng));
   if (S.diag) renderDiag();
   if (S.gige) renderGige();
@@ -1222,6 +1224,76 @@ function renderAudit() {
   $("#auditRows").innerHTML = rows || `<tr><td colspan="5" class="muted">No actions recorded yet.</td></tr>`;
 }
 
+/* --------------------------------------------------------- inspection area */
+const AREA = { on: false, start: null, rect: null, prevView: null };
+
+function imgContentBox() {
+  const el = $("#liveImg"), b = el.getBoundingClientRect();
+  const nw = el.naturalWidth || 4, nh = el.naturalHeight || 3;
+  const sc = Math.min(b.width / nw, b.height / nh);
+  const w = nw * sc, h = nh * sc;
+  return { left: b.left + (b.width - w) / 2, top: b.top + (b.height - h) / 2, width: w, height: h };
+}
+
+function showAreaBox() {
+  const box = $("#areaBox"), r = AREA.rect;
+  box.classList.toggle("hidden", !r);
+  if (!r) return;
+  const c = imgContentBox(), vp = $("#viewport").getBoundingClientRect();
+  box.style.left = `${c.left - vp.left + r[0] * c.width}px`;
+  box.style.top = `${c.top - vp.top + r[1] * c.height}px`;
+  box.style.width = `${(r[2] - r[0]) * c.width}px`;
+  box.style.height = `${(r[3] - r[1]) * c.height}px`;
+}
+
+function areaMode(on) {
+  AREA.on = on;
+  $("#areaDraw").classList.toggle("hidden", !on);
+  const st = S.status;
+  if (on) {
+    AREA.prevView = st && st.camera ? st.camera.view : "detect";
+    if (AREA.prevView !== "raw") setSetting("live_view", "raw");     // draw on the plain, full picture
+    const a = st && st.settings.inspect_area;
+    AREA.rect = a ? [...a] : null;
+    setTimeout(showAreaBox, 150);
+  } else if (AREA.prevView && AREA.prevView !== "raw") {
+    setSetting("live_view", AREA.prevView);
+  }
+}
+
+function wireArea() {
+  $("#btnArea").addEventListener("click", () => areaMode(!AREA.on));
+  const pad = $("#areaDraw");
+  const frac = (e) => {
+    const c = imgContentBox();
+    return [Math.min(1, Math.max(0, (e.clientX - c.left) / c.width)), Math.min(1, Math.max(0, (e.clientY - c.top) / c.height))];
+  };
+  pad.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".area-bar")) return;
+    pad.setPointerCapture(e.pointerId);
+    AREA.start = frac(e);
+    AREA.rect = [...AREA.start, ...AREA.start];
+    showAreaBox();
+  });
+  pad.addEventListener("pointermove", (e) => {
+    if (!AREA.start) return;
+    const p = frac(e);
+    AREA.rect = [Math.min(AREA.start[0], p[0]), Math.min(AREA.start[1], p[1]), Math.max(AREA.start[0], p[0]), Math.max(AREA.start[1], p[1])];
+    showAreaBox();
+  });
+  pad.addEventListener("pointerup", () => { AREA.start = null; });
+  $("#areaSave").addEventListener("click", async () => {
+    const r = AREA.rect;
+    if (!r || r[2] - r[0] < 0.05 || r[3] - r[1] < 0.05) return toast("Drag a bigger box first", "error");
+    if (await setSetting("inspect_area", r.map((v) => +v.toFixed(4)))) { toast("Inspection area saved", "ok"); areaMode(false); }
+  });
+  $("#areaFull").addEventListener("click", async () => {
+    if (await setSetting("inspect_area", null)) { toast("Inspecting the whole view", "ok"); areaMode(false); }
+  });
+  $("#areaCancel").addEventListener("click", () => areaMode(false));
+  window.addEventListener("resize", () => { if (AREA.on) showAreaBox(); });
+}
+
 /* -------------------------------------------------------------- UI wiring */
 function openModal(path, title) {
   $("#modalImg").src = `/api/image?path=${encodeURIComponent(path)}`;
@@ -1406,6 +1478,7 @@ function wire() {
   const hashPage = location.hash.slice(1);
   if (["review", "reports", "history", "diag"].includes(hashPage)) setPage(hashPage);
 
+  wireArea();
   $("#liveImg").addEventListener("error", () => { S.liveOn = false; });   // retried on next status
   window.addEventListener("resize", () => { renderTimeline(); scheduleTrend(); });
   setInterval(scheduleTrend, 15000);

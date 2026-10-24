@@ -52,6 +52,7 @@ class VisionParams:
     yolo_conf: float = 0.5
     yolo_imgsz: int = 640
     yolo_crop: bool = True
+    area: tuple = (0.0, 0.0, 1.0, 1.0)   # inspection area (x0, y0, x1, y1) as fractions of the image
 
     @property
     def threshold(self) -> int:
@@ -81,6 +82,9 @@ class VisionResult:
     blur: np.ndarray = field(repr=False)
     diff: np.ndarray = field(repr=False)
     mask: np.ndarray = field(repr=False)
+    circles: list = field(default_factory=list)      # [(x, y, r, label)] at WORK_WIDTH (team engine)
+    measures: dict = field(default_factory=dict)     # numbers to show, e.g. {"Diameter": "512 px"}
+    area: tuple | None = None                        # inspection area (x0, y0, x1, y1) at WORK_WIDTH
 
     @property
     def label(self) -> str:
@@ -164,8 +168,17 @@ class Vision:
 
     # ---------------------------------------------------------------- analyse
     def analyze(self, frame: np.ndarray, p: VisionParams, live: bool = False) -> VisionResult:
+        """Inspect only inside the inspection area: crop, run the engine, map the result back."""
+        box = area_pixels(p.area, frame.shape)
+        if box is None:
+            return self._analyze(frame, p, live)
+        x0, y0, x1, y1 = box
+        res = self._analyze(frame[y0:y1, x0:x1], p, live)
+        return embed(res, frame, box)
+
+    def _analyze(self, frame: np.ndarray, p: VisionParams, live: bool = False) -> VisionResult:
         if p.engine == "team":
-            return self.team.analyze(frame)
+            return self.team.analyze(frame, live=live)
         if p.engine == "yolo":
             from .edition import YOLO_AVAILABLE
             if not YOLO_AVAILABLE:
@@ -229,6 +242,74 @@ class Vision:
 
 
 # =============================================================================
+# Inspection area
+# =============================================================================
+def area_pixels(area, shape):
+    """Fractions -> pixel box (x0, y0, x1, y1), or None for the whole image."""
+    try:
+        fx0, fy0, fx1, fy1 = (float(v) for v in area)
+    except (TypeError, ValueError):
+        return None
+    if fx0 <= 0.001 and fy0 <= 0.001 and fx1 >= 0.999 and fy1 >= 0.999:
+        return None
+    h, w = shape[:2]
+    x0, x1 = int(max(0, min(fx0, fx1)) * w), int(min(1, max(fx0, fx1)) * w)
+    y0, y1 = int(max(0, min(fy0, fy1)) * h), int(min(1, max(fy0, fy1)) * h)
+    if x1 - x0 < 32 or y1 - y0 < 32:
+        return None
+    return x0, y0, x1, y1
+
+
+def embed(res: VisionResult, frame: np.ndarray, box) -> VisionResult:
+    """A result computed on the area crop -> the same result on the full image."""
+    x0, y0, x1, y1 = box
+    work = to_work(frame)
+    sf = work.shape[1] / frame.shape[1]                    # full image -> full work
+    sc = res.work.shape[1] / (x1 - x0)                     # crop -> crop work
+
+    def X(v):
+        return int(round((v / sc + x0) * sf))
+
+    def Y(v):
+        return int(round((v / sc + y0) * sf))
+
+    k = sf / sc
+    defects = [Defect(d.label, X(d.x), Y(d.y), int(round(d.w * k)), int(round(d.h * k)),
+                      int(d.area * k * k), d.strength) for d in res.defects]
+    circle = None if res.circle is None else (res.circle[0] / sc * sf + x0 * sf,
+                                               res.circle[1] / sc * sf + y0 * sf, res.circle[2] * k)
+    circles = [(c[0] / sc * sf + x0 * sf, c[1] / sc * sf + y0 * sf, c[2] * k, c[3]) for c in res.circles]
+    ax0, ay0, ax1, ay1 = int(x0 * sf), int(y0 * sf), int(x1 * sf), int(y1 * sf)
+    blur = _blur(work)
+
+    def paste(a):
+        full = np.zeros(blur.shape, a.dtype)
+        if ax1 > ax0 and ay1 > ay0:
+            full[ay0:ay1, ax0:ax1] = cv2.resize(a, (ax1 - ax0, ay1 - ay0), interpolation=cv2.INTER_NEAREST)
+        return full
+
+    return VisionResult(res.passed, defects, circle, res.confidence, res.ms, res.method, work, blur,
+                        paste(res.diff), paste(res.mask), circles, res.measures, (ax0, ay0, ax1, ay1))
+
+
+def draw_area(img: np.ndarray, area_px) -> np.ndarray:
+    """Dashed outline of the inspection area + dim everything outside it."""
+    if area_px is None:
+        return img
+    x0, y0, x1, y1 = area_px
+    dim = img.copy()
+    dim[:] = (dim * 0.45).astype(img.dtype)
+    dim[y0:y1, x0:x1] = img[y0:y1, x0:x1]
+    for i in range(x0, x1, 14):
+        cv2.line(dim, (i, y0), (min(i + 7, x1), y0), C_ROI, 2)
+        cv2.line(dim, (i, y1 - 1), (min(i + 7, x1), y1 - 1), C_ROI, 2)
+    for i in range(y0, y1, 14):
+        cv2.line(dim, (x0, i), (x0, min(i + 7, y1)), C_ROI, 2)
+        cv2.line(dim, (x1 - 1, i), (x1 - 1, min(i + 7, y1)), C_ROI, 2)
+    return dim
+
+
+# =============================================================================
 # Team engine - runs detect(image) from team_vision.py
 # =============================================================================
 class TeamDetector:
@@ -266,7 +347,17 @@ class TeamDetector:
                 raise RuntimeError(self.error)
             return self._mod
 
-    def analyze(self, frame: np.ndarray) -> VisionResult:
+    def analyze(self, frame: np.ndarray, live: bool = False) -> VisionResult:
+        # inspections always get the detector; the live view only when it is free
+        lock = self.__dict__.setdefault("_run_lock", threading.Lock())
+        if not lock.acquire(blocking=not live):
+            raise Busy()
+        try:
+            return self._analyze_team(frame)
+        finally:
+            lock.release()
+
+    def _analyze_team(self, frame: np.ndarray) -> VisionResult:
         mod = self._module()
         if frame.ndim == 2:
             image = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
@@ -285,6 +376,16 @@ class TeamDetector:
 
         work = to_work(image)
         scale = work.shape[1] / image.shape[1]
+        circles, measures = [], {}
+        if isinstance(out, dict):                         # {"defects": [...], "circles": [...], "measurements": {...}}
+            for c in out.get("circles") or []:
+                try:
+                    circles.append((float(c["x"]) * scale, float(c["y"]) * scale, float(c["r"]) * scale,
+                                    str(c.get("label", ""))))
+                except (KeyError, TypeError, ValueError):
+                    pass
+            measures = {str(k): str(v) for k, v in (out.get("measurements") or {}).items()}
+            out = out.get("defects") or []
         defects, confs = _parse_team(out, scale, work.shape)
         blur = _blur(work)
         mask = np.zeros_like(blur)
@@ -293,7 +394,7 @@ class TeamDetector:
                 cv2.rectangle(mask, (d.x, d.y), (d.x + d.w, d.y + d.h), 255, -1)
         conf = max(confs) if confs else getattr(mod, "PASS_CONFIDENCE", 0.95)
         return VisionResult(not defects, defects, None, float(conf), ms, "team",
-                            work, blur, np.zeros_like(blur), mask)
+                            work, blur, np.zeros_like(blur), mask, circles, measures)
 
 
 def _parse_team(out, scale, shape):
@@ -487,8 +588,11 @@ def _label(img, text, x, y, color, scale=0.5):
 
 
 def annotate(res: VisionResult, header: bool = True) -> np.ndarray:
-    """Working image with ROI, defect boxes and a PASS / FAIL header."""
-    img = res.work.copy()
+    """Working image with the inspection area, circles, defect boxes and a PASS / FAIL header."""
+    img = draw_area(res.work.copy(), res.area)
+    ring_colors = {"outer": (238, 211, 34), "flange inner": (246, 130, 59), "bottom": (250, 139, 167)}
+    for x, y, r, lab in res.circles:
+        cv2.circle(img, (int(x), int(y)), max(1, int(r)), ring_colors.get(lab, C_ROI), 1, cv2.LINE_AA)
     if res.circle is not None:
         x, y, r = res.circle
         cv2.circle(img, (int(x), int(y)), int(r), C_ROI, 1, cv2.LINE_AA)
@@ -557,15 +661,24 @@ def focus_view(frame: np.ndarray) -> np.ndarray:
     return crop
 
 
+def _area_work(p, frame):
+    box = area_pixels(p.area, frame.shape)
+    if box is None:
+        return None
+    sf = WORK_WIDTH / frame.shape[1]
+    return tuple(int(v * sf) for v in box)
+
+
 def render(vision: Vision, frame: np.ndarray, view: str, p: VisionParams):
     """Image for the live view. Returns (BGR image, VisionResult or None)."""
     if view == "raw":
-        return to_work(frame), None
+        return draw_area(to_work(frame), _area_work(p, frame)), None
     if view == "focus":
         return focus_view(frame), None
     res = vision.analyze(frame, p, live=True)
     if view == "mask":
         heat = cv2.applyColorMap(cv2.convertScaleAbs(res.diff, alpha=3), cv2.COLORMAP_INFERNO)
+        heat = draw_area(heat, res.area)
         contours, _ = cv2.findContours(res.mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(heat, contours, -1, C_ROI, 1, cv2.LINE_AA)
         return heat, res
