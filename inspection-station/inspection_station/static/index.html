@@ -99,20 +99,27 @@
         </div>
       </section>
 
-      <section class="card status-card">
-        <div class="card-head"><h2>Line status</h2><div class="spacer"></div>
-          <span class="mini-lamps" id="miniLamps" title="Mirrors the real stack light (for screens away from the line)"><i data-key="red"></i><i data-key="yellow"></i><i data-key="green"></i></span></div>
+      <section class="card">
+        <div class="card-head"><h2>Stack light</h2><span class="muted small" id="overrideHint"></span></div>
+        <div class="tower-wrap">
+          <svg id="tower" class="tower" viewBox="0 0 84 236" aria-label="Stack light"></svg>
+          <div class="legend">
+            <div class="legend-row" data-key="red"><b>Fault</b><span>solid until fixed</span></div>
+            <div class="legend-row" data-key="yellow"><b>Defect</b><span>flashing = warning</span></div>
+            <div class="legend-row" data-key="green"><b>Running</b><span>flashing = ready</span></div>
+          </div>
+        </div>
         <ul id="reasons" class="reasons"></ul>
-        <div class="check-box hidden" id="checkBox"></div>
-        <div class="card-head sub-head"><h3>Recent rejects</h3><div class="spacer"></div>
-          <button class="link-btn" id="toReview">Review all ›</button></div>
-        <div class="rejects" id="rejects"></div>
         <div class="valve" id="valve">
           <span class="valve-icon"><svg viewBox="0 0 24 24"><path d="M4 12h6M14 12h6M10 8v8l4-4z"/></svg></span>
           <div><div class="valve-title">Reject valve</div><div class="muted small" id="valvePins">relay 4</div></div>
           <span class="valve-state" id="valveState">Closed</span>
         </div>
-        <div class="muted small status-foot">Lamp and air tests: <button class="link-btn" id="toDiag">Diagnostics ›</button></div>
+        <div class="setting-row">
+          <div><div class="label">Manual override</div><div class="muted small">click lamps to switch them</div></div>
+          <label class="switch"><input type="checkbox" id="overrideToggle"><span></span></label>
+        </div>
+        <button class="btn btn-quiet btn-block danger-text" id="btnBurst" data-cmd="test_burst">Test reject burst</button>
       </section>
     </aside>
 

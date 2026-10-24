@@ -77,7 +77,6 @@ function handle(msg) {
       applyPermissions();
       renderTable(true);
       renderTimeline();
-      renderRejects();
       drawTrend();
       onStatus(msg.status);
       loadAlarms();
@@ -91,7 +90,7 @@ function handle(msg) {
     case "sensor": break;
     case "cleared":
       S.results = []; S.byId.clear();
-      renderTable(true); renderTimeline(); renderRejects(); drawTrend();
+      renderTable(true); renderTimeline(); drawTrend();
       break;
   }
 }
@@ -255,14 +254,52 @@ function renderControls(st) {
   $("#btnReset").disabled = !op;
   $("#btnAck").disabled = !op || !st.warning;
   $("#btnSim").disabled = !op || !st.running;
+  $("#btnBurst").disabled = !eng || st.running || st.estop;
+  const ov = $("#overrideToggle");
+  ov.checked = st.manual;
+  ov.disabled = !eng || st.running || st.estop;
+  $("#overrideHint").textContent = st.manual ? "manual override" : "";
 }
 
-/* ------------------------------------------------------------- line status */
-// The real stack light is next to the line, so the dashboard shows what it can't:
-// why it is red/yellow, what to check, and the latest rejected cans.
+/* ------------------------------------------------------------- stack light */
+const LAMPS = [["red", "#ef4444", "#3a1517"], ["yellow", "#f5a524", "#3a2a0c"], ["green", "#22c55e", "#0f3320"]];
+function buildTower() {
+  const svg = $("#tower");
+  let html = `<defs>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <linearGradient id="shade" x1="0" x2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".35" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></linearGradient>
+  </defs>
+  <rect x="24" y="4" width="36" height="12" rx="5" fill="#232d3b" stroke="none"/>`;
+  LAMPS.forEach(([key], i) => {
+    const y = 18 + i * 66;
+    html += `<g class="lamp" data-key="${key}">
+      <rect class="lens" x="16" y="${y}" width="52" height="60" rx="11" stroke="none"/>
+      <rect x="16" y="${y}" width="52" height="60" rx="11" fill="url(#shade)" stroke="none" pointer-events="none"/>
+      <text class="lamp-txt" x="42" y="${y + 34}" text-anchor="middle" font-size="10" font-weight="700" fill="#0b0f15" stroke="none"></text>
+    </g>`;
+  });
+  html += `<rect x="37" y="216" width="10" height="12" fill="#232d3b" stroke="none"/><rect x="18" y="228" width="48" height="7" rx="3" fill="#232d3b" stroke="none"/>`;
+  svg.innerHTML = html;
+  $$(".lamp", svg).forEach((g) => g.addEventListener("click", () => {
+    if (S.status && S.status.manual && S.canControl) cmd("lamp", { key: g.dataset.key });
+  }));
+}
+
 function renderTower(st) {
-  $$("#miniLamps i").forEach((i) => i.classList.toggle("on", !!st.lights[i.dataset.key]));
-  renderChecks(st);
+  const svg = $("#tower");
+  svg.classList.toggle("clickable", st.manual && S.canControl);
+  LAMPS.forEach(([key, on, off]) => {
+    const g = $(`.lamp[data-key="${key}"]`, svg);
+    const lit = !!st.lights[key];
+    const lens = $(".lens", g);
+    lens.setAttribute("fill", lit ? on : off);
+    lens.setAttribute("filter", lit ? "url(#glow)" : "");
+    $(".lamp-txt", g).textContent = st.manual ? (lit ? "ON" : "OFF") : "";
+    $(".lamp-txt", g).setAttribute("fill", lit ? "#0b0f15" : "#8b97a8");
+    $(`.legend-row[data-key="${key}"]`).classList.toggle("on", lit);
+  });
 
   // reasons
   let items;
@@ -425,37 +462,6 @@ function renderTable() {
   $("#tableEmpty").classList.toggle("hidden", S.results.length > 0);
 }
 
-/* first steps of the active alarm, shown right in the Line status card */
-function renderChecks(st) {
-  const box = $("#checkBox");
-  const act = (S.alarms && S.alarms.active) || [];
-  const al = st.estop ? act.find((x) => x.key === "estop")
-    : st.faults.length ? (act.find((x) => x.msg === st.faults[0]) || act.find((x) => x.severity === "fault"))
-    : st.warning ? act.find((x) => x.key === "defect-warning") : null;
-  const html = al ? `<div class="check-title">What to check — ${esc(al.title)}</div>
-    <ol>${al.steps.slice(0, 3).map((s) => `<li>${esc(s)}</li>`).join("")}</ol>` +
-    (al.steps.length > 3 ? `<button class="link-btn" data-open-alarms>All steps ›</button>` : "") : "";
-  box.classList.toggle("hidden", !al);
-  box.classList.toggle("warn", !!al && al.severity === "warning");
-  if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
-}
-
-function renderRejects() {
-  const el = $("#rejects");
-  const rej = [];
-  for (let i = S.results.length - 1; i >= 0 && rej.length < 6; i--) if (!S.results[i].pass) rej.push(S.results[i]);
-  const html = !rej.length
-    ? `<div class="rej-none"><span class="dot ok"></span>${S.results.length ? `No rejects in the last ${S.results.length.toLocaleString()} cans` : "No cans yet this session"}</div>`
-    : rej.map((r) => {
-        const escd = ESCAPED.has(r.reject);
-        return `<button class="rej${escd ? " escaped" : ""}" data-id="${r.id}" ${r.img ? "" : "disabled"}>
-          ${r.img ? `<img loading="lazy" src="/api/thumb?path=${encodeURIComponent(r.img)}" alt="">` : `<span class="rej-noimg">#${r.id}</span>`}
-          <span class="rej-txt"><b>${esc(r.defect || "Defect")}</b><small>#${r.id} · ${esc(r.t)}</small>
-          <small class="${escd ? "bad" : r.reject === "fired" ? "" : "muted"}">${escd ? "NOT rejected" : r.reject === "fired" ? "blown off" : esc(REJECT_LABEL[r.reject] ?? r.reject)}</small></span></button>`;
-      }).join("");
-  if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
-}
-
 function addResult(r) {
   S.results.push(r);
   S.byId.set(r.id, r);
@@ -465,7 +471,6 @@ function addResult(r) {
   while (tb.children.length > MAX_ROWS) tb.lastChild.remove();
   $("#tableEmpty").classList.add("hidden");
   renderTimeline();
-  renderRejects();
   scheduleTrend();
 }
 
@@ -476,7 +481,6 @@ function updateReject(id, status) {
   const tr = $(`#rows tr[data-id="${id}"]`);
   if (tr) tr.innerHTML = rowHtml(r);
   renderTimeline();
-  renderRejects();
 }
 
 function renderTimeline() {
@@ -993,7 +997,6 @@ async function loadAlarms() {
 function renderAlarms() {
   const a = S.alarms;
   if (!a) return;
-  if (S.status) renderChecks(S.status);
   const steps = (x) => `<ol class="al-steps">${x.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`;
   const time = (iso) => `${iso.slice(11, 16)}<span class="muted"> ${iso.slice(5, 10)}</span>`;
   let html = "";
@@ -1229,6 +1232,7 @@ function openModal(path, title) {
 
 function wire() {
   $$("[data-cmd]").forEach((b) => b.addEventListener("click", () => cmd(b.dataset.cmd)));
+  $("#overrideToggle").addEventListener("change", (e) => cmd("override", { on: e.target.checked }));
   $$("#viewSeg button").forEach((b) => b.addEventListener("click", () => setSetting("live_view", b.dataset.v)));
 
   $$(".tab").forEach((t) => t.addEventListener("click", () => {
@@ -1373,16 +1377,6 @@ function wire() {
   $$("#rvView button").forEach((b) => b.addEventListener("click", () => { S.rev.view = b.dataset.v; renderReviewer(); }));
 
   // ---- alarms
-  $("#rejects").addEventListener("click", (e) => {
-    const b = e.target.closest(".rej");
-    const r = b && S.byId.get(+b.dataset.id);
-    if (r && r.img) openModal(r.img, `Can #${r.id} — ${r.defect || "defect"}`);
-  });
-  $("#toReview").addEventListener("click", () => setPage("review"));
-  $("#toDiag").addEventListener("click", () => setPage("diag"));
-  document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-open-alarms]")) { $('.tab[data-tab="alarms"]').click(); $(".tabs-card").scrollIntoView({ behavior: "smooth", block: "nearest" }); }
-  });
   $("#reasons").addEventListener("click", () => {
     if (!(S.status && (S.status.faults.length || S.status.warning))) return;
     $('.tab[data-tab="alarms"]').click();
@@ -1422,6 +1416,7 @@ function toggleFullscreen() {
   else document.documentElement.requestFullscreen().catch(() => {});
 }
 
+buildTower();
 initSettingWidgets();
 wire();
 connect();
