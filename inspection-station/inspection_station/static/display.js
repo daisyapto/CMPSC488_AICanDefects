@@ -56,7 +56,6 @@ function onStatus(st) {
   renderSide(st);
   renderChips(st);
   renderControls(st);
-  renderTower(st);
 }
 
 function activeAlarm(st) {
@@ -140,25 +139,11 @@ function renderLatest() {
     `<span class="muted">${Math.round(r.conf * 100)}% sure</span>` +
     (r.pass ? "" : `<span class="muted">${r.reject === "fired" ? "blown off" : r.reject === "pending" ? "air pending" : esc(r.reject)}</span>`);
   $("#canEmpty").classList.add("hidden");
-}
-
-/* --------------------------------------------------- stack light (no image) */
-const LAMPS = [["red", "#ef4444", "#2a1214"], ["yellow", "#f5a524", "#2a1f0b"], ["green", "#22c55e", "#0c2617"]];
-function buildTower() {
-  let html = `<defs><filter id="glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="6" result="b"/>
-    <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-    <rect x="24" y="4" width="36" height="12" rx="5" fill="#1d2532"/>`;
-  LAMPS.forEach(([key], i) => { html += `<rect class="lens" data-key="${key}" x="16" y="${18 + i * 66}" width="52" height="60" rx="11"/>`; });
-  html += `<rect x="37" y="216" width="10" height="12" fill="#1d2532"/><rect x="18" y="228" width="48" height="7" rx="3" fill="#1d2532"/>`;
-  $("#tower").innerHTML = html;
-}
-function renderTower(st) {
-  LAMPS.forEach(([key, on, off]) => {
-    const l = document.querySelector(`#tower .lens[data-key="${key}"]`);
-    const lit = !!st.lights[key];
-    l.setAttribute("fill", lit ? on : off);
-    l.setAttribute("filter", lit ? "url(#glow)" : "");
-  });
+  // no camera image (e.g. simulated inspector): show the result itself, big
+  const bw = $("#bigWord");
+  bw.textContent = r.pass ? "PASS" : escaped ? "NOT REJECTED" : (r.defect || "DEFECT").toUpperCase();
+  bw.className = r.pass ? "pass" : escaped ? "escaped" : "fail";
+  $("#bigSub").textContent = `Can #${r.id} · ${r.t}`;
 }
 
 /* -------------------------------------------------------------- side panel */
@@ -246,7 +231,6 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 $("#canImg").addEventListener("error", () => { S.liveOn = false; });
 window.addEventListener("resize", renderStrip);
 
-buildTower();
 wake();
 keepAwake();
 connect();
