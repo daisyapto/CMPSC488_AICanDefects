@@ -194,8 +194,10 @@ class GigECamera:
         if buf is None:
             return None
         try:
-            if buf.get_status() != self.Ar.BufferStatus.SUCCESS:
-                return None
+            status = buf.get_status()
+            if status != self.Ar.BufferStatus.SUCCESS:
+                return self._bad(status)
+            self._bads = 0
             try:
                 frame = self._convert(buf.get_data(), buf.get_image_width(), buf.get_image_height())
             except ShortFrame as e:
@@ -204,6 +206,28 @@ class GigECamera:
             return frame
         finally:
             self.stream.push_buffer(buf)
+
+    def _bad(self, status):
+        """A frame the camera sent but that did not arrive complete. Skipping it
+        silently made the picture look frozen - count them and reconnect with a
+        clear message instead (reconnecting also restarts the stream)."""
+        self._bads = getattr(self, "_bads", 0) + 1
+        name = getattr(status, "value_nick", None) or str(status)
+        if self._bads == 10:
+            self._slow_down()
+        if self._bads >= 30:
+            self._bads = 0
+            raise CameraError(f"frames arrive incomplete ({name}) - network buffers too small, "
+                              "or lower the frame rate; run: sudo sysctl -w net.core.rmem_max=33554432")
+        return None
+
+    def _slow_down(self):
+        """Space the packets out and use standard-size packets - helps a Pi that drops bursts."""
+        for feature, value in (("GevSCPSPacketSize", 1400), ("GevSCPD", 2000)):
+            try:
+                self.cam.set_integer(feature, value)
+            except Exception:
+                pass
 
     def _short(self, e):
         """Skip an incomplete frame; only give up if it keeps happening."""
