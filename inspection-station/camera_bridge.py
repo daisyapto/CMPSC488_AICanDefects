@@ -143,11 +143,22 @@ class Bridge:
         print(f"Camera: {self.info['vendor']} {self.info['model']} at {ip} - {self.info['fmt']}")
 
     def set_fps(self, fps):
+        """Change the frame rate. The Genie Nano stops sending frames if the rate is
+        changed while it streams, so pause acquisition around the change."""
         try:
             lo, hi = self.cam.get_frame_rate_bounds()
-            self.cam.set_frame_rate(float(max(lo, min(fps, hi, MAX_FPS))))
-        except Exception:
-            pass
+            want = float(max(lo, min(fps, hi, MAX_FPS)))
+            if abs(self.cam.get_frame_rate() - want) < 0.05:
+                return
+            running = self.stream is not None
+            if running:
+                self.cam.stop_acquisition()
+            self.cam.set_frame_rate(want)
+            if running:
+                self.cam.start_acquisition()
+            print(f"  frame rate set to {want:.1f} fps")
+        except Exception as e:
+            print(f"  (could not set the frame rate: {e})")
 
     def apply(self, s):
         cam, Ar = self.cam, self.Ar
@@ -219,7 +230,7 @@ class Bridge:
                 self.problem = ""
                 extra = f", {sum(bad.values())} incomplete" if bad else ""
                 print(f"  {ok / secs:.1f} fps from the camera{extra}")
-            elif not small_tried:
+            elif not small_tried and not sys.platform.startswith("linux"):
                 small_tried = True
                 why = ", ".join(f"{n} {k}" for k, n in bad.items()) or "nothing at all"
                 print(f"  No complete frames in {secs:.0f} s (received: {why}).")

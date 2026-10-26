@@ -256,9 +256,19 @@ class GigECamera:
         return convert_frame(data, w, h, self.fmt)
 
     def set_fps(self, fps: float):
+        """Pause acquisition around the change - the Genie Nano stops sending frames
+        if its frame rate is changed while streaming."""
         try:
             lo, hi = self.cam.get_frame_rate_bounds()
-            self.cam.set_frame_rate(float(max(lo, min(fps, hi, self.MAX_FPS))))
+            want = float(max(lo, min(fps, hi, self.MAX_FPS)))
+            if abs(self.cam.get_frame_rate() - want) < 0.05:
+                return
+            running = self.stream is not None
+            if running:
+                self.cam.stop_acquisition()
+            self.cam.set_frame_rate(want)
+            if running:
+                self.cam.start_acquisition()
         except Exception:
             pass
 
