@@ -168,8 +168,27 @@ class SensorInput:
 
     def _start_gpiozero(self) -> bool:
         try:
+            import warnings
             from gpiozero import DigitalInputDevice
-            dev = DigitalInputDevice(SENSOR_PIN, pull_up=None, active_state=not SENSOR_ACTIVE_LOW)
+            dev = None
+            # Pi 5: the header is gpiochip0 on current kernels (gpiochip4 on early
+            # ones), and older gpiozero only looks for 4 - so try both explicitly.
+            try:
+                from gpiozero.pins.lgpio import LGPIOFactory
+                for chip in (0, 4):
+                    try:
+                        dev = DigitalInputDevice(SENSOR_PIN, pull_up=None,
+                                                 active_state=not SENSOR_ACTIVE_LOW,
+                                                 pin_factory=LGPIOFactory(chip=chip))
+                        break
+                    except Exception:
+                        dev = None
+            except ImportError:
+                pass
+            if dev is None:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    dev = DigitalInputDevice(SENSOR_PIN, pull_up=None, active_state=not SENSOR_ACTIVE_LOW)
         except Exception as e:  # not installed, no pin factory, pin busy...
             level = "WARN" if self.backend == "gpiozero" else "INFO"
             self.log(level, f"gpiozero unavailable ({e.__class__.__name__}) - using pinctrl polling")
