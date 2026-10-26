@@ -140,7 +140,7 @@ class GigECamera:
         self.stream = cam.create_stream(None, None)
         if self.stream is None:
             raise CameraError("could not create the image stream")
-        for prop, value in (("packet-resend", "ALWAYS"), ("socket-buffer", "AUTO")):
+        for prop, value in (("packet-resend", "ALWAYS"),):   # Aravis defaults otherwise (see camera_bridge.py)
             try:                                    # fewer dropped frames on the Pi
                 enum = Aravis.GvStreamPacketResend if prop == "packet-resend" else Aravis.GvStreamSocketBuffer
                 self.stream.set_property(prop, getattr(enum, value))
@@ -654,6 +654,8 @@ class GigEAny:
         script = Path(__file__).resolve().parent.parent / "camera_bridge.py"
         GigEAny._bridge_proc = subprocess.Popen(
             [sys.executable, str(script), "--ip", s.camera_ip, "--fps", str(s.camera_fps)])
+        import atexit
+        atexit.register(GigEAny._bridge_proc.terminate)      # don't leave it running after the station
         for _ in range(50):                      # wait up to 10 s for it to listen
             try:
                 socket.create_connection(BridgeCamera.ADDR, timeout=0.2).close()

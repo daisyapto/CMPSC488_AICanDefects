@@ -113,13 +113,18 @@ class Bridge:
         self.set_fps(self.fps)
         payload = cam.get_payload()
         self.stream = cam.create_stream(None, None)
-        for prop, enum, value in (("packet-resend", "GvStreamPacketResend", "ALWAYS"),
-                                  ("socket-buffer", "GvStreamSocketBuffer", "AUTO")):
+        linux = sys.platform.startswith("linux")
+        # On the Pi the stream only works reliably with Aravis' own defaults (same as
+        # arv-camera-test / pi_check, which get every frame); the extra tuning below is
+        # for laptop network ports on Windows / macOS.
+        props = (("packet-resend", "GvStreamPacketResend", "ALWAYS"),) + (
+            () if linux else (("socket-buffer", "GvStreamSocketBuffer", "AUTO"),))
+        for prop, enum, value in props:
             try:
                 self.stream.set_property(prop, getattr(getattr(Ar, enum), value))
             except Exception:
                 pass
-        for prop, value in (("frame-retention", 500_000), ("packet-timeout", 40_000)):
+        for prop, value in (() if linux else (("frame-retention", 500_000), ("packet-timeout", 40_000))):
             try:                                     # more patience for a laptop network port
                 self.stream.set_property(prop, value)
             except Exception:
