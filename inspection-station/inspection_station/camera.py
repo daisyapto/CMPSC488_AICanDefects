@@ -192,7 +192,13 @@ class GigECamera:
     def read(self):
         buf = self.stream.timeout_pop_buffer(1_000_000)      # 1 s, in microseconds
         if buf is None:
+            self._timeouts = getattr(self, "_timeouts", 0) + 1
+            if self._timeouts >= 5:
+                self._timeouts = 0
+                raise CameraError(f"no frames for 5 s ({self._stream_stats()}) - "
+                                  "check the network buffers / firewall; reconnecting")
             return None
+        self._timeouts = 0
         try:
             status = buf.get_status()
             if status != self.Ar.BufferStatus.SUCCESS:
@@ -207,6 +213,13 @@ class GigECamera:
         finally:
             self.stream.push_buffer(buf)
 
+    def _stream_stats(self) -> str:
+        try:
+            ok, fail, under = self.stream.get_statistics()
+            return f"{ok} frames ok, {fail} failed, {under} no free buffer"
+        except Exception:
+            return "no statistics"
+
     def _bad(self, status):
         """A frame the camera sent but that did not arrive complete. Skipping it
         silently made the picture look frozen - count them and reconnect with a
@@ -217,7 +230,7 @@ class GigECamera:
             self._slow_down()
         if self._bads >= 30:
             self._bads = 0
-            raise CameraError(f"frames arrive incomplete ({name}) - network buffers too small, "
+            raise CameraError(f"frames arrive incomplete ({name}; {self._stream_stats()}) - network buffers too small, "
                               "or lower the frame rate; run: sudo sysctl -w net.core.rmem_max=33554432")
         return None
 
@@ -1003,6 +1016,8 @@ class CameraManager:
                 self._reopen.set()
                 continue
             if frame is None:
+                if time.monotonic() - last > 2:
+                    self.fps = 0.0                   # don't keep showing a stale frame rate
                 continue
             now = time.monotonic()
             with self._cond:
