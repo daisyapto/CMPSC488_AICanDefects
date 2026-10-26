@@ -662,7 +662,10 @@ class GigEAny:
                 time.sleep(0.2)
 
     def open(self, s):
-        if os.environ.get("CAN_GIGE", "").lower() == "bridge":
+        # Linux (Pi): run the camera in its own process by default - streaming inside the
+        # station froze after the first frame on the Pi. CAN_GIGE=direct to opt out.
+        mode = os.environ.get("CAN_GIGE", "").lower() or ("bridge" if sys.platform.startswith("linux") else "direct")
+        if mode == "bridge":
             self._start_bridge(s)
             self.impl = BridgeCamera()
             self.impl.open(s)
