@@ -16,6 +16,7 @@ Threads
 from __future__ import annotations
 
 import base64
+import os
 import struct
 import socket
 import json
@@ -636,7 +637,36 @@ class GigEAny:
     def __init__(self):
         self.impl = None
 
+    _bridge_proc = None
+
+    def _start_bridge(self, s):
+        """Run camera_bridge.py as its own process (CAN_GIGE=bridge): the camera then
+        streams in a separate program, away from the station's detection load."""
+        import subprocess
+        proc = GigEAny._bridge_proc
+        if proc is not None and proc.poll() is None:
+            return
+        try:                                     # one left running from an earlier start
+            socket.create_connection(BridgeCamera.ADDR, timeout=0.2).close()
+            return
+        except OSError:
+            pass
+        script = Path(__file__).resolve().parent.parent / "camera_bridge.py"
+        GigEAny._bridge_proc = subprocess.Popen(
+            [sys.executable, str(script), "--ip", s.camera_ip, "--fps", str(s.camera_fps)])
+        for _ in range(50):                      # wait up to 10 s for it to listen
+            try:
+                socket.create_connection(BridgeCamera.ADDR, timeout=0.2).close()
+                return
+            except OSError:
+                time.sleep(0.2)
+
     def open(self, s):
+        if os.environ.get("CAN_GIGE", "").lower() == "bridge":
+            self._start_bridge(s)
+            self.impl = BridgeCamera()
+            self.impl.open(s)
+            return
         try:
             self.impl = GigECamera()
             self.impl.open(s)

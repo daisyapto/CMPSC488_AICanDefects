@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from inspection_station.camera import GigECamera   # noqa: E402
 from inspection_station.config import Settings     # noqa: E402
 
-s = Settings.load()
+s, _ = Settings.load()
 cam = GigECamera()
 print(f"opening camera at {s.camera_ip} ...")
 cam.open(s)
