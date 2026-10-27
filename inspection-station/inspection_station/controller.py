@@ -343,7 +343,10 @@ class Controller:
         self.manual_override = False
         self.rejector.locked_out = True
         self.rejector.safe()
-        self.conveyor.halt()
+        try:
+            self.conveyor.halt()
+        except Exception as e:
+            self.log("ERROR", f"E-stop: motors did not stop cleanly ({e}) - switch the motor HAT off")
         for can_id in self.scheduler.cancel_all():
             self._on_reject_done(can_id, LOCKED, 0.0)
         self.log("ALARM", "E-STOP - inspection halted, reject valve locked out")
@@ -926,7 +929,10 @@ class Controller:
         self._camera_wake.set()
         self.scheduler.stop()
         self.sensor.stop()
-        self.conveyor.close()
+        try:                                 # a motor error must never block the valve / relay shutdown
+            self.conveyor.close()
+        except Exception as e:
+            print(f"Motors: {e}")
         if self.cammgr:
             self.cammgr.stop()
         for t in self._threads:

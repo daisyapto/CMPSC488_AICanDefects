@@ -1550,6 +1550,7 @@ function wireConveyor() {
   }));
   $("#mountRef").addEventListener("click", () => convPost("mount_reference"));
   $("#convWithLine").addEventListener("change", (e) => setSetting("conveyor_with_line", e.target.checked));
+  $("#mountFitted").addEventListener("change", (e) => setSetting("mount_motor", e.target.checked));
   $$("#convDrvSeg button").forEach((b) => b.addEventListener("click", () => setSetting("motor_driver", b.dataset.v)));
   $("#convCalApply").addEventListener("click", async () => {
     const m = +$("#convCalMeasured").value;
@@ -1620,7 +1621,11 @@ function renderConveyor(c) {
   if (document.activeElement !== wl) wl.checked = c.with_line;
   wl.disabled = !eng;
 
-  // camera height
+  // camera height (only when the motor is fitted)
+  $("#mountSec").classList.toggle("hidden", !c.mount_fitted);
+  const mf = $("#mountFitted");
+  if (document.activeElement !== mf) mf.checked = c.mount_fitted;
+  mf.disabled = !eng;
   const ms = $("#mountState");
   ms.className = "conv-state " + (c.mount_running ? "on" : "");
   ms.textContent = c.mount_running ? `${c.mount_dir > 0 ? "Up ↑" : "Down ↓"} ${c.mount_steps_done}/${c.mount_requested}` : "Stopped";

@@ -296,7 +296,7 @@ team's GTK motor program does, from the dashboard (also from a phone):
   (move that many steps), **⇄ Auto** (back and forth), **Run continuous**, Stop.
   Pressing the active button again stops it. **Run with the line**: Start / Stop
   on the Line card also run / stop the belt.
-* **Camera height** - ▲ Up / ▼ Down by the Move steps, presets **12 / 16 / 19.2 oz**
+* **Camera height** (only if the motor is fitted - Setup › Camera height motor) - ▲ Up / ▼ Down by the Move steps, presets **12 / 16 / 19.2 oz**
   (0 / 3300 / 6600 steps) after **Set 12 oz reference** (lower the camera to the
   12 oz height by hand first). The reference is lost when the station restarts.
 * **Stop all** and **E-stop** stop both motors at once.

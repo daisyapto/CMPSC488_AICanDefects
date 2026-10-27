@@ -79,7 +79,15 @@ if [ -z "$CON" ]; then
 fi
 CUR="$(nmcli -g ipv4.method,ipv4.addresses con show "$CON" | tr '\n' ' ')"
 echo "  connection '$CON': $CUR"
-if echo "$CUR" | grep -q "169.254.100.1/16"; then echo "  already set for the camera"
+if echo "$CUR" | grep -q "169.254.100.1/16"; then
+  echo "  already set for the camera"
+  nmcli con mod "$CON" connection.autoconnect yes ipv4.dad-timeout 0 >/dev/null 2>&1
+  for other in $(nmcli -t -f NAME,TYPE con show | awk -F: -v c="$CON" '$2 ~ /ethernet/ && $1 != c {print $1}'); do
+    nmcli con mod "$other" connection.autoconnect no >/dev/null 2>&1   # e.g. netplan-eth0 (DHCP) would take eth0
+  done
+  if ! ip -4 addr show eth0 | grep -q "169.254.100.1"; then
+    nmcli con up "$CON" >/dev/null 2>&1 && echo "  eth0 brought up: 169.254.100.1" || echo "  ! could not bring '$CON' up (cable / camera power?)"
+  fi
 else
   echo "  The camera talks link-local (169.254.x.x). With no DHCP server, eth0 would get no address."
   echo "  This gives eth0 169.254.100.1/16 and no internet route (internet stays on Wi-Fi)."

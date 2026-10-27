@@ -294,7 +294,7 @@ SETTING_RULES = {
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
     "conveyor_move_steps": _int_range(500, 9000), "mount_move_steps": _int_range(10, 5000),
-    "conveyor_with_line": _bool,
+    "conveyor_with_line": _bool, "mount_motor": _bool,
 }
 
 
@@ -744,6 +744,9 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
                 return ok(message=f"Calibrated: {mm / steps * 1000:.1f} mm per 1000 steps")
         except (ValueError, KeyError, TypeError) as e:
             return fail(str(e) or "bad request", 400)
+        except Exception as e:                       # lgpio errors
+            ctl.log("ERROR", f"Motors: {action} failed ({e})")
+            return fail(f"Motor error: {e}")
         if action not in ("calibrate",):
             audit(action.replace("_", " ") if action.startswith("mount") else f"conveyor {action}",
                   " ".join(f"{k}={v}" for k, v in body.items()))

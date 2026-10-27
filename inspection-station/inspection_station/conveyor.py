@@ -75,9 +75,24 @@ class LgpioBackend:
 
     def pulses(self, pin, half_us, cycles):
         """cycles step pulses (0 = endless). Replaces whatever is running on that pin."""
-        self.lg.tx_pulse(self.h, pin, 0, 0)                     # stop + clear the queue
+        self._off(pin)                                          # stop + clear the queue
         if half_us:
             self.lg.tx_pulse(self.h, pin, half_us, half_us, 0, cycles)
+
+    def _off(self, pin):
+        """Stop the pulse train. Some lgpio versions reject tx_pulse(0, 0) ('bad PWM micros'),
+        so use PWM frequency 0 (= off) and fall back to the other call."""
+        try:
+            self.lg.tx_pwm(self.h, pin, 0, 0)
+        except Exception:
+            try:
+                self.lg.tx_pulse(self.h, pin, 0, 0)
+            except Exception:
+                pass
+        try:
+            self.lg.gpio_write(self.h, pin, 0)
+        except Exception:
+            pass
 
     def busy(self, pin) -> bool:
         return bool(self.lg.tx_busy(self.h, pin, self.lg.TX_PWM))
@@ -85,7 +100,7 @@ class LgpioBackend:
     def close(self):
         try:
             for motor in MOTOR_PINS.values():
-                self.lg.tx_pulse(self.h, motor["step"], 0, 0)
+                self._off(motor["step"])
                 self.write(motor["en"], 0)
             for motor in MOTOR_PINS.values():
                 for pin in motor.values():
@@ -336,13 +351,16 @@ class Conveyor:
                 "mount_position": mpos if self.mount_referenced else None,
                 "mount_steps_done": m.steps_done(), "mount_requested": self.mount_requested,
                 "mount_move_steps": self.s.mount_move_steps,
-                "presets": MOUNT_PRESETS,
+                "presets": MOUNT_PRESETS, "mount_fitted": self.s.mount_motor,
                 "driver": self.s.motor_driver, "driver_name": self.hw.name, "error": self.error,
                 "can_mm": self.s.can_diameter_mm,
             }
 
     def close(self):
-        self.stop_all(quiet=True)
+        try:
+            self.stop_all(quiet=True)
+        except Exception as e:
+            self.log("ERROR", f"Motors: stop failed at shutdown ({e})")
         self._stop.set()
         self._thread.join(timeout=0.5)
         self.hw.close()

@@ -573,7 +573,7 @@
           <span class="switch"><input type="checkbox" id="convWithLine"><span></span></span></label>
       </div>
 
-      <div class="conv-sec">
+      <div class="conv-sec" id="mountSec">
         <div class="conv-sec-head"><h3>Camera height</h3><span class="conv-state" id="mountState">Stopped</span></div>
         <div class="conv-slider"><label for="mountSteps">Move</label>
           <input type="range" id="mountSteps" min="10" max="5000" step="10"><b id="mountStepsVal">—</b></div>
@@ -592,6 +592,8 @@
         <summary>Setup &amp; calibration</summary>
         <div class="conv-field"><label>Motors</label>
           <div class="seg" id="convDrvSeg"><button data-v="hat">Motor HAT</button><button data-v="off">Simulated</button></div></div>
+        <label class="conv-line"><span>Camera height motor <small class="muted">fitted on MOTOR2</small></span>
+          <span class="switch"><input type="checkbox" id="mountFitted"><span></span></span></label>
         <div class="conv-cal">
           <div class="hint">Belt distance: mark the belt, press <b>Forward</b> (moves the steps on the Move slider), measure how far the mark moved, enter it, Apply.</div>
           <div class="conv-cal-row">

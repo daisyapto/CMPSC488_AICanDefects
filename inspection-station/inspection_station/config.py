@@ -133,6 +133,7 @@ class Settings:
     conveyor_with_line: bool = False   # Start / Stop on the Line card also run / stop the belt
     conveyor_mm_per_step: float = 0.0  # 0 = not calibrated
     mount_move_steps: int = 1000       # camera up / down distance (steps)
+    mount_motor: bool = False          # camera height motor fitted on MOTOR2 (shows the Camera height section)
 
     # storage
     keep_images_days: int = 30         # delete saved images older than this (labelled ones kept); 0 = keep all
