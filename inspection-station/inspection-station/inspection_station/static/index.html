@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Can Inspection Station</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b82f6'/%3E%3Crect x='10' y='6' width='12' height='20' rx='3' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <!-- ============================================================ header -->
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
+        <rect width="40" height="40" rx="11" fill="url(#lg)"/>
+        <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4f8ff7"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs>
+        <rect x="13" y="8" width="14" height="24" rx="3.5" fill="#fff"/>
+        <rect x="13" y="12" width="14" height="2" fill="#2563eb" opacity=".55"/>
+        <rect x="13" y="26" width="14" height="2" fill="#2563eb" opacity=".55"/>
+      </svg>
+      <div>
+        <div class="brand-title">Can Inspection</div>
+        <div class="brand-sub">Yards Brewing · empty can line</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav" aria-label="Pages">
+      <button data-page="line" class="on">Line</button>
+      <button data-page="review">Review <span class="nav-count hidden" id="navReviewCount"></span></button>
+      <button data-page="reports">Reports</button>
+      <button data-page="history">History</button>
+      <button data-page="diag">Diagnostics</button>
+    </nav>
+
+    <div id="statePill" class="state-pill neutral">
+      <span class="pulse"></span><span id="stateText">Connecting…</span>
+    </div>
+
+    <div class="topbar-right">
+      <div class="chips">
+        <div class="chip" id="chipGpio"><span class="dot"></span><span class="k">GPIO</span><span class="v">—</span></div>
+        <div class="chip hidden" id="chipTemp" title="Raspberry Pi / camera temperature"><span class="dot"></span><span class="k">Temp</span><span class="v">—</span></div>
+        <div class="chip" id="chipSensor"><span class="dot"></span><span class="k">Sensor</span><span class="v">—</span></div>
+        <div class="chip" id="chipCamera"><span class="dot"></span><span class="k">Camera</span><span class="v">—</span></div>
+      </div>
+      <div class="clock"><div id="clock">--:--:--</div><div id="dateLine" class="muted">&nbsp;</div></div>
+      <button class="user-btn" id="btnUser" title="Operator / engineer login">
+        <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <span><b id="userRole">Operator</b><small id="userName"></small></span>
+      </button>
+      <button class="icon-btn conv-btn" id="btnConveyor" title="Motors: conveyor + camera height (C)" aria-label="Motors">
+        <svg viewBox="0 0 24 24"><rect x="2" y="13" width="20" height="6" rx="3"/><circle cx="5.5" cy="16" r="1.2"/><circle cx="18.5" cy="16" r="1.2"/><rect x="9" y="6" width="6" height="7" rx="1.5"/></svg>
+        <span class="conv-dot" id="convDot"></span>
+      </button>
+      <a class="icon-btn" id="btnDisplay" href="/display" target="_blank" title="Line display — big screen view for a monitor next to the line" aria-label="Line display">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+      </a>
+      <button class="icon-btn" id="btnFullscreen" title="Fullscreen (F)" aria-label="Fullscreen">
+        <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button class="icon-btn" id="btnSettings" title="Settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="connBanner" class="banner danger hidden">Connection to the station lost — reconnecting…</div>
+  <div id="pinBanner" class="banner warn hidden">
+    The engineer PIN is still the default <b>1234</b> — change it in Settings › Security.
+  </div>
+  <div id="roBanner" class="banner info hidden">
+    View-only on this device. <b>E-stop</b> and <b>Stop</b> still work. Full control is on the station screen
+    (or start the server with <code>--remote-control</code>).
+  </div>
+
+  <!-- ============================================================== main -->
+  <main class="layout page" id="pageLine">
+    <aside class="col-left">
+      <section class="card">
+        <div class="card-head"><h2>Line control</h2></div>
+        <div class="prod">
+          <label class="prod-label" for="recipeSelect">Recipe</label>
+          <select id="recipeSelect" class="select"></select>
+          <div class="recipe-mod hidden" id="recipeMod"></div>
+          <div class="batch" id="batchBox"></div>
+        </div>
+        <div class="controls">
+          <div class="btn-row">
+            <button class="btn btn-go" id="btnStart" data-cmd="start">
+              <svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>Start</button>
+            <button class="btn btn-stop" id="btnStop" data-cmd="stop" data-safe>
+              <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop</button>
+          </div>
+          <button class="btn btn-estop" id="btnEstop" data-cmd="estop" data-safe>
+            <span>Emergency stop</span><kbd>Esc</kbd></button>
+          <div class="btn-row">
+            <button class="btn btn-quiet" id="btnReset" data-cmd="reset">Reset</button>
+            <button class="btn btn-warn" id="btnAck" data-cmd="ack">Acknowledge</button>
+          </div>
+          <button class="btn btn-ghost" id="btnSim" data-cmd="simulate">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Simulate can<kbd>Space</kbd></button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>Stack light</h2><span class="muted small" id="overrideHint"></span></div>
+        <div class="tower-wrap">
+          <svg id="tower" class="tower" viewBox="0 0 84 236" aria-label="Stack light"></svg>
+          <div class="legend">
+            <div class="legend-row" data-key="red"><b>Fault</b><span>solid until fixed</span></div>
+            <div class="legend-row" data-key="yellow"><b>Defect</b><span>flashing = warning</span></div>
+            <div class="legend-row" data-key="green"><b>Running</b><span>flashing = ready</span></div>
+          </div>
+        </div>
+        <ul id="reasons" class="reasons"></ul>
+        <div class="valve" id="valve">
+          <span class="valve-icon"><svg viewBox="0 0 24 24"><path d="M4 12h6M14 12h6M10 8v8l4-4z"/></svg></span>
+          <div><div class="valve-title">Reject valve</div><div class="muted small" id="valvePins">relay 4</div></div>
+          <span class="valve-state" id="valveState">Closed</span>
+        </div>
+        <div class="setting-row">
+          <div><div class="label">Manual override</div><div class="muted small">click lamps to switch them</div></div>
+          <label class="switch"><input type="checkbox" id="overrideToggle"><span></span></label>
+        </div>
+        <button class="btn btn-quiet btn-block danger-text" id="btnBurst" data-cmd="test_burst">Test reject burst</button>
+      </section>
+    </aside>
+
+    <section class="col-main">
+      <div class="row-hero">
+        <section class="card camera-card">
+          <div class="card-head">
+            <h2>Camera</h2>
+            <span class="badge" id="camSource">—</span>
+            <div class="spacer"></div>
+            <div class="seg" id="viewSeg">
+              <button data-v="detect">Detection</button><button data-v="raw">Raw</button>
+              <button data-v="mask">Difference</button><button data-v="edges">Edges</button>
+              <button data-v="focus" title="Full-resolution centre + sharpness score, for focusing the lens">Focus</button>
+            </div>
+            <div class="head-actions">
+              <button class="btn btn-sm btn-quiet" id="btnArea" title="Draw where the can is - detection ignores everything outside">Area</button>
+              <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" title="Set the exposure so the picture is bright enough">Auto exposure</button>
+              <button class="btn btn-sm btn-quiet" data-cmd="snapshot" title="Save a full-resolution frame">Snapshot</button>
+              <button class="btn btn-sm btn-quiet" id="btnPause" data-cmd="pause">Pause</button>
+            </div>
+          </div>
+          <div class="viewport" id="viewport">
+            <img id="liveImg" alt="">
+            <div class="vp-badge" id="vpBadge"><span class="rec"></span><span id="vpBadgeText">LIVE</span></div>
+            <div class="vp-info" id="vpInfo"></div>
+            <div class="area-draw hidden" id="areaDraw">
+              <div class="area-box hidden" id="areaBox"></div>
+              <div class="area-bar">
+                <span>Drag a box around where the can is. Everything outside is ignored.</span>
+                <button class="btn btn-sm btn-primary" id="areaSave">Save area</button>
+                <button class="btn btn-sm btn-quiet" id="areaFull">Whole view</button>
+                <button class="btn btn-sm btn-quiet" id="areaCancel">Cancel</button>
+              </div>
+            </div>
+            <div class="vp-msg" id="vpMsg">
+              <svg viewBox="0 0 24 24"><path d="M3 7h3l2-3h8l2 3h3v13H3z"/><circle cx="12" cy="13" r="4"/></svg>
+              <div id="vpMsgText">Connecting to camera…</div>
+              <button class="btn btn-sm btn-primary hidden" id="btnWake" data-cmd="wake">Wake camera</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card last-card">
+          <div class="card-head"><h2>Last inspected can</h2></div>
+          <div class="last-thumb" id="lastThumb" title="Click to enlarge">
+            <img id="lastImg" alt="">
+            <div class="last-empty" id="lastEmpty">No camera inspection yet</div>
+          </div>
+          <div class="last-result" id="lastResult"><span class="tag neutral">—</span><span class="last-id" id="lastId"></span></div>
+          <div class="last-summary" id="lastSummary">Select the <b>Camera</b> inspector in Settings and start the line.</div>
+          <dl class="facts" id="lastFacts"></dl>
+          <div class="ref-box">
+            <div class="ref-head"><span class="label">Good-can reference</span><span class="ref-state" id="refState">Not taught</span></div>
+            <div class="btn-row">
+              <button class="btn btn-sm btn-primary" data-cmd="teach">Teach good can</button>
+              <button class="btn btn-sm btn-quiet" data-cmd="clear_ref">Clear</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi" data-accent="blue"><div class="kpi-label">Inspected</div><div class="kpi-value" id="kN">0</div><div class="kpi-sub" id="kNsub">&nbsp;</div></div>
+        <div class="kpi" data-accent="green"><div class="kpi-label">Passed</div><div class="kpi-value" id="kPass">0</div><div class="kpi-sub" id="kPassSub">&nbsp;</div></div>
+        <div class="kpi" data-accent="red"><div class="kpi-label">Rejected</div><div class="kpi-value" id="kFail">0</div><div class="kpi-sub" id="kFailSub">&nbsp;</div></div>
+        <div class="kpi" data-accent="cyan"><div class="kpi-label">Yield</div><div class="kpi-value" id="kYield">—</div><div class="bar"><span id="kYieldBar"></span></div></div>
+        <div class="kpi" data-accent="violet"><div class="kpi-label">Cans / min</div><div class="kpi-value" id="kRate">0</div><div class="kpi-sub">last 60 s</div></div>
+        <div class="kpi" data-accent="amber"><div class="kpi-label">Inspect time</div><div class="kpi-value" id="kMs">—</div><div class="kpi-sub">ms average</div></div>
+      </div>
+
+      <div class="row-bottom">
+        <section class="card trend-card">
+          <div class="card-head">
+            <h2>Throughput &amp; yield</h2><div class="spacer"></div>
+            <span class="key"><i class="sw blue"></i>cans / 10 s</span>
+            <span class="key"><i class="sw red"></i>defects</span>
+            <span class="key"><i class="sw green line"></i>yield %</span>
+          </div>
+          <div class="chart"><canvas id="trend"></canvas></div>
+          <div class="card-head sub-head">
+            <h3>Recent cans</h3><div class="spacer"></div>
+            <span class="key"><i class="sw green"></i>pass</span>
+            <span class="key"><i class="sw red"></i>rejected</span>
+            <span class="key"><i class="sw orange"></i>not rejected</span>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </section>
+
+        <section class="card tabs-card">
+          <div class="tabs" role="tablist">
+            <button class="tab active" data-tab="table">Inspections <span class="count" id="tableCount">0</span></button>
+            <button class="tab" data-tab="defects">Defects</button>
+            <button class="tab" data-tab="alarms">Alarms <span class="count alert hidden" id="alarmCount">0</span></button>
+            <button class="tab" data-tab="log">Event log <span class="count alert hidden" id="logAlert">!</span></button>
+            <button class="tab" data-tab="audit">Audit</button>
+            <div class="spacer"></div>
+            <a class="btn btn-sm btn-quiet" href="/api/export.csv" download>Export CSV</a>
+            <button class="btn btn-sm btn-quiet" id="btnClear">Clear session</button>
+          </div>
+          <div class="tab-panel active" data-panel="table">
+            <div class="table-wrap">
+              <table class="results">
+                <thead><tr><th>Can</th><th>Time</th><th>Result</th><th>Defect</th><th class="num">Conf.</th><th class="num">Inspect</th><th>Reject</th><th></th></tr></thead>
+                <tbody id="rows"></tbody>
+              </table>
+              <div class="empty" id="tableEmpty">No cans inspected yet this session.</div>
+            </div>
+          </div>
+          <div class="tab-panel" data-panel="defects"><div class="defects" id="defects"></div></div>
+          <div class="tab-panel" data-panel="alarms"><div class="alarms" id="alarms"></div></div>
+          <div class="tab-panel" data-panel="log"><div class="log" id="log"></div></div>
+          <div class="tab-panel" data-panel="audit"><div class="table-wrap"><table class="results audit">
+            <thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Details</th><th>From</th></tr></thead>
+            <tbody id="auditRows"></tbody></table></div></div>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================================================ review -->
+  <main class="page page-pad hidden" id="pageReview">
+    <section class="card review-bar">
+      <div class="review-filters">
+        <div class="seg" id="revStatus">
+          <button data-v="todo" class="on">To review</button><button data-v="wrong">Wrong decisions</button>
+          <button data-v="correct">Confirmed</button><button data-v="all">All</button></div>
+        <div class="seg" id="revResult">
+          <button data-v="fail" class="on">Rejected cans</button><button data-v="pass">Passed cans</button><button data-v="all">All</button></div>
+        <select id="revDate" class="select select-sm"><option value="">All days</option></select>
+      </div>
+      <div class="review-stats" id="revStats"></div>
+      <a class="btn btn-sm btn-primary" id="revExport" href="/api/review/export" title="ZIP of reviewed images sorted into class folders, for training the AI model">Export dataset</a>
+    </section>
+    <div class="banner-inline hidden" id="revRoNote">Log in as <b>engineer</b> to label images. Everyone can browse them.</div>
+    <div class="review-grid" id="reviewGrid"></div>
+    <div class="review-empty hidden" id="reviewEmpty"></div>
+    <div class="review-more"><button class="btn btn-quiet hidden" id="reviewMore">Load more</button></div>
+  </main>
+
+  <!-- =========================================================== reports -->
+  <main class="page page-pad hidden" id="pageReports">
+    <section class="card">
+      <div class="card-head"><h2>Batches &amp; shift reports</h2><div class="spacer"></div>
+        <span class="muted small">Start a batch from Line control. Each batch gets a printable report (save as PDF) and a CSV of every can.</span></div>
+      <div class="table-wrap static"><table class="results batches">
+        <thead><tr><th>Lot / batch</th><th>Recipe</th><th>Operator</th><th>Started</th><th>Duration</th>
+          <th class="num">Cans</th><th class="num">Rejected</th><th class="num">Not rejected</th><th class="num">Yield</th><th></th></tr></thead>
+        <tbody id="batchRows"></tbody></table>
+        <div class="empty static hidden" id="batchEmpty">No batches yet. Start one from <b>Line control</b> on the Line page.</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- =========================================================== history -->
+  <main class="page page-pad hidden" id="pageHistory">
+    <section class="card hist-head">
+      <div class="card-head"><h2>Production history</h2><div class="spacer"></div>
+        <div class="seg" id="histRange"><button data-v="7">7 days</button><button data-v="30" class="on">30 days</button><button data-v="90">90 days</button></div></div>
+      <div class="hist-kpis" id="histKpis"></div>
+    </section>
+    <section class="card hist-chart-card">
+      <div class="card-head"><h2>Cans per day</h2><div class="spacer"></div>
+        <span class="key"><i class="sw blue"></i>passed</span><span class="key"><i class="sw red"></i>rejected</span>
+        <span class="key"><i class="sw green line"></i>yield %</span></div>
+      <div class="chart hist-chart"><canvas id="histChart"></canvas></div>
+    </section>
+    <div class="hist-row">
+      <section class="card">
+        <div class="card-head"><h2>Defect types</h2><span class="muted small" id="histDefRange"></span></div>
+        <div class="defects static" id="histDefects"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>By day</h2><span class="muted small">click a day for its CSV</span></div>
+        <div class="table-wrap static"><table class="results">
+          <thead><tr><th>Date</th><th class="num">Cans</th><th class="num">Rejected</th><th class="num">Not rejected</th><th class="num">Yield</th><th>Top defect</th><th></th></tr></thead>
+          <tbody id="histRows"></tbody></table>
+          <div class="empty static hidden" id="histEmpty">No inspections logged in this period yet.</div></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ======================================================= diagnostics -->
+  <main class="page page-pad hidden" id="pageDiag">
+    <div class="diag-grid">
+      <section class="card diag-sensor">
+        <div class="card-head"><h2>Trigger sensor</h2><span class="badge" id="dgSensorMode">—</span></div>
+        <div class="sensor-big" id="dgSensor"><span class="sdot"></span><b id="dgSensorText">—</b></div>
+        <dl class="facts" id="dgSensorFacts"></dl>
+        <div class="hint block">Block the beam by hand (or pass a can) and watch it change. Works while the line is stopped.</div>
+      </section>
+
+      <section class="card diag-timing">
+        <div class="card-head"><h2>Belt speed &amp; timing</h2><div class="spacer"></div><span class="muted small">from how long each can blocks the sensor</span></div>
+        <div class="speed-row">
+          <div class="speed"><div class="kpi-label">Belt speed</div><div class="speed-v" id="dgSpeed">—</div><div class="kpi-sub" id="dgSpeedSub">pass a few cans</div></div>
+          <div class="speed"><div class="kpi-label">Speed variation</div><div class="speed-v" id="dgSpread">—</div><div class="kpi-sub">last 10 cans</div></div>
+          <div class="speed"><div class="kpi-label">Closest cans</div><div class="speed-v" id="dgGap">—</div><div class="kpi-sub" id="dgGapSub">gap between triggers</div></div>
+        </div>
+        <div class="geo">
+          <div class="field"><div><label>Can diameter</label><div class="hint">12 oz = 66 mm</div></div><div class="stepper" data-setting="can_diameter_mm" data-min="20" data-max="200" data-step="1" data-unit="mm"></div></div>
+          <div class="field"><div><label>Sensor → camera centre</label><div class="hint">measure on the belt</div></div><div class="stepper" data-setting="camera_distance_mm" data-min="0" data-max="5000" data-step="5" data-unit="mm"></div></div>
+          <div class="field"><div><label>Sensor → air nozzle</label><div class="hint">measure on the belt</div></div><div class="stepper" data-setting="nozzle_distance_mm" data-min="0" data-max="5000" data-step="5" data-unit="mm"></div></div>
+        </div>
+        <table class="results timing-table"><thead><tr><th>Setting</th><th class="num">Now</th><th class="num">Recommended</th><th></th></tr></thead>
+          <tbody id="dgTiming"></tbody></table>
+        <ul class="checks" id="dgChecks"></ul>
+      </section>
+
+      <section class="card diag-out">
+        <div class="card-head"><h2>Outputs</h2><span class="muted small">line must be stopped</span></div>
+        <button class="btn btn-primary btn-block" id="dgSelftest">Run self-test<span class="muted small">&nbsp;· each lamp 1 s, then one air burst</span></button>
+        <div class="setting-row"><div><div class="label">Manual lamp control</div><div class="muted small">switch each relay by hand</div></div>
+          <label class="switch"><input type="checkbox" id="dgOverride"><span></span></label></div>
+        <div class="lamp-btns" id="dgLamps">
+          <button class="lamp-btn" data-key="green">Green<small>relay 1 · GPIO 5</small></button>
+          <button class="lamp-btn" data-key="yellow">Yellow<small>relay 2 · GPIO 6</small></button>
+          <button class="lamp-btn" data-key="red">Red<small>relay 3 · GPIO 26</small></button>
+        </div>
+        <button class="btn btn-quiet btn-block danger-text" data-cmd="test_burst">Test reject burst<span class="muted small">&nbsp;· relay 4 · GPIO 23</span></button>
+      </section>
+
+      <section class="card diag-cam">
+        <div class="card-head"><h2>Camera</h2><div class="spacer"></div><button class="btn btn-sm btn-quiet" data-cmd="check_camera">Check camera</button></div>
+        <dl class="facts" id="dgCamera"></dl>
+        <button class="btn btn-sm btn-quiet diag-find" data-gige-find>Find GigE cameras (Genie Nano)</button>
+        <div class="gige-list" data-gige-list></div>
+      </section>
+
+      <section class="card diag-sys">
+        <div class="card-head"><h2>System &amp; storage</h2></div>
+        <div class="disk"><div class="disk-top"><span>Storage</span><span id="dgDiskText">—</span></div>
+          <div class="bar"><span id="dgDiskBar"></span></div></div>
+        <div class="field"><div><label>Keep images</label><div class="hint">older ones deleted hourly · labelled images kept · 0 = keep all</div></div>
+          <div class="stepper" data-setting="keep_images_days" data-min="0" data-max="365" data-step="1" data-unit="days"></div></div>
+        <button class="btn btn-sm btn-quiet" data-cmd="cleanup">Clean up now</button>
+        <dl class="facts" id="dgSystem"></dl>
+      </section>
+    </div>
+  </main>
+
+  <!-- ========================================================== settings -->
+  <div class="scrim" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-label="Settings">
+    <div class="drawer-head">
+      <h2>Settings</h2>
+      <button class="icon-btn" id="btnCloseDrawer" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="drawer-body">
+      <div class="drawer-lock hidden" id="drawerLock">
+        <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <div><b>Settings are locked</b><span>Log in as engineer to change them.</span></div>
+        <button class="btn btn-sm btn-primary" id="drawerLogin">Log in</button>
+      </div>
+      <section class="group">
+        <h3>Recipe</h3>
+        <div class="recipe-card">
+          <div><div class="muted small">Active recipe</div><div class="recipe-name" id="recipeName">—</div>
+            <div class="hint" id="recipeState"></div></div>
+          <button class="btn btn-sm btn-primary" id="recipeSave">Save to recipe</button>
+        </div>
+        <div class="field col"><label>New recipe from current settings</label>
+          <div class="input-row"><input id="recipeNew" class="input" placeholder="e.g. 16 oz tall" maxlength="40"><button class="btn btn-sm btn-quiet" id="recipeCreate">Create</button></div></div>
+        <div class="field col"><label>Delete a recipe</label>
+          <div class="input-row"><select id="recipeDelSel" class="select"></select><button class="btn btn-sm btn-quiet danger-text" id="recipeDelete">Delete</button></div></div>
+        <div class="hint block">A recipe stores timing, camera, detection and air settings plus its own good-can reference.
+          Settings below marked <span class="rcp">R</span> belong to the recipe.</div>
+      </section>
+      <section class="group">
+        <h3>Inspector</h3>
+        <div class="radio-cards" id="inspectorCards"></div>
+        <div class="field"><label>Simulated defect rate</label><div class="stepper" data-setting="sim_defect_rate" data-min="0" data-max="100" data-step="5" data-unit="%"></div></div>
+      </section>
+
+      <section class="group">
+        <h3>Camera</h3>
+        <div class="field col"><label>Source</label><div class="seg seg-wide" id="sourceSeg"></div></div>
+        <div class="field col" id="ipField"><label>Camera IP (Genie Nano)</label>
+          <div class="input-row"><input id="ipInput" class="input mono" spellcheck="false"><button class="btn btn-sm btn-primary" id="ipApply">Apply</button></div>
+          <div class="hint" id="ipHint"></div>
+          <button class="btn btn-sm btn-quiet" data-gige-find>Find camera on the network</button>
+          <div class="gige-list" data-gige-list></div></div>
+        <div class="field col hidden" id="webcamField"><label>Which camera</label>
+          <div class="input-row"><span class="hint" id="webcamCur"></span><button class="btn btn-sm btn-quiet" id="webcamFind">Find cameras</button></div>
+          <div class="cam-pick" id="webcamList"></div>
+          <div class="hint">The Genie Nano is an Ethernet camera, not a webcam - choose the <b>Genie Nano</b> source for it.</div></div>
+        <div class="field col hidden" id="folderField"><label>Image folder (on the station)</label>
+          <div class="input-row"><input id="folderInput" class="input mono" spellcheck="false" placeholder="/home/pi/samples"><button class="btn btn-sm btn-primary" id="folderApply">Apply</button></div></div>
+        <div class="field"><div><label>Exposure</label><div class="hint">picture too dark → raise it (or Auto exposure on the Camera card)</div></div><div class="stepper" data-setting="exposure_us" data-min="20" data-max="200000" data-step="1000" data-unit="µs"></div></div>
+        <div class="field"><label>Gain</label><div class="stepper" data-setting="gain_db" data-min="0" data-max="48" data-step="1" data-unit=""></div></div>
+        <div class="field"><div><label>Image brightness</label><div class="hint" id="brightHint">—</div></div>
+          <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" id="btnAutoExp">Auto-set exposure</button></div>
+        <div class="field"><label>Capture delay <i class="hint-i" title="Time from the sensor until the can is centred under the camera">?</i></label><div class="stepper" data-setting="camera_delay_ms" data-min="0" data-max="1000" data-step="5" data-unit="ms"></div></div>
+      </section>
+
+      <section class="group">
+        <h3>Detection</h3>
+        <div class="field"><div><label>Detection engine</label><div class="hint">Team = team_vision.py · YOLO = trained model</div></div><div class="seg" data-setting="vision_engine" data-options="builtin:Built-in,team:Team,yolo:YOLO"></div></div>
+        <div class="hint block hidden" id="engineHint"></div>
+        <div id="yoloFields" class="hidden">
+          <div class="field col"><label>YOLO model file (on the station)</label>
+            <div class="input-row"><input id="yoloInput" class="input mono" spellcheck="false" placeholder="models/can_defects.pt"><button class="btn btn-sm btn-primary" id="yoloApply">Apply</button></div></div>
+          <div class="field"><label>Min confidence</label><div class="stepper" data-setting="yolo_conf" data-min="5" data-max="95" data-step="5" data-unit="%"></div></div>
+          <div class="field"><div><label>Model image size</label><div class="hint">smaller = faster, misses small defects</div></div><div class="stepper" data-setting="yolo_imgsz" data-min="160" data-max="1280" data-step="32" data-unit="px"></div></div>
+          <div class="field"><div><label>Active cooler fitted</label><div class="hint">off = YOLO only on inspected cans, not the live view</div></div><label class="switch"><input type="checkbox" data-setting="active_cooler"><span></span></label></div>
+          <div class="field"><div><label>Crop to the can first</label><div class="hint">keeps small defects visible to the model</div></div><label class="switch"><input type="checkbox" data-setting="yolo_crop"><span></span></label></div>
+        </div>
+        <div class="field"><label>Sensitivity</label><div class="stepper" data-setting="vision_sensitivity" data-min="1" data-max="100" data-step="5" data-unit=""></div></div>
+        <div class="field"><label>Min defect size</label><div class="stepper" data-setting="vision_min_area" data-min="5" data-max="5000" data-step="5" data-unit="px"></div></div>
+        <div class="field"><label>Save images</label><div class="seg" data-setting="save_images" data-options="off:Off,fails:Fails,all:All"></div></div>
+        <div class="field"><label>Also save boxed copy</label><label class="switch"><input type="checkbox" data-setting="save_annotated"><span></span></label></div>
+      </section>
+
+      <section class="group">
+        <h3>Reject</h3>
+        <div class="field"><div><label>Reject enabled</label><div class="hint">air fires on a defect</div></div><label class="switch"><input type="checkbox" data-setting="reject_enabled"><span></span></label></div>
+        <div class="field"><div><label>Single-shot latch</label><div class="hint">lock after one fire (air test)</div></div><label class="switch amber"><input type="checkbox" data-setting="single_shot"><span></span></label></div>
+        <div class="field"><label>Reject delay <i class="hint-i" title="Time from the sensor until the can reaches the air nozzle">?</i></label><div class="stepper" data-setting="reject_delay_ms" data-min="0" data-max="5000" data-step="5" data-unit="ms"></div></div>
+        <div class="field"><label>Air pulses</label><div class="stepper" data-setting="pulses" data-min="1" data-max="10" data-step="1" data-unit=""></div></div>
+        <div class="field"><label>Pulse on</label><div class="stepper" data-setting="pulse_on_ms" data-min="5" data-max="500" data-step="5" data-unit="ms"></div></div>
+        <div class="field"><label>Pulse off</label><div class="stepper" data-setting="pulse_off_ms" data-min="5" data-max="500" data-step="5" data-unit="ms"></div></div>
+        <div class="hint block" id="burstHint"></div>
+      </section>
+
+      <section class="group">
+        <h3>Heat &amp; power</h3>
+        <dl class="health-box" id="healthBox"></dl>
+        <div class="field"><div><label>Camera frame rate</label><div class="hint">lower = cooler camera and Pi</div></div><div class="stepper" data-setting="camera_fps" data-min="5" data-max="30" data-step="5" data-unit="fps"></div></div>
+        <div class="field"><div><label>Camera standby after</label><div class="hint">line stopped this long (0 = never)</div></div><div class="stepper" data-setting="standby_after_min" data-min="0" data-max="120" data-step="5" data-unit="min"></div></div>
+      </section>
+
+      <section class="group">
+        <h3>Defect warning <span class="muted">(yellow flashing)</span></h3>
+        <div class="field"><label>Defects in a row</label><div class="stepper" data-setting="alarm_after" data-min="1" data-max="50" data-step="1" data-unit=""></div></div>
+        <div class="field"><label>Defect rate over last <span id="warnWindow">50</span></label><div class="stepper" data-setting="warn_rate_pct" data-min="5" data-max="100" data-step="5" data-unit="%"></div></div>
+      </section>
+      <section class="group">
+        <h3>Security</h3>
+        <div class="field col"><label>Change engineer PIN</label>
+          <div class="input-row"><input id="pinNew" class="input mono" type="password" inputmode="numeric" maxlength="8" placeholder="4-8 digits"><button class="btn btn-sm btn-primary" id="pinSave">Change</button></div>
+          <div class="hint">Operators can run the line, choose recipes and start batches. Settings, teaching, labelling and recipes need the engineer PIN. Engineers are logged out after 15 minutes without activity.</div></div>
+      </section>
+      <p class="drawer-foot">Changes apply immediately, are saved on the station and recorded in the audit trail.</p>
+    </div>
+  </aside>
+
+  <!-- ============================================================= modal -->
+  <div class="modal" id="modal">
+    <div class="modal-box">
+      <div class="modal-head"><h2 id="modalTitle">Image</h2><div class="spacer"></div>
+        <a class="btn btn-sm btn-quiet" id="modalRaw" target="_blank">Original</a>
+        <button class="icon-btn" id="modalClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <img id="modalImg" alt="">
+    </div>
+  </div>
+  <div class="modal" id="loginModal">
+    <form class="dialog" id="loginForm" autocomplete="off">
+      <div class="dialog-head"><h2>Engineer login</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <label class="lbl">Your name<input class="input" id="loginName" maxlength="30" required></label>
+      <label class="lbl">PIN<input class="input mono" id="loginPin" type="password" inputmode="numeric" maxlength="8" required></label>
+      <div class="form-error" id="loginErr"></div>
+      <button class="btn btn-primary btn-block" type="submit">Log in</button>
+    </form>
+  </div>
+
+  <div class="modal" id="batchModal">
+    <form class="dialog" id="batchForm" autocomplete="off">
+      <div class="dialog-head"><h2>Start a batch</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <p class="muted small">Every can inspected until you end the batch is counted in its report.</p>
+      <label class="lbl">Lot / batch number<input class="input" id="batchLot" maxlength="40" required placeholder="e.g. 2410-A"></label>
+      <label class="lbl">Operator<input class="input" id="batchOp" maxlength="40" placeholder="your name"></label>
+      <label class="lbl">Note <span class="muted">(optional)</span><input class="input" id="batchNote" maxlength="200"></label>
+      <div class="dialog-info">Recipe: <b id="batchRecipe">—</b></div>
+      <div class="form-error" id="batchErr"></div>
+      <button class="btn btn-go btn-block" type="submit">Start batch</button>
+    </form>
+  </div>
+
+  <div class="modal" id="reviewer">
+    <div class="reviewer">
+      <div class="rv-image">
+        <img id="rvImg" alt="">
+        <div class="rv-nav">
+          <button class="icon-btn" id="rvPrev" title="Previous (←)"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+          <div class="seg" id="rvView"><button data-v="ann" class="on">Boxes</button><button data-v="raw">Original</button></div>
+          <button class="icon-btn" id="rvNext" title="Next (→)"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+        </div>
+      </div>
+      <div class="rv-side">
+        <div class="dialog-head"><h2 id="rvTitle">Can</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+        <dl class="facts" id="rvFacts"></dl>
+        <div class="rv-q" id="rvQuestion">Was the station right?</div>
+        <button class="btn btn-block rv-yes" id="rvYes"></button>
+        <label class="lbl" id="rvTypeWrap">Defect type<select class="select" id="rvType"></select></label>
+        <button class="btn btn-block rv-no" id="rvNo"></button>
+        <button class="btn btn-sm btn-quiet" id="rvClear">Clear label</button>
+        <div class="rv-current" id="rvCurrent"></div>
+        <div class="hint">Keys: <kbd>1</kbd> right · <kbd>2</kbd> wrong · <kbd>←</kbd> <kbd>→</kbd> browse</div>
+        <div class="hint" id="rvRo"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="reportModal">
+    <div class="modal-box report-box">
+      <div class="modal-head"><h2 id="reportTitle">Batch report</h2><div class="spacer"></div>
+        <a class="btn btn-sm btn-quiet" id="reportCsv">CSV</a>
+        <button class="btn btn-sm btn-primary" id="reportPrint">Print / PDF</button>
+        <button class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <iframe id="reportFrame" title="Batch report"></iframe>
+    </div>
+  </div>
+
+  <!-- ======================================================== motors panel -->
+  <section class="conv-panel hidden" id="convPanel" aria-label="Conveyor and camera motors">
+    <div class="conv-head" id="convHead">
+      <h2>Motors</h2>
+      <span class="muted conv-drv" id="convDriver">—</span>
+      <div class="spacer"></div>
+      <button class="btn btn-sm conv-stopall" id="convStopAll">■ Stop all</button>
+      <button class="icon-btn conv-x" id="convClose" aria-label="Close">×</button>
+    </div>
+    <div class="conv-body">
+      <div class="conv-err hidden" id="convErr"></div>
+
+      <div class="conv-sec">
+        <div class="conv-sec-head"><h3>Conveyor</h3><span class="conv-state" id="convState">Stopped</span></div>
+        <div class="conv-slider"><label for="convSpeed">Speed</label>
+          <input type="range" id="convSpeed" min="0" max="100" step="1"><b id="convSpeedVal">—</b></div>
+        <div class="conv-slider"><label for="convSteps">Move</label>
+          <input type="range" id="convSteps" min="500" max="50000" step="100"><b id="convStepsVal">—</b></div>
+        <div class="conv-pad">
+          <button class="btn conv-mv" data-belt="rev">◀ Reverse<small id="convRevSteps"></small></button>
+          <button class="btn conv-mv conv-auto" data-belt="auto">⇄ Auto<small id="convAutoSteps"></small></button>
+          <button class="btn conv-mv" data-belt="fwd">Forward ▶<small id="convFwdSteps"></small></button>
+        </div>
+        <div class="conv-row2">
+          <button class="btn btn-sm btn-quiet" id="convRun">Run continuous ▶</button>
+          <button class="btn btn-sm btn-stop" id="convStop">■ Stop belt</button>
+        </div>
+        <dl class="conv-facts">
+          <dt>Steps/s</dt><dd id="convSps">—</dd>
+          <dt>Belt</dt><dd id="convMm">—</dd>
+          <dt>Max cans/min</dt><dd id="convRate">—</dd>
+        </dl>
+        <label class="conv-line"><span>Run with the line <small class="muted">Start / Stop also run / stop the belt</small></span>
+          <span class="switch"><input type="checkbox" id="convWithLine"><span></span></span></label>
+      </div>
+
+      <div class="conv-sec" id="mountSec">
+        <div class="conv-sec-head"><h3>Camera height</h3><span class="conv-state" id="mountState">Stopped</span></div>
+        <div class="conv-slider"><label for="mountSteps">Move</label>
+          <input type="range" id="mountSteps" min="10" max="5000" step="10"><b id="mountStepsVal">—</b></div>
+        <div class="conv-pad conv-pad2">
+          <button class="btn conv-mv conv-mount" data-mount="1">▲ Up</button>
+          <button class="btn conv-mv conv-mount" data-mount="-1">▼ Down</button>
+        </div>
+        <div class="conv-presets" id="mountPresets"></div>
+        <div class="conv-mount-foot">
+          <span class="muted" id="mountPos">Position: not referenced</span>
+          <button class="btn btn-sm btn-quiet" id="mountRef">Set 12 oz reference</button>
+        </div>
+      </div>
+
+      <details class="conv-setup">
+        <summary>Setup &amp; calibration</summary>
+        <div class="conv-field"><label>Motors</label>
+          <div class="seg" id="convDrvSeg"><button data-v="c">Team C code</button><button data-v="hat">Python</button><button data-v="off">Sim</button></div></div>
+        <label class="conv-line"><span>Camera height motor <small class="muted">fitted on MOTOR2</small></span>
+          <span class="switch"><input type="checkbox" id="mountFitted"><span></span></span></label>
+        <div class="conv-cal">
+          <div class="hint">Belt distance: mark the belt, press <b>Forward</b> (moves the steps on the Move slider), measure how far the mark moved, enter it, Apply.</div>
+          <div class="conv-cal-row">
+            <input class="input" type="number" id="convCalMeasured" placeholder="measured mm">
+            <button class="btn btn-sm btn-primary" id="convCalApply">Apply</button>
+          </div>
+        </div>
+        <div class="hint">Waveshare Motor HAT (B) - conveyor: EN 12 · DIR 13 · STEP 19; camera: EN 4 · DIR 24 · STEP 18.
+          Microstepping = the HAT's DIP switches. Close the GTK motor program first (only one program can drive the pins).
+          <b>Never plug / unplug a motor while the HAT has power.</b></div>
+      </details>
+    </div>
+  </section>
+
+  <div class="toasts" id="toasts"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
