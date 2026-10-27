@@ -49,6 +49,10 @@
         <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
         <span><b id="userRole">Operator</b><small id="userName"></small></span>
       </button>
+      <button class="icon-btn conv-btn" id="btnConveyor" title="Motors: conveyor + camera height (C)" aria-label="Motors">
+        <svg viewBox="0 0 24 24"><rect x="2" y="13" width="20" height="6" rx="3"/><circle cx="5.5" cy="16" r="1.2"/><circle cx="18.5" cy="16" r="1.2"/><rect x="9" y="6" width="6" height="7" rx="1.5"/></svg>
+        <span class="conv-dot" id="convDot"></span>
+      </button>
       <a class="icon-btn" id="btnDisplay" href="/display" target="_blank" title="Line display — big screen view for a monitor next to the line" aria-label="Line display">
         <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
       </a>
@@ -532,6 +536,75 @@
       <iframe id="reportFrame" title="Batch report"></iframe>
     </div>
   </div>
+
+  <!-- ======================================================== motors panel -->
+  <section class="conv-panel hidden" id="convPanel" aria-label="Conveyor and camera motors">
+    <div class="conv-head" id="convHead">
+      <h2>Motors</h2>
+      <span class="muted conv-drv" id="convDriver">—</span>
+      <div class="spacer"></div>
+      <button class="btn btn-sm conv-stopall" id="convStopAll">■ Stop all</button>
+      <button class="icon-btn conv-x" id="convClose" aria-label="Close">×</button>
+    </div>
+    <div class="conv-body">
+      <div class="conv-err hidden" id="convErr"></div>
+
+      <div class="conv-sec">
+        <div class="conv-sec-head"><h3>Conveyor</h3><span class="conv-state" id="convState">Stopped</span></div>
+        <div class="conv-slider"><label for="convSpeed">Speed</label>
+          <input type="range" id="convSpeed" min="0" max="100" step="1"><b id="convSpeedVal">—</b></div>
+        <div class="conv-slider"><label for="convSteps">Move</label>
+          <input type="range" id="convSteps" min="500" max="9000" step="100"><b id="convStepsVal">—</b></div>
+        <div class="conv-pad">
+          <button class="btn conv-mv" data-belt="rev">◀ Reverse<small id="convRevSteps"></small></button>
+          <button class="btn conv-mv conv-auto" data-belt="auto">⇄ Auto<small id="convAutoSteps"></small></button>
+          <button class="btn conv-mv" data-belt="fwd">Forward ▶<small id="convFwdSteps"></small></button>
+        </div>
+        <div class="conv-row2">
+          <button class="btn btn-sm btn-quiet" id="convRun">Run continuous ▶</button>
+          <button class="btn btn-sm btn-stop" id="convStop">■ Stop belt</button>
+        </div>
+        <dl class="conv-facts">
+          <dt>Steps/s</dt><dd id="convSps">—</dd>
+          <dt>Belt</dt><dd id="convMm">—</dd>
+          <dt>Max cans/min</dt><dd id="convRate">—</dd>
+        </dl>
+        <label class="conv-line"><span>Run with the line <small class="muted">Start / Stop also run / stop the belt</small></span>
+          <span class="switch"><input type="checkbox" id="convWithLine"><span></span></span></label>
+      </div>
+
+      <div class="conv-sec">
+        <div class="conv-sec-head"><h3>Camera height</h3><span class="conv-state" id="mountState">Stopped</span></div>
+        <div class="conv-slider"><label for="mountSteps">Move</label>
+          <input type="range" id="mountSteps" min="10" max="5000" step="10"><b id="mountStepsVal">—</b></div>
+        <div class="conv-pad conv-pad2">
+          <button class="btn conv-mv conv-mount" data-mount="1">▲ Up</button>
+          <button class="btn conv-mv conv-mount" data-mount="-1">▼ Down</button>
+        </div>
+        <div class="conv-presets" id="mountPresets"></div>
+        <div class="conv-mount-foot">
+          <span class="muted" id="mountPos">Position: not referenced</span>
+          <button class="btn btn-sm btn-quiet" id="mountRef">Set 12 oz reference</button>
+        </div>
+      </div>
+
+      <details class="conv-setup">
+        <summary>Setup &amp; calibration</summary>
+        <div class="conv-field"><label>Motors</label>
+          <div class="seg" id="convDrvSeg"><button data-v="hat">Motor HAT</button><button data-v="off">Simulated</button></div></div>
+        <div class="conv-cal">
+          <div class="hint">Belt distance: mark the belt, press <b>Forward</b> (moves the steps on the Move slider), measure how far the mark moved, enter it, Apply.</div>
+          <div class="conv-cal-row">
+            <input class="input" type="number" id="convCalMeasured" placeholder="measured mm">
+            <button class="btn btn-sm btn-primary" id="convCalApply">Apply</button>
+          </div>
+        </div>
+        <div class="hint">Waveshare Motor HAT (B) - conveyor: EN 12 · DIR 13 · STEP 19; camera: EN 4 · DIR 24 · STEP 18.
+          Microstepping = the HAT's DIP switches. Close the GTK motor program first (only one program can drive the pins).
+          <b>Never plug / unplug a motor while the HAT has power.</b></div>
+      </details>
+    </div>
+  </section>
 
   <div class="toasts" id="toasts"></div>
 

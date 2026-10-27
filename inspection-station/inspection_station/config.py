@@ -35,6 +35,12 @@ LIGHT_PINS = {
 }
 REJECT_PIN = 23            # header pin 16 -> relay 4 -> reject solenoid valve
 
+# Motors: Waveshare Stepper Motor HAT (B), from the team motor program (DEV_Config.h)
+MOTOR_PINS = {
+    "conveyor": {"en": 12, "dir": 13, "step": 19, "m0": 16, "m1": 17, "m2": 20},   # MOTOR1
+    "mount":    {"en": 4,  "dir": 24, "step": 18, "m0": 21, "m1": 22, "m2": 27},   # MOTOR2 camera up/down
+}
+
 WIRING = [  # (physical pin, signal, connected to)
     (2, "5V", "Sensor power"),
     (4, "5V", "Relay board VCC"),
@@ -45,8 +51,8 @@ WIRING = [  # (physical pin, signal, connected to)
     (29, "GPIO5", "Relay 1 - green lamp"),
     (31, "GPIO6", "Relay 2 - yellow lamp"),
     (37, "GPIO26", "Relay 3 - red lamp"),
-    # GPIO 4, 12, 13, 16, 17, 18, 19, 20, 21, 22, 24, 27 belong to the motor
-    # controls - the station never touches them.
+    # Motor HAT (B): conveyor EN 12, DIR 13, STEP 19, M0-M2 16/17/20;
+    # camera mount EN 4, DIR 24, STEP 18, M0-M2 21/22/27 - see MOTOR_PINS.
 ]
 
 # =============================================================================
@@ -69,7 +75,7 @@ DISK_MIN_MB = 300                # red fault below this much free storage
 
 
 def check_pin_conflicts():
-    pins = [SENSOR_PIN, REJECT_PIN, *LIGHT_PINS.values()]
+    pins = [SENSOR_PIN, REJECT_PIN, *LIGHT_PINS.values(), *[p for m in MOTOR_PINS.values() for p in m.values()]]
     dup = sorted({p for p in pins if pins.count(p) > 1})
     if dup:
         raise SystemExit(f"GPIO conflict: pin(s) {dup} used more than once - fix config.py")
@@ -119,6 +125,14 @@ class Settings:
     can_diameter_mm: int = 66          # 12 oz standard can (211 diameter) = 66 mm
     camera_distance_mm: int = 0        # sensor beam -> centre of the camera view (0 = not measured)
     nozzle_distance_mm: int = 0        # sensor beam -> air nozzle (0 = not measured)
+
+    # motors (conveyor.py) - conveyor belt + camera height on the Waveshare Motor HAT
+    motor_driver: str = "hat"          # "hat" (Motor HAT on GPIO) | "off" (simulated)
+    conveyor_speed_pct: int = 80       # 0-100 %, same slider as the motor program
+    conveyor_move_steps: int = 5000    # Forward / Reverse / Auto distance (steps)
+    conveyor_with_line: bool = False   # Start / Stop on the Line card also run / stop the belt
+    conveyor_mm_per_step: float = 0.0  # 0 = not calibrated
+    mount_move_steps: int = 1000       # camera up / down distance (steps)
 
     # storage
     keep_images_days: int = 30         # delete saved images older than this (labelled ones kept); 0 = keep all

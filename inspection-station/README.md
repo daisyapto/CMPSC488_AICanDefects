@@ -278,8 +278,7 @@ plus a CSV of every can. Stored in `data/batches/`.
 | 31 | GPIO6 | Relay 2 - yellow lamp |
 | 37 | GPIO26 | Relay 3 - red lamp |
 
-GPIO 4, 12, 13, 16, 17, 18, 19, 20, 21, 22, 24 and 27 are used by the motor
-controls; the station never touches them.
+Motor HAT pins: see **Motors: conveyor belt and camera height**.
 
 The relay board is **active-low**: a LOW pin turns the relay ON. That includes
 the reject solenoid on relay 4. Do not use the old `AirTest.py` with this
@@ -287,6 +286,35 @@ wiring; it treats LOW as "air off".
 
 The Genie Nano camera connects to the Pi's Ethernet port - see **Camera
 (Teledyne DALSA Genie Nano)** below for the network setup.
+
+## Motors: conveyor belt and camera height
+
+The **Motors** panel (belt button in the top bar, or press **C**) does what the
+team's GTK motor program does, from the dashboard (also from a phone):
+
+* **Conveyor** - speed 0-100 %, Move distance (steps), **◀ Reverse / Forward ▶**
+  (move that many steps), **⇄ Auto** (back and forth), **Run continuous**, Stop.
+  Pressing the active button again stops it. **Run with the line**: Start / Stop
+  on the Line card also run / stop the belt.
+* **Camera height** - ▲ Up / ▼ Down by the Move steps, presets **12 / 16 / 19.2 oz**
+  (0 / 3300 / 6600 steps) after **Set 12 oz reference** (lower the camera to the
+  12 oz height by hand first). The reference is lost when the station restarts.
+* **Stop all** and **E-stop** stop both motors at once.
+
+Hardware: Waveshare **Stepper Motor HAT (B)** (two HR8825 drivers), pins as in
+the motor program (`DEV_Config.h`, `MOTOR_PINS` in `config.py`):
+
+| Motor | EN | DIR | STEP | M0 / M1 / M2 |
+|---|---|---|---|---|
+| 1 - conveyor | 12 | 13 | 19 | 16 / 17 / 20 |
+| 2 - camera height | 4 | 24 | 18 | 21 / 22 / 27 |
+
+Microstepping is set with the HAT's DIP switches. Speeds and step timing are the
+same as `motor_control.c` (half period 1100 - 10 x speed us). Steps are timed by
+lgpio's pulse thread, so the camera and dashboard don't make the motor stutter.
+
+**Close the GTK motor program before starting the station** - only one program
+can drive the pins. **Never plug or unplug a motor while the HAT has power.**
 
 ## How a can is handled
 

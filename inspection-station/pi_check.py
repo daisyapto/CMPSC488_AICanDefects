@@ -198,7 +198,7 @@ def check_power_heat():
 
 def check_gpio():
     section("4. GPIO, relays and boot safety")
-    from inspection_station.config import LIGHT_PINS, REJECT_PIN, SENSOR_PIN, check_pin_conflicts
+    from inspection_station.config import LIGHT_PINS, MOTOR_PINS, REJECT_PIN, SENSOR_PIN, check_pin_conflicts
     try:
         check_pin_conflicts()
         ok(f"pins: green {LIGHT_PINS['green']}, yellow {LIGHT_PINS['yellow']}, red {LIGHT_PINS['red']}, "
@@ -231,13 +231,20 @@ def check_gpio():
         levels[p] = out
     for p in outs:
         o = levels[p]
+        off, on = ("relay off", "relay ON")
         if "op" in o and "hi" in o:
-            ok(f"GPIO {p}: output HIGH (relay off)")
+            ok(f"GPIO {p}: output HIGH ({off})")
         elif "op" in o and "lo" in o:
-            warn(f"GPIO {p}: output LOW = relay ON right now (station running or stopped mid-burst?)")
+            warn(f"GPIO {p}: output LOW = {on} right now (station running?)")
         else:
             warn(f"GPIO {p}: not set up yet ({o.split('//')[0].strip()}) - the station sets it at start; "
                  "the config.txt line above makes it safe during boot")
+    en = sorted(m["en"] for m in MOTOR_PINS.values())
+    if re.search(r"^\s*gpio=" + ",".join(map(str, en)) + r"=op,dl", text, re.M):
+        ok(f"motor drivers held off during boot (EN {', '.join(map(str, en))} low)")
+    else:
+        warn(f"motor driver EN pins {en} not set at boot - a driver can power its motor until the station "
+             "starts", f"add 'gpio={','.join(map(str, en))}=op,dl' to config.txt (sudo bash pi_setup.sh)")
     s = levels[SENSOR_PIN]
     ok(f"sensor GPIO {SENSOR_PIN} now reads {'LOW' if '| lo' in s else 'HIGH' if '| hi' in s else '?'} "
        f"({'beam blocked' if '| lo' in s else 'clear'} for an active-low sensor)")

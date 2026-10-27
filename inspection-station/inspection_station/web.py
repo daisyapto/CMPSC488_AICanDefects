@@ -10,6 +10,8 @@ Endpoints
   GET  /api/stream          Server-Sent Events: init, status (4/s), result, reject, log, sensor
   POST /api/cmd/<name>      start, stop, estop, reset, ack, simulate, test_burst, override,
                             lamp, snapshot, teach, clear_ref, pause, check_camera, clear_session
+  POST /api/conveyor/<a>    run {dir}, move {dir, steps}, auto {steps}, stop, stop_all, mount_move {dir, steps},
+                            mount_goto {position}, mount_reference, mount_stop, calibrate {steps, measured_mm}
   POST /api/settings        {"key": value, ...} - validated, applied, saved to config.json
   GET  /video/live          MJPEG live camera view (with detection overlay)
   GET  /video/last.jpg      annotated image of the last inspected can
@@ -270,7 +272,7 @@ def _bool(v):
 def _choice(*options):
     def check(v):
         if v not in options:
-            raise ValueError(f"must be one of {', '.join(options)}")
+            raise ValueError(f"must be one of {', '.join(map(str, options))}")
         return v
     return check
 
@@ -291,6 +293,8 @@ SETTING_RULES = {
     "camera_fps": _int_range(5, 30), "standby_after_min": _int_range(0, 120),
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
+    "conveyor_move_steps": _int_range(500, 9000), "mount_move_steps": _int_range(10, 5000),
+    "conveyor_with_line": _bool,
 }
 
 
@@ -335,6 +339,12 @@ def apply_setting(ctl, key, value):
             value = None if (x0 <= 0.001 and y0 <= 0.001 and x1 >= 0.999 and y1 >= 0.999) else \
                 [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]
         ctl.settings.inspect_area = value
+    elif key == "motor_driver":
+        if value not in ("hat", "off"):
+            raise ValueError("unknown motor driver")
+        ctl.conveyor.set_driver(value)
+    elif key == "conveyor_speed_pct":
+        ctl.conveyor.set_speed(_int_range(0, 100)(value))
     elif key == "live_view":
         if m is None or value not in ("detect", "raw", "mask", "edges", "focus"):
             raise ValueError("unknown view")
@@ -376,7 +386,11 @@ CMD_ROLE = {                      # minimum role per command
     "override": "engineer", "lamp": "engineer", "clear_session": "engineer",
     "selftest": "engineer", "cleanup": "engineer", "auto_exposure": "engineer",
 }
-OPERATOR_SETTINGS = {"live_view"}
+OPERATOR_SETTINGS = {"live_view", "conveyor_speed_pct", "conveyor_move_steps", "mount_move_steps"}
+CONVEYOR_ROLE = {"stop": "viewer", "stop_all": "viewer", "mount_stop": "viewer",
+                 "run": "operator", "move": "operator", "auto": "operator",
+                 "mount_move": "operator", "mount_goto": "operator",
+                 "mount_reference": "operator", "calibrate": "engineer"}
 NOT_AUDITED = {"simulate", "pause", "check_camera", "lamp"}
 
 
@@ -682,6 +696,59 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
         if name not in NOT_AUDITED:
             audit(name.replace("_", " "), detail)
         return ok(message=msg)
+
+    @app.post("/api/conveyor/<action>")
+    def conveyor(action):
+        if action not in CONVEYOR_ROLE:
+            abort(404)
+        if (e := need(CONVEYOR_ROLE[action])):
+            return e
+        body = request.get_json(silent=True) or {}
+        cv = ctl.conveyor
+        if action not in ("stop", "stop_all", "mount_stop") and ctl.estop:
+            return fail("E-stop is active - press Reset first")
+
+        def num(key, default):
+            try:
+                return int(body.get(key, default))
+            except (TypeError, ValueError):
+                raise ValueError(f"{key} must be a number")
+        try:
+            if action == "run":
+                cv.run(1 if num("dir", 1) >= 0 else -1)
+            elif action == "move":
+                cv.move(1 if num("dir", 1) >= 0 else -1, num("steps", ctl.settings.conveyor_move_steps))
+            elif action == "auto":
+                cv.auto(num("steps", ctl.settings.conveyor_move_steps))
+            elif action == "stop":
+                cv.stop()
+            elif action == "stop_all":
+                cv.stop_all()
+            elif action == "mount_move":
+                cv.mount_move(1 if num("dir", 1) >= 0 else -1, num("steps", ctl.settings.mount_move_steps))
+            elif action == "mount_stop":
+                cv.mount_stop()
+            elif action == "mount_goto":
+                if not cv.mount_goto(num("position", 0)):
+                    return fail("Set the 12 oz reference first")
+            elif action == "mount_reference":
+                if not cv.mount_set_reference():
+                    return fail("Stop the camera before setting the reference")
+            elif action == "calibrate":
+                steps, mm = float(body["steps"]), float(body["measured_mm"])
+                if steps <= 0 or mm <= 0:
+                    return fail("enter the steps and the measured distance", 400)
+                ctl.set_setting("conveyor_mm_per_step", round(mm / steps, 5))
+                ctl.save_settings()
+                audit("conveyor calibrated", f"{mm:g} mm for {steps:g} steps")
+                return ok(message=f"Calibrated: {mm / steps * 1000:.1f} mm per 1000 steps")
+        except (ValueError, KeyError, TypeError) as e:
+            return fail(str(e) or "bad request", 400)
+        if action not in ("calibrate",):
+            audit(action.replace("_", " ") if action.startswith("mount") else f"conveyor {action}",
+                  " ".join(f"{k}={v}" for k, v in body.items()))
+        hub.publish({"type": "status", "status": hub.status()})
+        return ok()
 
     @app.post("/api/settings")
     def settings():

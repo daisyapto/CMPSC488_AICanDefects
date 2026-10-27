@@ -812,3 +812,67 @@ table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
 .area-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   padding: 8px 10px; border-radius: 10px; background: rgba(11,15,21,.9); border: 1px solid var(--line-2); cursor: default; font-size: 12.5px; }
 .area-bar span { flex: 1; min-width: 180px; color: var(--muted); }
+
+/* ------------------------------------------------------------ motors panel */
+.conv-btn { position: relative; }
+.conv-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: transparent; }
+.conv-dot.on { background: var(--green); box-shadow: 0 0 8px rgba(34,197,94,.8); animation: convPulse 1.2s ease-in-out infinite; }
+@keyframes convPulse { 50% { opacity: .35; } }
+.conv-panel {
+  position: fixed; right: 18px; bottom: 18px; z-index: 60; width: 360px; max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 90px); overflow: auto;
+  background: linear-gradient(180deg, rgba(255,255,255,.02), transparent 40%), var(--surface);
+  border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
+}
+.conv-head { position: sticky; top: 0; z-index: 1; background: var(--surface); display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 16px; border-bottom: 1px solid var(--line); cursor: grab; user-select: none; }
+.conv-head h2 { font-size: 14px; }
+.conv-head .spacer { flex: 1; }
+.conv-drv { font-size: 11.5px; }
+.conv-x { width: 30px; height: 30px; font-size: 18px; line-height: 1; }
+.conv-stopall { background: var(--red); color: #fff; font-weight: 700; }
+.conv-stopall:hover:not(:disabled) { background: #f05a5a; }
+.conv-body { padding: 12px 16px 16px; display: grid; gap: 14px; }
+.conv-err { font-size: 12px; color: var(--amber); background: var(--amber-d); border-radius: 8px; padding: 8px 10px; }
+.conv-sec { display: grid; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.conv-sec-head { display: flex; align-items: center; justify-content: space-between; }
+.conv-sec-head h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.conv-state { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; background: var(--surface-3); color: var(--muted); }
+.conv-state.on { background: var(--green-d); color: var(--green); }
+.conv-state.jog { background: var(--blue-d); color: #93c5fd; }
+.conv-state.bad { background: var(--red-d); color: var(--red); }
+.conv-slider { display: grid; grid-template-columns: 52px 1fr 76px; gap: 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.conv-slider input[type=range] { width: 100%; accent-color: var(--blue); }
+.conv-slider b { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.conv-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.conv-pad2 { grid-template-columns: 1fr 1fr; }
+.conv-mv { height: 58px; flex-direction: column; gap: 2px; font-weight: 700; background: #3b2a52; color: #fff; border-color: #56407a; }
+.conv-mv:hover:not(:disabled) { background: #4a3566; }
+.conv-mv small { font-size: 10.5px; font-weight: 500; opacity: .75; font-variant-numeric: tabular-nums; }
+.conv-auto { background: #273447; border-color: #3a4c66; }
+.conv-auto:hover:not(:disabled) { background: #31415a; }
+.conv-mount { background: #143d2b; border-color: #1f5c40; }
+.conv-mount:hover:not(:disabled) { background: #1a4d36; }
+.conv-mv.active { background: var(--amber); color: #2b1a00; border-color: #f7b445; }
+.conv-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.conv-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px 10px; margin: 0; }
+.conv-facts dt { font-size: 11px; color: var(--muted); grid-row: 1; }
+.conv-facts dd { margin: 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; grid-row: 2; }
+.conv-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; cursor: pointer; }
+.conv-line small { display: block; font-size: 11.5px; }
+.conv-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.conv-presets .btn { height: 38px; background: var(--surface-2); border-color: var(--line-2); }
+.conv-presets .btn.on { border-color: var(--green); color: var(--green); }
+.conv-mount-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; }
+.conv-setup summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+.conv-setup[open] summary { margin-bottom: 10px; }
+.conv-setup .hint { font-size: 11.5px; line-height: 1.5; }
+.conv-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; font-size: 12.5px; }
+.conv-field .seg button { font-size: 11.5px; padding: 0 9px; }
+.conv-cal { display: grid; gap: 8px; margin: 4px 0 10px; }
+.conv-cal-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.conv-cal-row .input { height: 32px; }
+@media (max-width: 520px) { .conv-panel { right: 8px; left: 8px; bottom: 8px; width: auto; } }
+.conv-panel { overflow-x: hidden; }
+.conv-body > *, .conv-sec > *, .conv-pad > *, .conv-row2 > * { min-width: 0; }
+.conv-mv, .conv-row2 .btn, .conv-presets .btn { padding: 0 6px; }
+.conv-slider { grid-template-columns: 46px minmax(0, 1fr) 62px; }

@@ -31,6 +31,7 @@ from .config import (CAM_MAX_C, CAM_WARN_C, CPU_CRITICAL_C, CPU_HOT_C, CPU_WARM_
 from .alarms import AlarmLog
 from .review import cleanup_images
 from .hardware import CameraLink, Rejector, SensorInput, StackLight
+from .conveyor import Conveyor
 from .audit import Audit
 from .batches import BatchManager
 from .health import SystemHealth
@@ -205,6 +206,7 @@ class Controller:
         self.rejector = Rejector(io)
         self.scheduler = RejectScheduler(self.rejector, self._on_reject_done)
         self.sensor = SensorInput(io, self._on_sensor_edge, settings.sensor_backend, self.log)
+        self.conveyor = Conveyor(settings, self.log, sim=io.sim)
 
         self.running = False
         self.estop = False
@@ -300,6 +302,7 @@ class Controller:
             "disk_free_mb": self.disk_free_mb, "disk_total_mb": self.disk_total_mb,
             "selftest": self.selftest_running, "alarms_version": self.alarms.version,
             "alarms_active": len([1 for k in self._fault_keys]) + (1 if self.warning else 0),
+            "conveyor": self.conveyor.status(),
         }
 
     # -------------------------------------------------------- operator commands
@@ -320,12 +323,16 @@ class Controller:
         self.wake_camera(quiet=True)
         self._ignored_logged = False
         self.log("INFO", f"Line STARTED - inspector: {self.settings.inspector}")
+        if self.settings.conveyor_with_line:
+            self.conveyor.run(1)
 
     def stop(self):
         if self.running:
             self.running = False
             self._idle_since = time.monotonic()
             self.log("INFO", "Line STOPPED")
+        if self.settings.conveyor_with_line:
+            self.conveyor.stop()
 
     def emergency_stop(self):
         if self.estop:
@@ -336,6 +343,7 @@ class Controller:
         self.manual_override = False
         self.rejector.locked_out = True
         self.rejector.safe()
+        self.conveyor.halt()
         for can_id in self.scheduler.cancel_all():
             self._on_reject_done(can_id, LOCKED, 0.0)
         self.log("ALARM", "E-STOP - inspection halted, reject valve locked out")
@@ -918,6 +926,7 @@ class Controller:
         self._camera_wake.set()
         self.scheduler.stop()
         self.sensor.stop()
+        self.conveyor.close()
         if self.cammgr:
             self.cammgr.stop()
         for t in self._threads:
@@ -927,4 +936,4 @@ class Controller:
         self.lights.all_off()
         self.batches.flush()
         self.save_settings()
-        print("Shutdown complete: reject valve closed, all relays off, settings saved.")
+        print("Shutdown complete: reject valve closed, all relays off, motors stopped, settings saved.")
