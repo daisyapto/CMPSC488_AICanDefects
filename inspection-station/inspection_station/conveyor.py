@@ -144,6 +144,7 @@ class Channel:
         self.requested = 0            # steps in this command (0 = endless)
         self._t0 = 0.0
         self._done_before = 0         # steps already done before a speed change
+        self._end = 0.0               # when a counted move should be complete
 
     def steps_done(self) -> int:
         if not self.running:
@@ -159,19 +160,19 @@ class Channel:
         time.sleep(0.0005)                            # DIR set-up before the first step
         self.dir, self.half_us, self.requested = (1 if direction > 0 else -1), half_us, steps
         self._t0, self._done_before = time.monotonic(), 0
+        self._end = self._t0 + steps * 2 * half_us / 1e6
         self.running = True
         hw.pulses(self.p["step"], half_us, steps)
 
     def change_speed(self, half_us):
-        if not self.running or half_us == self.half_us:
-            self.half_us = half_us
+        """Continuous running changes speed at once. A counted move keeps its speed until it
+        ends - restarting it mid-move could lose or add steps (the new speed is used next time)."""
+        if not self.running or half_us == self.half_us or self.requested:
+            if not self.running:
+                self.half_us = half_us
             return
-        done = self.steps_done()
-        left = (self.requested - done) if self.requested else 0
-        if self.requested and left <= 0:
-            return
-        self._done_before, self._t0, self.half_us = done, time.monotonic(), half_us
-        self.hw.pulses(self.p["step"], half_us, left)
+        self._done_before, self._t0, self.half_us = self.steps_done(), time.monotonic(), half_us
+        self.hw.pulses(self.p["step"], half_us, 0)
 
     def stop(self) -> int:
         """Stop now; returns the steps that were done."""
@@ -182,7 +183,15 @@ class Channel:
         return done
 
     def finished(self) -> bool:
-        return self.running and self.requested > 0 and not self.hw.busy(self.p["step"])
+        """A counted move is over only when its time is up AND lgpio has sent every pulse.
+        (Right after a start lgpio can report 'not busy' before the first pulse - trusting
+        that alone switched the driver off early and cut moves short by a random amount.)"""
+        if not (self.running and self.requested > 0):
+            return False
+        now = time.monotonic()
+        if now < self._end:
+            return False
+        return not self.hw.busy(self.p["step"]) or now > self._end + 1.0
 
 
 # =============================================================================
