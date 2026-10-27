@@ -217,8 +217,8 @@ def check_gpio():
              "until the station starts", f"add '{want}' to {cfg or '/boot/firmware/config.txt'} "
                                          "(or run: sudo bash pi_setup.sh), then reboot")
     risky = [l.strip() for l in text.splitlines()
-             if l.strip().startswith("dtoverlay=") and re.search(r"spi1|w1-gpio.*gpiopin=(17|22|23|24|27)\b|"
-                                                                 r"gpio-fan|pwm.*pin=(17|22|23|24|27)\b", l)]
+             if l.strip().startswith("dtoverlay=") and re.search(r"w1-gpio.*gpiopin=(5|6|23|25|26)\b|"
+                                                                 r"gpio-fan|pwm.*pin=(5|6|23|25|26)\b", l)]
     if risky:
         fail(f"config.txt enables something on the station's pins: {risky}", "remove those lines and reboot")
     else:
@@ -269,7 +269,7 @@ def check_sensor(seconds=15):
         ok(f"sensor works ({edges // 2} block(s) seen)")
     else:
         fail("no change seen on the sensor", "check 5 V / GND to the sensor, the divider output (≤ 3.3 V) to "
-                                            "header pin 18, and the sensor's own LED when blocked")
+                                            "header pin 22, and the sensor's own LED when blocked")
 
 
 def check_outputs():

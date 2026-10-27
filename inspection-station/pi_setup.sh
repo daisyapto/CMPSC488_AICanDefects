@@ -35,8 +35,14 @@ fi
 # ----------------------------------------------------------------------------- 2
 say "2. Relay pins safe during boot"
 CFG=/boot/firmware/config.txt; [ -f "$CFG" ] || CFG=/boot/config.txt
-LINE="gpio=17,22,23,27=op,dh"
-if grep -q "^gpio=17,22,23,27=op,dh" "$CFG"; then echo "  already in $CFG"
+LINE="gpio=5,6,23,26=op,dh"
+if grep -q "^gpio=17,22,23,27=op,dh" "$CFG"; then          # old wiring - those pins now drive the motors
+  cp "$CFG" "$CFG.bak.$(date +%Y%m%d%H%M%S)"
+  sed -i '/^gpio=17,22,23,27=op,dh/d; /relay pins high (= relays off) from boot/d' "$CFG"
+  echo "  removed the old relay line (gpio=17,22,23,27) - GPIO 17/22/27 are motor pins now"
+  REBOOT=1
+fi
+if grep -q "^gpio=5,6,23,26=op,dh" "$CFG"; then echo "  already in $CFG"
 else
   echo "  The relay board is active-low: until the station starts, a floating GPIO can switch a relay"
   echo "  (or the air valve) ON while the Pi boots. This line in $CFG holds them HIGH = OFF."

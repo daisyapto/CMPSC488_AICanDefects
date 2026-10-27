@@ -151,7 +151,7 @@ What is different from the laptop, and what handles it:
 | On the Pi | Why it matters | Handled by |
 |---|---|---|
 | Software comes from apt, not pip | pip OpenCV is slow/huge on the Pi; Aravis (camera) is apt-only | `sudo bash pi_setup.sh` step 1 |
-| Relay pins at power-up | the relay board is active-low: a floating pin while the Pi boots can switch a relay - or the **air valve** - ON until the station starts | step 2: `gpio=17,22,23,27=op,dh` in config.txt (check after a reboot: relays stay off) |
+| Relay pins at power-up | the relay board is active-low: a floating pin while the Pi boots can switch a relay - or the **air valve** - ON until the station starts | step 2: `gpio=5,6,23,26=op,dh` in config.txt (check after a reboot: relays stay off) |
 | Camera network | with no DHCP server NetworkManager gives eth0 **no address** - the camera is invisible | step 3/4: eth0 = 169.254.100.1/16, bigger network buffers. Internet / dashboard access stays on Wi-Fi |
 | No firewall problem | Raspberry Pi OS has no firewall, so the Windows bridge / firewall steps are not needed | - |
 | Camera power | the Pi's Ethernet gives no power either | same PoE injector as on the laptop |
@@ -270,13 +270,16 @@ plus a CSV of every can. Stored in `data/batches/`.
 |---|---|---|
 | 2 | 5V | Sensor power |
 | 4 | 5V | Relay board VCC |
-| 6 | GND | Relay board GND |
-| 9 | GND | Sensor GND |
-| 11 | GPIO17 | Relay 1 - green lamp |
-| 13 | GPIO27 | Relay 2 - yellow lamp |
-| 15 | GPIO22 | Relay 3 - red lamp |
+| 6 | GND | Sensor GND |
+| 9 | GND | Relay board GND |
 | 16 | GPIO23 | Relay 4 - reject solenoid |
-| 18 | GPIO24 | Sensor signal (5V through a resistor divider to 3.3V) |
+| 22 | GPIO25 | Sensor signal (5V through a resistor divider to 3.3V) |
+| 29 | GPIO5 | Relay 1 - green lamp |
+| 31 | GPIO6 | Relay 2 - yellow lamp |
+| 37 | GPIO26 | Relay 3 - red lamp |
+
+GPIO 4, 12, 13, 16, 17, 18, 19, 20, 21, 22, 24 and 27 are used by the motor
+controls; the station never touches them.
 
 The relay board is **active-low**: a LOW pin turns the relay ON. That includes
 the reject solenoid on relay 4. Do not use the old `AirTest.py` with this

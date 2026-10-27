@@ -1138,7 +1138,7 @@ function renderDiag() {
   $("#dgSensorFacts").innerHTML = `<dt>Triggers</dt><dd>${b.count.toLocaleString()}</dd>
     <dt>Last blocked for</dt><dd>${b.last_block_ms == null ? "—" : Math.round(b.last_block_ms) + " ms"}</dd>
     <dt>Last can</dt><dd>${b.last_age_s == null ? "—" : b.last_age_s < 60 ? Math.round(b.last_age_s) + " s ago" : fmtDur(b.last_age_s) + " ago"}</dd>
-    <dt>Wiring</dt><dd>GPIO 24 · header pin 18</dd>`;
+    <dt>Wiring</dt><dd>GPIO 25 · header pin 22</dd>`;
   // speed
   const t = d.timing;
   if (b.speed_mm_s) {

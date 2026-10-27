@@ -36,8 +36,8 @@ GUIDES = {
         "Press Reset when the can has been removed.",
     ]),
     "sensor": ("Trigger sensor problem", "fault", [
-        "Check the sensor has power (its LED) - 5V from header pin 2, GND pin 9.",
-        "Check the signal wire to header pin 18 (GPIO24) and the resistor divider (5V -> 3.3V).",
+        "Check the sensor has power (its LED) - 5V from header pin 2, GND pin 6.",
+        "Check the signal wire to header pin 22 (GPIO25) and the resistor divider (5V -> 3.3V).",
         "Check the sensor is aligned with its reflector / the cans, and the lens is clean.",
         "Diagnostics > Sensor shows the live signal: block the beam by hand and watch it change.",
     ]),

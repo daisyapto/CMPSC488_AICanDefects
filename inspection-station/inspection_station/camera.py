@@ -291,6 +291,9 @@ class GigECamera:
         self.cam = self.stream = None
 
 
+_ON_PI = sys.platform.startswith("linux") and __import__("platform").machine() in ("aarch64", "armv7l")
+
+
 def _webcam_api():
     """The OS camera API: DirectShow on Windows (fast to open, stable numbering),
     AVFoundation on macOS, V4L2 on Linux."""
@@ -1113,7 +1116,7 @@ class CameraManager:
                 self._live = (img, res, seq)
             cap = {"normal": 15, "reduced": 5, "raw": 2}.get(mode, 15)   # live view fps by heat level
             if self.s.vision_engine in ("yolo", "team") and view not in ("raw", "focus"):
-                cap = min(cap, 4)            # heavy engines: inspections first, keep the Pi cool
+                cap = min(cap, 2 if _ON_PI else 4)   # heavy engines: inspections first, keep the Pi cool
             spare = 1 / cap - (time.monotonic() - t0)
             if spare > 0:
                 self._stop.wait(spare)

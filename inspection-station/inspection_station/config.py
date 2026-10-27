@@ -22,29 +22,31 @@ DATA_DIR = APP_DIR / "data"
 # =============================================================================
 # WIRING (BCM GPIO numbers; physical header pins in the comments)
 # =============================================================================
-SENSOR_PIN = 24            # header pin 18 <- sensor signal (5V -> resistor divider -> 3.3V)
+SENSOR_PIN = 25            # header pin 22 <- sensor signal (5V -> resistor divider -> 3.3V)
 SENSOR_ACTIVE_LOW = True   # signal goes LOW while a can blocks the sensor
 SENSOR_PULL = "pn"         # no internal pull - the divider defines the level
 
 RELAY_ACTIVE_LOW = True    # 4-channel relay board: input LOW = relay ON
 
 LIGHT_PINS = {
-    "green": 17,           # header pin 11 -> relay 1
-    "yellow": 27,          # header pin 13 -> relay 2
-    "red": 22,             # header pin 15 -> relay 3
+    "green": 5,            # header pin 29 -> relay 1
+    "yellow": 6,           # header pin 31 -> relay 2
+    "red": 26,             # header pin 37 -> relay 3
 }
 REJECT_PIN = 23            # header pin 16 -> relay 4 -> reject solenoid valve
 
 WIRING = [  # (physical pin, signal, connected to)
     (2, "5V", "Sensor power"),
     (4, "5V", "Relay board VCC"),
-    (6, "GND", "Relay board GND"),
-    (9, "GND", "Sensor GND"),
-    (11, "GPIO17", "Relay 1 - green lamp"),
-    (13, "GPIO27", "Relay 2 - yellow lamp"),
-    (15, "GPIO22", "Relay 3 - red lamp"),
+    (6, "GND", "Sensor GND"),
+    (9, "GND", "Relay board GND"),
     (16, "GPIO23", "Relay 4 - reject solenoid"),
-    (18, "GPIO24", "Sensor signal (through divider)"),
+    (22, "GPIO25", "Sensor signal (through divider)"),
+    (29, "GPIO5", "Relay 1 - green lamp"),
+    (31, "GPIO6", "Relay 2 - yellow lamp"),
+    (37, "GPIO26", "Relay 3 - red lamp"),
+    # GPIO 4, 12, 13, 16, 17, 18, 19, 20, 21, 22, 24, 27 belong to the motor
+    # controls - the station never touches them.
 ]
 
 # =============================================================================
