@@ -823,6 +823,9 @@ class CameraManager:
         # last inspected can
         self.last = None                     # dict
         self.last_seq = 0
+        # capture-delay tuner: small copies of recent frames, recorded only while the tuner is open
+        self.tune_until = 0.0
+        self._ring = __import__("collections").deque(maxlen=80)
 
         self._threads = [threading.Thread(target=self._grab_loop, daemon=True, name="camera-grab"),
                          threading.Thread(target=self._live_loop, daemon=True, name="camera-live")]
@@ -990,6 +993,10 @@ class CameraManager:
                 self._cond.wait(remaining)
             return self._frame, self._ts
 
+    def tune_frames(self, t0: float, span: float = 1.2):
+        """Frames recorded from t0 - 50 ms to t0 + span (monotonic seconds)."""
+        return [(ts, f) for ts, f in list(self._ring) if t0 - 0.05 <= ts <= t0 + span]
+
     def live_frame(self):
         with self._live_lock:
             return self._live
@@ -1076,6 +1083,10 @@ class CameraManager:
                 self._frame, self._ts = frame, now
                 self._seq += 1
                 self._cond.notify_all()
+            if now < self.tune_until:                       # delay tuner open: keep a small copy
+                h, w = frame.shape[:2]
+                self._ring.append((now, cv2.resize(frame, (480, max(1, round(h * 480 / w))),
+                                                   interpolation=cv2.INTER_AREA)))
             dt = now - last
             last = now
             if dt > 0:

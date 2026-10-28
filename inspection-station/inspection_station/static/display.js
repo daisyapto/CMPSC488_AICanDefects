@@ -137,7 +137,7 @@ function renderLatest() {
   $("#canFoot").innerHTML = `<span><b>Can #${r.id}</b></span><span class="muted">${esc(r.t)}</span>` +
     (r.pass ? "" : `<span><b>${esc(r.defect || "Defect")}</b></span>`) +
     `<span class="muted">${Math.round(r.conf * 100)}% sure</span>` +
-    (r.pass ? "" : `<span class="muted">${r.reject === "fired" ? "blown off" : r.reject === "pending" ? "air pending" : esc(r.reject)}</span>`);
+    (r.pass ? "" : `<span class="muted">${r.reject === "fired" ? "blown off" : r.reject === "pending" ? "air pending" : r.reject === "off" ? "rejector off" : esc(r.reject)}</span>`);
   $("#canEmpty").classList.add("hidden");
   // no camera image (e.g. simulated inspector): show the result itself, big
   const bw = $("#bigWord");

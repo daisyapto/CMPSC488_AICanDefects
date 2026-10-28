@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 
-from .config import (LIGHT_PINS, POLL_INTERVAL_S, REJECT_PIN, RELAY_ACTIVE_LOW,
+from .config import (BUZZER_PIN, LIGHT_PINS, POLL_INTERVAL_S, REJECT_PIN, RELAY_ACTIVE_LOW,
                      SENSOR_ACTIVE_LOW, SENSOR_PIN, SENSOR_PULL)
 
 _QUIET = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
@@ -91,6 +91,7 @@ class Relay:
 class StackLight:
     def __init__(self, io):
         self.lamps = {key: Relay(io, pin) for key, pin in LIGHT_PINS.items()}
+        self.buzzer = Relay(io, BUZZER_PIN)        # relay 4 - switched by hand (and by rejects until the rejector is wired)
 
     def set(self, key: str, on: bool, force: bool = False):
         self.lamps[key].set(on, force)
@@ -106,6 +107,7 @@ class StackLight:
     def all_off(self):
         for lamp in self.lamps.values():
             lamp.set(False, force=True)
+        self.buzzer.set(False, force=True)
 
 
 class Rejector:

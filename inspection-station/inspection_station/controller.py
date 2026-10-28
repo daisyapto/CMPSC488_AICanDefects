@@ -47,6 +47,7 @@ except Exception as _e:                 # app still runs without them
 
 # reject status of a can
 PASS, PENDING, FIRED, MISSED, DISABLED, LOCKED = "-", "pending", "fired", "missed", "disabled", "locked"
+REJ_OFF = "off"                          # rejector option off: the can is only marked FAIL
 ESCAPED = {MISSED, DISABLED, LOCKED}     # failed can that was NOT blown off the line
 
 
@@ -210,6 +211,7 @@ class Controller:
 
         self.running = False
         self.estop = False
+        self.tune_trigger = None             # capture-delay tuner: last trigger while it was open
         self.warning = False                 # yellow flashing: unusual defect activity (until acknowledged)
         self.warning_reason = ""
         self.manual_override = False
@@ -286,7 +288,8 @@ class Controller:
             "warning": self.warning, "warning_reason": self.warning_reason,
             "faults": [msg for _, msg in self.faults()],
             "manual": self.manual_override,
-            "lights": self.lights.state, "valve": self.rejector.on,
+            "lights": self.lights.state, "valve": self.rejector.on, "buzzer": self.lights.buzzer.on,
+            "rejector": self.settings.reject_enabled,
             "locked": self.rejector.locked_out,
             "sensor": self.sensor.active, "sensor_mode": self.sensor.mode,
             "cam_ip": self.camera.ip, "cam_online": self.camera.online,
@@ -318,6 +321,8 @@ class Controller:
         if "overheat" in self._latched:
             self.log("WARN", "The station overheated - check cooling, then press Reset before starting")
             return
+        if self.manual_override:
+            self.lights.buzzer.set(False, force=True)
         self.manual_override = False
         self.running = True
         self.wake_camera(quiet=True)
@@ -341,6 +346,7 @@ class Controller:
         self.running = False
         self._idle_since = time.monotonic()
         self.manual_override = False
+        self.lights.buzzer.set(False, force=True)
         self.rejector.locked_out = True
         self.rejector.safe()
         try:
@@ -487,13 +493,16 @@ class Controller:
             self.log("WARN", "Manual override only while stopped and not in E-stop")
             return False
         self.manual_override = on
-        if on:
-            self.lights.all_off()
+        self.lights.all_off()                       # entering or leaving: start from all off (buzzer too)
         self.log("INFO", f"Manual output override {'ON' if on else 'OFF'}")
         return True
 
     def manual_toggle(self, key: str):
-        if self.manual_override:
+        if not self.manual_override:
+            return
+        if key == "buzzer":
+            self.lights.buzzer.set(not self.lights.buzzer.on)
+        else:
             self.lights.set(key, not self.lights.state[key])
 
     def test_burst(self):
@@ -516,6 +525,9 @@ class Controller:
     # ------------------------------------------------------------- can flow
     def _on_sensor_edge(self, active: bool, t: float, initial: bool):
         self.post("sensor", active)
+        if active and not initial and self.cammgr and time.monotonic() < self.cammgr.tune_until \
+                and (self.tune_trigger is None or t - self.tune_trigger > 1.5):
+            self.tune_trigger = t                    # capture-delay tuner: this can's trigger time
         if not initial:
             self._time_sensor(active, t)
         if initial or not active:
@@ -633,7 +645,7 @@ class Controller:
             self._streak += 1
             self._defect_until = time.monotonic() + DEFECT_LAMP_S
             if not s.reject_enabled:
-                result.reject = DISABLED
+                result.reject = REJ_OFF
             elif self.estop or self.rejector.locked_out:
                 result.reject = LOCKED
             else:
@@ -736,8 +748,6 @@ class Controller:
                 camera_fault = True
         if not camera_fault and time.monotonic() - self._insp_error_at < 5:
             f.append(("inspect", f"Inspection failing: {self._last_insp_error[0]}"))
-        if self.running and not s.reject_enabled:
-            f.append(("reject-off", "Reject is turned off - defects pass through"))
         if self.thermal in ("hot", "critical") and self.cpu_temp is not None:
             f.append(("cpu-hot", f"Raspberry Pi hot ({self.cpu_temp:.0f} °C) - load reduced, check the fan"))
         if self.power.get("undervoltage_now"):

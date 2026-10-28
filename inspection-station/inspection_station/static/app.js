@@ -37,7 +37,7 @@ const S = {
   rev: { status: "todo", result: "fail", date: "", items: [], total: 0, offset: 0, idx: -1, view: "ann", stats: null },
 };
 const MAX_ROWS = 300;
-const REJECT_LABEL = { "-": "", pending: "pending…", fired: "fired", missed: "MISSED", disabled: "reject off", locked: "LOCKED" };
+const REJECT_LABEL = { "-": "", pending: "pending…", fired: "fired", missed: "MISSED", disabled: "reject off", locked: "LOCKED", off: "rejector off" };
 const ESCAPED = new Set(["missed", "disabled", "locked"]);
 const RANK = { viewer: 0, operator: 1, engineer: 2 };
 const can = (role) => RANK[S.role] >= RANK[role];
@@ -312,11 +312,18 @@ function renderTower(st) {
   const ul = $("#reasons");
   if (ul.innerHTML !== html) ul.innerHTML = html;
 
+  $("#btnBurst").classList.toggle("hidden", !st.rejector);
   const v = $("#valve");
   v.classList.toggle("open", st.valve);
   v.classList.toggle("locked", !st.valve && st.locked);
   $("#valveState").textContent = st.valve ? "Air on" : st.locked ? "Locked out" : "Closed";
-  if (S.pins) $("#valvePins").textContent = `GPIO ${S.pins.reject} · relay 4`;
+  if (S.pins) $("#valvePins").textContent = st.rejector ? `GPIO ${S.pins.reject}` +
+    (S.pins.reject === S.pins.buzzer ? " · not wired yet - rejects sound the buzzer" : "") : "Rejector off - cans are only marked PASS / FAIL";
+  if (S.pins) $("#buzzerPins").textContent = `GPIO ${S.pins.buzzer} · relay 4`;
+  const bz = $("#btnBuzzer");
+  $("#buzzerRow").classList.toggle("open", !!st.buzzer);
+  bz.textContent = st.buzzer ? "Turn off" : "Test";
+  bz.disabled = !can("operator") || st.running || st.estop;
 }
 
 /* ------------------------------------------------------------------ camera */
@@ -744,7 +751,7 @@ function applyPermissions() {
      "#ipApply, #folderApply, #recipeSave, #recipeCreate, #recipeDelete, #pinSave").forEach((el) => (el.disabled = !eng));
   $("#drawerLock").classList.toggle("hidden", eng || !S.canControl);
   $$("#viewSeg button, #btnPause, #btnWake").forEach((el) => (el.disabled = !op));
-  $$('.camera-card [data-cmd="snapshot"], .camera-card [data-cmd="auto_exposure"], #btnArea, .ref-box [data-cmd], #btnClear').forEach((el) => (el.disabled = !eng));
+  $$('.camera-card [data-cmd="snapshot"], .camera-card [data-cmd="auto_exposure"], #btnArea, #btnDelay, .ref-box [data-cmd], #btnClear').forEach((el) => (el.disabled = !eng));
   if (!eng && AREA.on) areaMode(false);
   $$("#pageDiag .stepper button, #pageDiag .stepper input, #pageDiag [data-cmd=cleanup]").forEach((el) => (el.disabled = !eng));
   if (S.diag) renderDiag();
@@ -1317,6 +1324,8 @@ function openModal(path, title) {
 }
 
 function wire() {
+  $("#btnBuzzer").addEventListener("click", () => cmd("lamp", { key: "buzzer" }));
+  wireDelay();
   $$("[data-cmd]").forEach((b) => b.addEventListener("click", () => cmd(b.dataset.cmd)));
   $("#overrideToggle").addEventListener("change", (e) => cmd("override", { on: e.target.checked }));
   $$("#viewSeg button").forEach((b) => b.addEventListener("click", () => setSetting("live_view", b.dataset.v)));
@@ -1346,7 +1355,7 @@ function wire() {
   $("#btnCloseDrawer").addEventListener("click", () => drawer(false));
   $("#scrim").addEventListener("click", () => drawer(false));
   $("#btnFullscreen").addEventListener("click", toggleFullscreen);
-  wireConveyor();
+  try { wireConveyor(); } catch (e) { console.error("Motors panel:", e); }   // never block the rest (login etc.)
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); cmd("estop"); return; }      // always: safety first
@@ -1576,6 +1585,7 @@ function wireConveyor() {
   $("#motorPrecise").addEventListener("change", (e) => setSetting("motor_timing", e.target.checked ? "precise" : "team"));
   $$("[data-lamp]").forEach((b) => b.addEventListener("click", () => cmd("lamp", { key: b.dataset.lamp })));
   $("#mcValve").addEventListener("click", () => cmd("test_burst"));
+  $("#mcBuzzer").addEventListener("click", () => cmd("lamp", { key: "buzzer" }));
   $("#mcLightsAuto").addEventListener("click", () => cmd("lights_auto"));
 }
 
@@ -1656,8 +1666,94 @@ function renderConveyor(c) {
     b.querySelector("small").textContent = on ? "ON" : "OFF";
     b.disabled = !op || st.running || st.estop;
   });
-  $("#mcValve").classList.toggle("on", !!st.valve);
+  const mb = $("#mcBuzzer");
+  mb.classList.toggle("on", !!st.buzzer);
+  mb.querySelector("small").textContent = st.buzzer ? "ON" : "OFF";
+  mb.disabled = !op || st.running || st.estop;
+  $("#mcValve").classList.toggle("hidden", !st.rejector);
   $("#mcValve").disabled = !op || st.running || st.estop;
   $("#mcLightsAuto").disabled = !op || !st.manual;
   $("#mcLightsAuto").textContent = st.manual ? "Lights: back to automatic" : "Lights: automatic";
+}
+
+
+/* ------------------------------------------------------------ capture-delay tuner */
+const DL = { timer: null, frames: [], idx: 0, best: null };
+
+async function delayOpen() {
+  $("#delayModal").classList.add("open");
+  $("#dlWait").classList.remove("hidden");
+  $("#dlResult").classList.add("hidden");
+  $("#dlWaitTitle").textContent = "Pass one can through the sensor";
+  const st = S.status || {};
+  $("#dlCurrent").textContent = `now: ${(st.settings || {}).camera_delay_ms ?? "—"} ms after the sensor`;
+  if (!(await post("/api/delay/arm"))) { delayClose(); return; }
+  clearInterval(DL.timer);
+  DL.timer = setInterval(delayPoll, 500);
+}
+
+function delayClose() {
+  clearInterval(DL.timer);
+  $("#delayModal").classList.remove("open");
+  fetch("/api/delay/stop", { method: "POST" }).catch(() => {});
+}
+
+async function delayPoll() {
+  let d;
+  try { d = await (await fetch("/api/delay/frames")).json(); } catch { return; }
+  if (!d.ok) return;
+  if (!d.ready) {
+    if (d.triggered) $("#dlWaitTitle").textContent = "Can detected - recording…";
+    return;
+  }
+  clearInterval(DL.timer);
+  if (!d.frames.length) {
+    $("#dlWaitTitle").textContent = "No camera frames were recorded - is the camera running?";
+    return;
+  }
+  DL.frames = d.frames; DL.best = d.suggested; DL.area = d.area;
+  const near = d.frames.reduce((b, f, i) => Math.abs(f.ms - d.current) < Math.abs(d.frames[b].ms - d.current) ? i : b, 0);
+  DL.idx = d.suggested ?? near;
+  $("#dlWait").classList.add("hidden");
+  $("#dlResult").classList.remove("hidden");
+  const sl = $("#dlSlider");
+  sl.max = d.frames.length - 1;
+  $("#dlStrip").innerHTML = d.frames.map((f, i) =>
+    `<button data-i="${i}" class="${i === d.suggested ? "best" : ""}"><img src="${f.img}" alt=""><span>${f.ms} ms</span></button>`).join("");
+  $$("#dlStrip button").forEach((b) => b.addEventListener("click", () => delayShow(+b.dataset.i)));
+  $("#dlHint").textContent = d.suggested != null
+    ? `Suggested: ${d.frames[d.suggested].ms} ms (can most centred in the inspection area)`
+    : "No can found automatically - pick the frame where the can is centred.";
+  delayShow(DL.idx);
+}
+
+function delayShow(i) {
+  DL.idx = Math.max(0, Math.min(DL.frames.length - 1, i));
+  const f = DL.frames[DL.idx];
+  $("#dlImg").src = f.img;
+  $("#dlSlider").value = DL.idx;
+  $("#dlMs").textContent = `${f.ms} ms after the sensor`;
+  $("#dlUse").textContent = `Use ${Math.min(1000, Math.max(0, f.ms))} ms`;
+  $$("#dlStrip button").forEach((b) => b.classList.toggle("on", +b.dataset.i === DL.idx));
+  const sel = $(`#dlStrip button[data-i="${DL.idx}"]`);
+  if (sel) sel.scrollIntoView({ block: "nearest", inline: "center" });
+  const a = DL.area || [0, 0, 1, 1], box = $("#dlArea");
+  box.style.left = `${a[0] * 100}%`; box.style.top = `${a[1] * 100}%`;
+  box.style.width = `${(a[2] - a[0]) * 100}%`; box.style.height = `${(a[3] - a[1]) * 100}%`;
+}
+
+function wireDelay() {
+  $("#btnDelay").addEventListener("click", delayOpen);
+  $("#dlClose").addEventListener("click", delayClose);
+  $("#dlAgain").addEventListener("click", delayOpen);
+  $("#dlSlider").addEventListener("input", (e) => delayShow(+e.target.value));
+  $("#dlUse").addEventListener("click", async () => {
+    const ms = Math.min(1000, Math.max(0, DL.frames[DL.idx].ms));
+    if (await setSetting("camera_delay_ms", ms)) { toast(`Capture delay set to ${ms} ms`, "ok"); delayClose(); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!$("#delayModal").classList.contains("open")) return;
+    if (e.key === "ArrowLeft") delayShow(DL.idx - 1);
+    if (e.key === "ArrowRight") delayShow(DL.idx + 1);
+  });
 }

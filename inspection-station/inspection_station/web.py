@@ -48,7 +48,7 @@ from flask import Flask, Response, abort, jsonify, request, send_file
 
 from . import __version__
 from .edition import EDITION, YOLO_AVAILABLE
-from .config import APP_DIR, DATA_DIR, LIGHT_PINS, REJECT_PIN, SENSOR_PIN
+from .config import APP_DIR, BUZZER_PIN, DATA_DIR, LIGHT_PINS, REJECT_PIN, SENSOR_PIN
 from .controller import CSV_HEADER, ESCAPED, FIRED, SOURCES
 from .history import History
 from .report import render_report
@@ -556,7 +556,7 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
                 "audit": list(ctl.audit.recent)[-200:], "defect_types": DEFECT_TYPES,
                 "inspectors": [{"name": n, "description": i.description} for n, i in ctl.inspectors.items()],
                 "sources": [{"key": k, "label": v} for k, v in SOURCES.items()],
-                "pins": {"sensor": SENSOR_PIN, "reject": REJECT_PIN, "lights": LIGHT_PINS}}
+                "pins": {"sensor": SENSOR_PIN, "reject": REJECT_PIN, "buzzer": BUZZER_PIN, "lights": LIGHT_PINS}}
 
         def gen():
             try:
@@ -655,7 +655,7 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
                 return fail("Manual override only while stopped")
             detail = "on" if body.get("on") else "off"
         elif name == "lamp":
-            if body.get("key") not in LIGHT_PINS:
+            if body.get("key") not in (*LIGHT_PINS, "buzzer"):
                 abort(400)
             if not ctl.manual_override and not ctl.set_manual_override(True):
                 return fail("Lamps can be switched by hand only while the line is stopped")
@@ -773,6 +773,62 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
                   " ".join(f"{k}={v}" for k, v in body.items()))
         hub.publish({"type": "status", "status": hub.status()})
         return ok()
+
+    # ------------------------------------------------------ capture-delay tuner
+    @app.post("/api/delay/<action>")
+    def delay_tuner(action):
+        """arm: record frames after the next sensor trigger · stop: stop recording."""
+        if (e := need("operator")):
+            return e
+        m = ctl.cammgr
+        if m is None:
+            return fail("Camera not available")
+        if action == "arm":
+            m._ring.clear()
+            ctl.tune_trigger = None
+            m.tune_until = time.monotonic() + 180
+        elif action == "stop":
+            m.tune_until = 0.0
+            m._ring.clear()
+        else:
+            abort(404)
+        return ok()
+
+    @app.get("/api/delay/frames")
+    def delay_frames():
+        """Frames after the last trigger, with their delay in ms and a suggested frame
+        (the one where the can is most centred in the inspection area)."""
+        import base64
+        import cv2
+        from .vision import Vision
+        m = ctl.cammgr
+        if m is None:
+            return fail("Camera not available")
+        t = ctl.tune_trigger
+        if t is None:
+            return ok(ready=False, armed=time.monotonic() < m.tune_until)
+        if time.monotonic() < t + 1.25:
+            return ok(ready=False, armed=True, triggered=True)
+        frames = m.tune_frames(t)
+        a = ctl.settings.inspect_area or [0, 0, 1, 1]
+        out, best, best_d = [], None, 1e9
+        for i, (ts, f) in enumerate(frames):
+            h, w = f.shape[:2]
+            gray = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f
+            x0, y0, x1, y1 = int(a[0] * w), int(a[1] * h), int(a[2] * w), int(a[3] * h)
+            roi = cv2.GaussianBlur(gray[y0:y1, x0:x1], (5, 5), 0)
+            c = Vision.find_can(roi) if roi.size else None
+            if c is not None:
+                cx, cy, r = c
+                d = ((cx - (x1 - x0) / 2) / max(1, x1 - x0)) ** 2 + ((cy - (y1 - y0) / 2) / max(1, y1 - y0)) ** 2
+                inside = cx - r >= -2 and cy - r >= -2 and cx + r <= (x1 - x0) + 2 and cy + r <= (y1 - y0) + 2
+                if inside and ts >= t and d < best_d:              # a delay can't be negative
+                    best, best_d = i, d
+            okj, jpg = cv2.imencode(".jpg", f, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            out.append({"ms": round((ts - t) * 1000),
+                        "img": "data:image/jpeg;base64," + base64.b64encode(jpg.tobytes()).decode()})
+        return ok(ready=True, frames=out, suggested=best, current=ctl.settings.camera_delay_ms,
+                  area=a)
 
     @app.post("/api/settings")
     def settings():

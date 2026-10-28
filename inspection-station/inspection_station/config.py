@@ -33,7 +33,10 @@ LIGHT_PINS = {
     "yellow": 6,           # header pin 31 -> relay 2
     "red": 26,             # header pin 37 -> relay 3
 }
-REJECT_PIN = 23            # header pin 16 -> relay 4 -> reject solenoid valve
+BUZZER_PIN = 23            # header pin 16 -> relay 4 -> buzzer
+# Reject output. The rejector isn't wired yet, so rejects sound the buzzer on relay 4.
+# When the rejector is connected, set its GPIO here (and its relay/driver logic).
+REJECT_PIN = BUZZER_PIN
 
 # Motors: Waveshare Stepper Motor HAT (B), from the team motor program (DEV_Config.h)
 MOTOR_PINS = {
@@ -75,7 +78,9 @@ DISK_MIN_MB = 300                # red fault below this much free storage
 
 
 def check_pin_conflicts():
-    pins = [SENSOR_PIN, REJECT_PIN, *LIGHT_PINS.values(), *[p for m in MOTOR_PINS.values() for p in m.values()]]
+    pins = [SENSOR_PIN, BUZZER_PIN, *LIGHT_PINS.values(), *[p for m in MOTOR_PINS.values() for p in m.values()]]
+    if REJECT_PIN != BUZZER_PIN:
+        pins.append(REJECT_PIN)
     dup = sorted({p for p in pins if pins.count(p) > 1})
     if dup:
         raise SystemExit(f"GPIO conflict: pin(s) {dup} used more than once - fix config.py")
@@ -89,7 +94,7 @@ class Settings:
     inspector: str = "Simulated"
     sim_defect_rate: int = 10          # percent, for the simulated inspector
     camera_ip: str = "192.168.0.10"    # Ethernet camera; the Pi needs a static IP on the same subnet
-    reject_enabled: bool = True
+    reject_enabled: bool = False       # rejector fitted: off = only PASS / FAIL, nothing fires
     single_shot: bool = False          # lock the rejector after one fire (air testing)
     reject_delay_ms: int = 150         # sensor -> air nozzle travel time
     pulses: int = 3                    # air burst profile

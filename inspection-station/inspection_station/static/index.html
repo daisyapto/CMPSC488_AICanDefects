@@ -119,6 +119,11 @@
           <div><div class="valve-title">Reject valve</div><div class="muted small" id="valvePins">relay 4</div></div>
           <span class="valve-state" id="valveState">Closed</span>
         </div>
+        <div class="valve buzzer-row" id="buzzerRow">
+          <span class="valve-icon"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></span>
+          <div><div class="valve-title">Buzzer</div><div class="muted small" id="buzzerPins">relay 4</div></div>
+          <button class="btn btn-sm btn-quiet" id="btnBuzzer">Test</button>
+        </div>
         <div class="setting-row">
           <div><div class="label">Manual override</div><div class="muted small">click lamps to switch them</div></div>
           <label class="switch"><input type="checkbox" id="overrideToggle"><span></span></label>
@@ -141,6 +146,7 @@
             </div>
             <div class="head-actions">
               <button class="btn btn-sm btn-quiet" id="btnArea" title="Draw where the can is - detection ignores everything outside">Area</button>
+              <button class="btn btn-sm btn-quiet" id="btnDelay" title="Find the capture delay: pass a can, pick the frame where it is centred">Delay</button>
               <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" title="Set the exposure so the picture is bright enough">Auto exposure</button>
               <button class="btn btn-sm btn-quiet" data-cmd="snapshot" title="Save a full-resolution frame">Snapshot</button>
               <button class="btn btn-sm btn-quiet" id="btnPause" data-cmd="pause">Pause</button>
@@ -427,7 +433,7 @@
 
       <section class="group">
         <h3>Reject</h3>
-        <div class="field"><div><label>Reject enabled</label><div class="hint">air fires on a defect</div></div><label class="switch"><input type="checkbox" data-setting="reject_enabled"><span></span></label></div>
+        <div class="field"><div><label>Rejector</label><div class="hint">off = cans are only marked PASS / FAIL, nothing fires · on = failed cans are rejected (until the rejector is wired, the buzzer on relay 4 sounds instead)</div></div><label class="switch"><input type="checkbox" data-setting="reject_enabled"><span></span></label></div>
         <div class="field"><div><label>Single-shot latch</label><div class="hint">lock after one fire (air test)</div></div><label class="switch amber"><input type="checkbox" data-setting="single_shot"><span></span></label></div>
         <div class="field"><label>Reject delay <i class="hint-i" title="Time from the sensor until the can reaches the air nozzle">?</i></label><div class="stepper" data-setting="reject_delay_ms" data-min="0" data-max="5000" data-step="5" data-unit="ms"></div></div>
         <div class="field"><label>Air pulses</label><div class="stepper" data-setting="pulses" data-min="1" data-max="10" data-step="1" data-unit=""></div></div>
@@ -475,6 +481,28 @@
       <div class="form-error" id="loginErr"></div>
       <button class="btn btn-primary btn-block" type="submit">Log in</button>
     </form>
+  </div>
+
+  <div class="modal" id="delayModal">
+    <div class="modal-box delay-box">
+      <div class="modal-head"><h2>Capture delay</h2><span class="muted small" id="dlCurrent"></span><div class="spacer"></div>
+        <button class="icon-btn" id="dlClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div class="dl-wait" id="dlWait">
+        <b id="dlWaitTitle">Pass one can through the sensor</b>
+        <span class="muted" id="dlWaitText">Run the belt (Motors panel) or push a can by hand. The line can be stopped.
+          The camera records what happens after the sensor fires, then you pick the frame where the can is centred.</span>
+      </div>
+      <div class="dl-result hidden" id="dlResult">
+        <div class="dl-view"><img id="dlImg" alt=""><div class="dl-area" id="dlArea"></div><span class="dl-ms" id="dlMs"></span></div>
+        <input type="range" id="dlSlider" min="0" max="0" step="1">
+        <div class="dl-strip" id="dlStrip"></div>
+        <div class="dl-actions">
+          <span class="muted small" id="dlHint"></span><div class="spacer"></div>
+          <button class="btn btn-sm btn-quiet" id="dlAgain">Try another can</button>
+          <button class="btn btn-sm btn-primary" id="dlUse">Use this delay</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="modal" id="batchModal">
@@ -568,7 +596,8 @@
         <button class="mc-btn light red" data-lamp="red">RED<small>OFF</small></button>
         <button class="mc-btn light yellow" data-lamp="yellow">YELLOW<small>OFF</small></button>
         <button class="mc-btn light green" data-lamp="green">GREEN<small>OFF</small></button>
-        <button class="mc-btn light valve" id="mcValve">VALVE<small>test burst</small></button>
+        <button class="mc-btn light valve" id="mcBuzzer">BUZZER<small>OFF</small></button>
+        <button class="mc-flat" id="mcValve">Reject test</button>
         <button class="mc-flat" id="mcLightsAuto">Lights: automatic</button>
       </div>
     </div>
