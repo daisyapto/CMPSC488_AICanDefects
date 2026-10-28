@@ -1568,19 +1568,30 @@ function wireConveyor() {
     head.addEventListener("pointermove", move);
     head.addEventListener("pointerup", up);
   });
-  const slider = (id, key, label, fmt) => {
-    const el = $(id);
+  // slider + number box: drag, or type an exact value and press Enter
+  const slider = (id, key, label) => {
+    const el = $(id), num = $(label);
     let t = null;
     el.addEventListener("input", () => {
-      $(label).textContent = fmt(+el.value);
+      num.value = el.value;
       CONV.editing[key] = Date.now();
       clearTimeout(t);
       t = setTimeout(() => setSetting(key, +el.value), 150);
     });
+    num.addEventListener("input", () => (CONV.editing[key] = Date.now()));
+    num.addEventListener("change", () => {
+      const lo = +num.min, hi = +num.max, st = +num.step || 1;
+      let v = Math.round((+num.value || lo) / st) * st;
+      v = Math.max(lo, Math.min(hi, v));
+      num.value = el.value = v;
+      CONV.editing[key] = Date.now();
+      setSetting(key, v);
+    });
+    num.addEventListener("keydown", (e) => { if (e.key === "Enter") num.blur(); });
   };
-  slider("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", (v) => `${v}%`);
-  slider("#convSteps", "conveyor_move_steps", "#convStepsVal", (v) => `${v} steps`);
-  slider("#mountSteps", "mount_move_steps", "#mountStepsVal", (v) => `${v} steps`);
+  slider("#convSpeed", "conveyor_speed_pct", "#convSpeedVal");
+  slider("#convSteps", "conveyor_move_steps", "#convStepsVal");
+  slider("#mountSteps", "mount_move_steps", "#mountStepsVal");
 
   // pressing the active button again stops it - like the motor program
   $$("[data-belt]").forEach((b) => b.addEventListener("click", () => {
@@ -1616,15 +1627,15 @@ function renderConveyor(c) {
   err.classList.toggle("hidden", !c.error);
   if (c.error) err.textContent = `Motors not available - simulated. ${c.error}`;
   $("#convDriver").textContent = `Driver: ${c.driver_name}`;
-  const sync = (id, key, label, val, fmt) => {
-    const el = $(id);
-    if (Date.now() - (CONV.editing[key] || 0) > 1500) el.value = val;
-    $(label).textContent = fmt(+el.value);
-    el.disabled = !op;
+  const sync = (id, key, label, val) => {
+    const el = $(id), num = $(label);
+    if (Date.now() - (CONV.editing[key] || 0) > 1500 && document.activeElement !== num) el.value = num.value = val;
+    el.disabled = num.disabled = !op;
   };
-  sync("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", c.speed_pct, (v) => `${v}%`);
-  sync("#convSteps", "conveyor_move_steps", "#convStepsVal", c.move_steps, (v) => `${v} steps`);
-  sync("#mountSteps", "mount_move_steps", "#mountStepsVal", c.mount_move_steps, (v) => `${v} steps`);
+  sync("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", c.speed_pct);
+  sync("#convSteps", "conveyor_move_steps", "#convStepsVal", c.move_steps);
+  sync("#mountSteps", "mount_move_steps", "#mountStepsVal", c.mount_move_steps);
+  $("#convRO").classList.toggle("hidden", op);
 
   const steps = +$("#convSteps").value;
   const act = { fwd: c.running && c.mode === "move" && c.dir > 0, rev: c.running && c.mode === "move" && c.dir < 0,

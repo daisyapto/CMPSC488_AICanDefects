@@ -362,6 +362,7 @@ def apply_setting(ctl, key, value):
         ctl.conveyor.set_timing(value)
     elif key == "conveyor_speed_pct":
         ctl.conveyor.set_speed(_int_range(0, 100)(value))
+        ctl.save_settings()                       # keep the speed after a restart
     elif key == "live_view":
         if m is None or value not in ("detect", "raw", "mask", "edges", "focus"):
             raise ValueError("unknown view")

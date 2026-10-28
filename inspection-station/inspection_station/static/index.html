@@ -562,9 +562,10 @@
       <div class="mc-main">
         <h2 class="mc-title">MOTOR CONTROLS</h2>
         <div class="mc-err hidden" id="convErr"></div>
-        <div class="mc-slider"><label for="convSpeed">Conveyor speed</label><input type="range" id="convSpeed" min="0" max="100" step="1"><b id="convSpeedVal">—</b></div>
-        <div class="mc-slider"><label for="convSteps">Conveyor move</label><input type="range" id="convSteps" min="500" max="50000" step="100"><b id="convStepsVal">—</b></div>
-        <div class="mc-slider mount-only"><label for="mountSteps">Camera move</label><input type="range" id="mountSteps" min="10" max="5000" step="10"><b id="mountStepsVal">—</b></div>
+        <div class="mc-err hidden" id="convRO">View-only on this device - speed and steps can't be changed here. Use the station screen, or start the station with <b>--remote-control</b>.</div>
+        <div class="mc-slider"><label for="convSpeed">Conveyor speed</label><input type="range" id="convSpeed" min="0" max="100" step="1"><span class="mc-numwrap"><input type="number" class="mc-num" id="convSpeedVal" min="0" max="100" step="1" inputmode="numeric"><small>%</small></span></div>
+        <div class="mc-slider"><label for="convSteps">Conveyor move</label><input type="range" id="convSteps" min="500" max="50000" step="100"><span class="mc-numwrap"><input type="number" class="mc-num" id="convStepsVal" min="500" max="50000" step="1" inputmode="numeric"><small>steps</small></span></div>
+        <div class="mc-slider mount-only"><label for="mountSteps">Camera move</label><input type="range" id="mountSteps" min="10" max="5000" step="10"><span class="mc-numwrap"><input type="number" class="mc-num" id="mountStepsVal" min="10" max="5000" step="1" inputmode="numeric"><small>steps</small></span></div>
         <div class="mc-grid">
           <button class="mc-btn mount mount-only" style="grid-area:up" data-mount="1">▲ CAMERA UP<small id="mUpTxt"></small></button>
           <button class="mc-btn conv" style="grid-area:rev" data-belt="rev">◀ REVERSE<small id="convRevSteps"></small></button>

@@ -829,7 +829,12 @@ table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mc-err { font-size: 12px; color: #ffd27a; background: #3d2a08; padding: 6px 8px; }
 .mc-slider { display: grid; grid-template-columns: 74px 1fr 64px; gap: 6px; align-items: center; font-size: 12px; }
 .mc-slider input { width: 100%; accent-color: #3b82f6; }
-.mc-slider b { font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+.mc-slider { grid-template-columns: 74px 1fr 104px; }
+.mc-numwrap { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+.mc-numwrap small { color: var(--muted); font-size: 11px; min-width: 30px; }
+.mc-slider input.mc-num { width: 64px; padding: 3px 4px; text-align: right; font: inherit; font-variant-numeric: tabular-nums;
+  background: var(--surface-2, #1b2230); color: inherit; border: 1px solid var(--line-2, #334); border-radius: 5px; accent-color: auto; }
+.mc-num::-webkit-inner-spin-button { opacity: .6; }
 .mc-grid { margin: 8px auto 0; display: grid; gap: 2px;
   grid-template-columns: repeat(3, 98px); grid-template-rows: repeat(3, 78px);
   grid-template-areas: "run up ." "rev osc fwd" ". down stop"; }
