@@ -12,3 +12,11 @@ models/*_ncnn_model/
 # built motor program
 motor_c/motord
 motor_c/motord_sim
+
+# training (inspection-station/training)
+training/can_dataset/
+training/runs_can/
+training/.venv/
+training/*.pt
+training/evaluate_results.csv
+!models/can_classifier.pt

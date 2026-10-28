@@ -771,7 +771,7 @@ function applyPermissions() {
   $$("#pageDiag .stepper button, #pageDiag .stepper input, #pageDiag [data-cmd=cleanup]").forEach((el) => (el.disabled = !eng));
   if (S.diag) renderDiag();
   if (S.gige) renderGige();
-  $("#revExport").classList.toggle("disabled", !eng);
+  $$("#revExport, #revExportPF").forEach((el) => el.classList.toggle("disabled", !eng));
   $("#revRoNote").classList.toggle("hidden", eng);
   renderUser();
   if (S.status) { renderControls(S.status); renderProduction(S.status); renderConveyor(S.status.conveyor); }

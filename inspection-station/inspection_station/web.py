@@ -1016,7 +1016,7 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
         if (e := need("engineer")):
             return e
         try:
-            z = review.export_dataset()
+            z = review.export_dataset(request.args.get("mode", "classes"))
         except ValueError as e:
             return fail(str(e))
         audit("dataset exported", z.name)

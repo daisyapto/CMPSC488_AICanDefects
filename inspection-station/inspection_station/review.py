@@ -168,25 +168,40 @@ class ReviewStore:
             return "good" if v == "wrong" else _slug(item["label"] or item["detected"] or "defect")
         return "good" if v == "correct" else _slug(item["label"] or "defect")
 
-    def export_dataset(self) -> Path:
+    def export_dataset(self, mode: str = "classes") -> Path:
+        """mode "classes": good + one folder per defect type (dataset/...).
+        mode "passfail": pass / fail only, laid out like the team's can_dataset/ folder,
+        ready for training/train_yolo.py."""
         items = [i for i in self.scan() if i["verdict"]]
         if not items:
             raise ValueError("no reviewed images yet")
         EXPORTS.mkdir(parents=True, exist_ok=True)
-        out = EXPORTS / f"dataset_{datetime.now():%Y%m%d_%H%M%S}.zip"
+        pf = mode == "passfail"
+        root = "can_dataset" if pf else "dataset"
+        out = EXPORTS / f"{'can_dataset' if pf else 'dataset'}_{datetime.now():%Y%m%d_%H%M%S}.zip"
         rows = io.StringIO()
         w = csv.writer(rows)
         w.writerow(["file", "split", "class", "station_result", "detected", "verdict", "reviewed_by", "source"])
         with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:     # JPEGs are already compressed
             for i in items:
                 cls = self.class_of(i).replace(" / ", "_").replace(" ", "_")
+                if pf:
+                    cls = "pass" if cls == "good" else "fail"
                 name = f"{i['date']}_{Path(i['path']).name}"
                 # stable 80 / 20 split (same image always lands in the same half)
                 split = "val" if zlib.crc32(name.encode()) % 5 == 0 else "train"
-                z.write(DATA_DIR / i["path"], f"dataset/{split}/{cls}/{name}")
+                z.write(DATA_DIR / i["path"], f"{root}/{split}/{cls}/{name}")
                 w.writerow([f"{split}/{cls}/{name}", split, cls, i["result"], i["detected"], i["verdict"],
                             i["by"], i["path"]])
-            z.writestr("dataset/labels.csv", rows.getvalue())
+            z.writestr(f"{root}/labels.csv", rows.getvalue())
+            if pf:
+                z.writestr(f"{root}/README.txt",
+                           "Pass / fail can dataset exported from the inspection station (Review page).\n"
+                           "train/ and val/ (80 / 20) each hold pass/ and fail/, labelled by a human reviewer.\n"
+                           "Unzip next to training/train_yolo.py (or merge into your can_dataset/), then:\n"
+                           "    python train_yolo.py --data can_dataset\n"
+                           "labels.csv lists every image with the station's decision and the review.\n")
+                return out
             z.writestr("dataset/README.txt",
                        "Can inspection dataset exported from the inspection station.\n"
                        "train/ and val/ (80 / 20) each hold one folder per class (good + defect types),\n"

@@ -449,8 +449,10 @@ class YoloDetector:
     """Runs an Ultralytics YOLO model (pip install ultralytics).
 
     * Detection models (yolo11n.pt / yolo26n.pt trained on boxes): each box = a defect.
-    * Classification models (*-cls): the top class decides; a class named
-      good / ok / pass / normal means PASS.
+    * Classification models (*-cls), e.g. the team's pass / fail classifier:
+      fail score = 1 - (probability of the good / ok / pass / normal classes);
+      the can FAILS when the fail score reaches "Min confidence" (60 % = the
+      FAIL_THRESHOLD of the team's inspect_can.py). Runs at the size it was trained at.
     * Formats: .pt, .onnx, or an NCNN export folder (*_ncnn_model) - NCNN is the
       fastest on a Raspberry Pi.
     * Inspections always get the model; the live view only uses it when it is
@@ -463,6 +465,7 @@ class YoloDetector:
         self.ms = None
         self._model = None
         self._key = None
+        self._imgsz = None                         # classification: the size the model was trained at
         self._lock = threading.Lock()
 
     def _load(self, p: VisionParams):
@@ -485,15 +488,18 @@ class YoloDetector:
             raise RuntimeError(self.error) from e
         try:
             model = YOLO(str(path), task=None)
-            dummy = np.zeros((p.yolo_imgsz, p.yolo_imgsz, 3), np.uint8)
-            model.predict(dummy, imgsz=p.yolo_imgsz, verbose=False)    # warm-up: 1st run is slow
+            self._imgsz = _trained_imgsz(model) if getattr(model, "task", "") == "classify" else None
+            size = self._imgsz or p.yolo_imgsz
+            dummy = np.zeros((size, size, 3), np.uint8)
+            model.predict(dummy, imgsz=size, verbose=False)    # warm-up: 1st run is slow
         except Exception as e:
             self.error = f"could not load {path.name}: {e}"
             raise RuntimeError(self.error) from e
         names = getattr(model, "names", {}) or {}
         self._model, self.error = model, ""
         self.info = f"{path.name} · {getattr(model, 'task', '?')} · {len(names)} classes: " + \
-                    ", ".join(str(n) for n in list(names.values())[:8])
+                    ", ".join(str(n) for n in list(names.values())[:8]) + \
+                    (f" · {self._imgsz} px" if self._imgsz else "")
         return model
 
     def preload(self, p: VisionParams):
@@ -539,7 +545,7 @@ class YoloDetector:
 
         t0 = time.perf_counter()
         try:
-            r = model.predict(crop, imgsz=p.yolo_imgsz, conf=p.yolo_conf, verbose=False)[0]
+            r = model.predict(crop, imgsz=self._imgsz or p.yolo_imgsz, conf=p.yolo_conf, verbose=False)[0]
         except Exception as e:
             self.error = f"inference failed: {e}"
             raise RuntimeError(self.error) from e
@@ -547,15 +553,20 @@ class YoloDetector:
         self.ms, self.error = ms, ""
         names = r.names or {}
 
-        defects, confs = [], []
+        defects, confs, measures = [], [], {}
         if getattr(r, "probs", None) is not None:                 # classification model
-            top = int(r.probs.top1)
-            conf = float(r.probs.top1conf)
-            label = str(names.get(top, top))
-            if label.lower() not in GOOD_NAMES and conf >= p.yolo_conf:
-                defects.append(Defect(label.replace("_", " ").capitalize(), 0, 0, 0, 0, 0, conf))
-                confs.append(conf)
-            pass_conf = conf if not defects else None
+            probs = [float(v) for v in r.probs.data.cpu().tolist()]
+            good = [i for i in range(len(probs)) if str(names.get(i, i)).lower() in GOOD_NAMES]
+            fail_score = 1.0 - sum(probs[i] for i in good) if good else max(probs)
+            bad = [i for i in range(len(probs)) if i not in good]
+            worst = max(bad, key=lambda i: probs[i]) if bad else int(r.probs.top1)
+            label = str(names.get(worst, worst))
+            measures["Fail score"] = f"{fail_score * 100:.0f}% (fails at {p.yolo_conf * 100:.0f}%)"
+            if fail_score >= p.yolo_conf:
+                name = "Defect" if label.lower() in ("fail", "bad", "defect", "ng") else label.replace("_", " ").capitalize()
+                defects.append(Defect(name, 0, 0, 0, 0, 0, fail_score))
+                confs.append(fail_score)
+            pass_conf = (1.0 - fail_score) if not defects else None
         else:                                                     # detection model
             boxes = r.boxes
             xyxy = boxes.xyxy.cpu().numpy() if boxes is not None and len(boxes) else np.zeros((0, 4))
@@ -579,7 +590,19 @@ class YoloDetector:
             if d.w and d.h:
                 cv2.rectangle(mask, (d.x, d.y), (d.x + d.w, d.y + d.h), 255, -1)
         return VisionResult(not defects, defects, circle, float(conf), ms, "yolo",
-                            work, blur, np.zeros_like(blur), mask)
+                            work, blur, np.zeros_like(blur), mask, measures=measures)
+
+
+def _trained_imgsz(model):
+    """Image size a classification model was trained at (from the checkpoint / export metadata)."""
+    for src in (getattr(getattr(model, "model", None), "args", None), getattr(model, "overrides", None)):
+        try:
+            v = src.get("imgsz") if isinstance(src, dict) else getattr(src, "imgsz", None)
+            if v:
+                return int(v[0] if isinstance(v, (list, tuple)) else v)
+        except Exception:
+            pass
+    return None
 
 
 # =============================================================================

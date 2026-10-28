@@ -245,7 +245,8 @@
         <select id="revDate" class="select select-sm"><option value="">All days</option></select>
       </div>
       <div class="review-stats" id="revStats"></div>
-      <a class="btn btn-sm btn-primary" id="revExport" href="/api/review/export" title="ZIP of reviewed images sorted into class folders, for training the AI model">Export dataset</a>
+      <a class="btn btn-sm btn-quiet" id="revExportPF" href="/api/review/export?mode=passfail" title="ZIP of reviewed images in pass / fail folders - the can_dataset layout for training/train_yolo.py">Export pass / fail set</a>
+      <a class="btn btn-sm btn-primary" id="revExport" href="/api/review/export" title="ZIP of reviewed images sorted into class folders (good + defect types)">Export dataset</a>
     </section>
     <div class="banner-inline hidden" id="revRoNote">Log in as <b>engineer</b> to label images. Everyone can browse them.</div>
     <div class="review-grid" id="reviewGrid"></div>
@@ -420,10 +421,10 @@
         <div id="yoloFields" class="hidden">
           <div class="field col"><label>YOLO model file (on the station)</label>
             <div class="input-row"><input id="yoloInput" class="input mono" spellcheck="false" placeholder="models/can_defects.pt"><button class="btn btn-sm btn-primary" id="yoloApply">Apply</button></div></div>
-          <div class="field"><label>Min confidence</label><div class="stepper" data-setting="yolo_conf" data-min="5" data-max="95" data-step="5" data-unit="%"></div></div>
-          <div class="field"><div><label>Model image size</label><div class="hint">smaller = faster, misses small defects</div></div><div class="stepper" data-setting="yolo_imgsz" data-min="160" data-max="1280" data-step="32" data-unit="px"></div></div>
+          <div class="field"><div><label>Min confidence</label><div class="hint">pass / fail classifier: the fail score that fails a can (60 % = the team's threshold)</div></div><div class="stepper" data-setting="yolo_conf" data-min="5" data-max="95" data-step="5" data-unit="%"></div></div>
+          <div class="field"><div><label>Model image size</label><div class="hint">detection models (smaller = faster, misses small defects) · classifiers run at the size they were trained at</div></div><div class="stepper" data-setting="yolo_imgsz" data-min="160" data-max="1280" data-step="32" data-unit="px"></div></div>
           <div class="field"><div><label>Active cooler fitted</label><div class="hint">off = YOLO only on inspected cans, not the live view</div></div><label class="switch"><input type="checkbox" data-setting="active_cooler"><span></span></label></div>
-          <div class="field"><div><label>Crop to the can first</label><div class="hint">keeps small defects visible to the model</div></div><label class="switch"><input type="checkbox" data-setting="yolo_crop"><span></span></label></div>
+          <div class="field"><div><label>Crop to the can first</label><div class="hint">only for models trained on cropped cans - leave off for can_classifier.pt (trained on full frames)</div></div><label class="switch"><input type="checkbox" data-setting="yolo_crop"><span></span></label></div>
         </div>
         <div class="field"><label>Sensitivity</label><div class="stepper" data-setting="vision_sensitivity" data-min="1" data-max="100" data-step="5" data-unit=""></div></div>
         <div class="field"><label>Min defect size</label><div class="stepper" data-setting="vision_min_area" data-min="5" data-max="5000" data-step="5" data-unit="px"></div></div>

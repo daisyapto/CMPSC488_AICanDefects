@@ -116,10 +116,10 @@ class Settings:
     exposure_us: int = 2000
     gain_db: int = 0
     vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo" | "hailo" (AI HAT)
-    yolo_model: str = "models/can_defects.pt"   # .pt / .onnx / *_ncnn_model folder (relative to the project)
-    yolo_conf: int = 50                # % - detections below this confidence are ignored
+    yolo_model: str = "models/can_classifier.pt"   # .pt / .onnx / *_ncnn_model folder (relative to the project)
+    yolo_conf: int = 60                # % - detection: boxes below this are ignored · classifier: fail score that fails the can
     yolo_imgsz: int = 640              # model input size (smaller = faster, misses small defects)
-    yolo_crop: bool = True             # crop to the can before YOLO (small defects stay visible)
+    yolo_crop: bool = False            # crop to the can before YOLO - only for models trained on crops (can_classifier.pt is trained on full frames)
     hailo_model: str = "models/can_defects.hef"   # YOLO compiled for the AI HAT (Hailo-8); names in the same-named .txt
     active_cooler: bool = False        # Pi 5 active cooler fitted? Without it, YOLO runs only on inspected cans
     inspect_area: list = None          # [x0, y0, x1, y1] fractions of the image; None = whole view
