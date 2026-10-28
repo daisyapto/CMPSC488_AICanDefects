@@ -47,11 +47,12 @@ class VisionParams:
     sensitivity: int = 50        # 1..100, higher finds fainter defects
     min_area: int = 40           # px at WORK_WIDTH
     roi_scale: float = 0.88      # inspect this fraction of the can radius (skips the rim edge)
-    engine: str = "builtin"      # "builtin" | "team" (team_vision.py) | "yolo"
+    engine: str = "builtin"      # "builtin" | "team" (team_vision.py) | "yolo" | "hailo" (AI HAT)
     yolo_model: str = ""
     yolo_conf: float = 0.5
     yolo_imgsz: int = 640
     yolo_crop: bool = True
+    hailo_model: str = ""
     area: tuple = (0.0, 0.0, 1.0, 1.0)   # inspection area (x0, y0, x1, y1) as fractions of the image
 
     @property
@@ -125,6 +126,8 @@ class Vision:
         self.reference_time = None
         self.team = TeamDetector()
         self.yolo = YoloDetector()
+        from .hailo import HailoDetector
+        self.hailo = HailoDetector()
 
     # ------------------------------------------------------------ can location
     @staticmethod
@@ -179,6 +182,8 @@ class Vision:
     def _analyze(self, frame: np.ndarray, p: VisionParams, live: bool = False) -> VisionResult:
         if p.engine == "team":
             return self.team.analyze(frame, live=live)
+        if p.engine == "hailo":
+            return self.hailo.analyze(frame, p, live=live)
         if p.engine == "yolo":
             from .edition import YOLO_AVAILABLE
             if not YOLO_AVAILABLE:

@@ -18,7 +18,21 @@ from .controller import Controller
 from .hardware import make_io
 
 
+def _leave_last_core_for_motors():
+    """The motor program (motor_c/motord) runs on the last CPU core; keep the station,
+    the camera bridge and their threads on the other cores so its step timing stays even."""
+    import os
+    try:
+        last = (os.cpu_count() or 1) - 1          # the motor core (isolcpus may already hide it)
+        cores = set(os.sched_getaffinity(0)) - {last}
+        if cores:
+            os.sched_setaffinity(0, cores)
+    except (AttributeError, OSError):
+        pass                                       # not Linux
+
+
 def main():
+    _leave_last_core_for_motors()
     ap = argparse.ArgumentParser(description="Can inspection station")
     ap.add_argument("--sim", action="store_true", help="simulation mode: do not touch GPIO")
     ap.add_argument("--port", type=int, default=8080, help="web dashboard port (default 8080)")

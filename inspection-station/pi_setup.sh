@@ -25,7 +25,7 @@ say() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 # ----------------------------------------------------------------------------- 1
 say "1. Software"
-PKGS="python3-flask python3-numpy python3-opencv python3-gi gir1.2-aravis-0.8 aravis-tools python3-gpiozero python3-lgpio python3-serial"
+PKGS="python3-flask python3-numpy python3-opencv python3-gi gir1.2-aravis-0.8 aravis-tools python3-gpiozero python3-lgpio python3-serial build-essential libglib2.0-dev liblgpio-dev"
 MISSING=""
 for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"; done
 if [ -z "$MISSING" ]; then echo "  all installed"
@@ -58,6 +58,15 @@ elif ask "  keep the Motor HAT drivers OFF while the Pi boots ('$MLINE')?" y; th
   cp "$CFG" "$CFG.bak.$(date +%Y%m%d%H%M%S)"
   printf '# can inspection station: motor HAT drivers off (EN low) from boot\n%s\n' "$MLINE" >> "$CFG"
   REBOOT=1; echo "  added"
+fi
+
+# ----------------------------------------------------------------------------- 2b
+say "2b. Motor program (team C code in motor_c/)"
+if make -C "$DIR/motor_c" >/dev/null 2>&1; then
+  chown -R "$USER_NAME" "$DIR/motor_c" 2>/dev/null; echo "  built motor_c/motord"
+  setcap cap_sys_nice+ep "$DIR/motor_c/motord" && echo "  real-time priority allowed for the motor program (smooth steps)"
+else
+  echo "  ! could not build motor_c - run: make -C $DIR/motor_c  to see why"
 fi
 
 # ----------------------------------------------------------------------------- 3

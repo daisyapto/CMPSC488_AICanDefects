@@ -22,12 +22,15 @@ NEVER plug or unplug a motor cable while the HAT has power.
 """
 from __future__ import annotations
 
+import shutil
+import subprocess
 import threading
 import time
+from pathlib import Path
 
 from .config import MOTOR_PINS
 
-MAX_STEPS = 9000                        # per command, as in motor_control.c
+MAX_STEPS = 50000                       # per command (motor program: 9000; motor_c/Makefile MAX_STEPS)
 MOUNT_SPEED = 60
 MOUNT_PRESETS = {"12 oz": 0, "16 oz": 3300, "19.2 oz": 6600}
 MOUNT_MAX_POS = 6600
@@ -45,71 +48,6 @@ def half_period_us(speed: int) -> int:
 # =============================================================================
 # GPIO backends
 # =============================================================================
-class LgpioBackend:
-    name = "Motor HAT"
-
-    def __init__(self):
-        import lgpio
-        self.lg = lgpio
-        self.h = None
-        err = None
-        for chip in (0, 4):                    # Pi 5: header = gpiochip0 (gpiochip4 on old kernels)
-            try:
-                h = lgpio.gpiochip_open(chip)
-                if h >= 0:
-                    self.h = h
-                    break
-            except Exception as e:
-                err = e
-        if self.h is None:
-            raise RuntimeError(f"cannot open the GPIO chip ({err})")
-        for motor in MOTOR_PINS.values():
-            for pin in motor.values():
-                try:
-                    lgpio.gpio_claim_output(self.h, pin, 0)
-                except Exception as e:
-                    raise RuntimeError(f"GPIO {pin} is busy ({e}) - is the GTK motor program running? Close it")
-
-    def write(self, pin, level):
-        self.lg.gpio_write(self.h, pin, 1 if level else 0)
-
-    def pulses(self, pin, half_us, cycles):
-        """cycles step pulses (0 = endless). Replaces whatever is running on that pin."""
-        self._off(pin)                                          # stop + clear the queue
-        if half_us:
-            self.lg.tx_pulse(self.h, pin, half_us, half_us, 0, cycles)
-
-    def _off(self, pin):
-        """Stop the pulse train. Some lgpio versions reject tx_pulse(0, 0) ('bad PWM micros'),
-        so use PWM frequency 0 (= off) and fall back to the other call."""
-        try:
-            self.lg.tx_pwm(self.h, pin, 0, 0)
-        except Exception:
-            try:
-                self.lg.tx_pulse(self.h, pin, 0, 0)
-            except Exception:
-                pass
-        try:
-            self.lg.gpio_write(self.h, pin, 0)
-        except Exception:
-            pass
-
-    def busy(self, pin) -> bool:
-        return bool(self.lg.tx_busy(self.h, pin, self.lg.TX_PWM))
-
-    def close(self):
-        try:
-            for motor in MOTOR_PINS.values():
-                self._off(motor["step"])
-                self.write(motor["en"], 0)
-            for motor in MOTOR_PINS.values():
-                for pin in motor.values():
-                    self.lg.gpio_free(self.h, pin)
-            self.lg.gpiochip_close(self.h)
-        except Exception:
-            pass
-
-
 class SimBackend:
     """No hardware: pulse trains are timed so the panel behaves like the real thing."""
     name = "simulated"
@@ -144,6 +82,7 @@ class Channel:
         self.requested = 0            # steps in this command (0 = endless)
         self._t0 = 0.0
         self._done_before = 0         # steps already done before a speed change
+        self._end = 0.0               # when a counted move should be complete
 
     def steps_done(self) -> int:
         if not self.running:
@@ -159,19 +98,19 @@ class Channel:
         time.sleep(0.0005)                            # DIR set-up before the first step
         self.dir, self.half_us, self.requested = (1 if direction > 0 else -1), half_us, steps
         self._t0, self._done_before = time.monotonic(), 0
+        self._end = self._t0 + steps * 2 * half_us / 1e6
         self.running = True
         hw.pulses(self.p["step"], half_us, steps)
 
     def change_speed(self, half_us):
-        if not self.running or half_us == self.half_us:
-            self.half_us = half_us
+        """Continuous running changes speed at once. A counted move keeps its speed until it
+        ends - restarting it mid-move could lose or add steps (the new speed is used next time)."""
+        if not self.running or half_us == self.half_us or self.requested:
+            if not self.running:
+                self.half_us = half_us
             return
-        done = self.steps_done()
-        left = (self.requested - done) if self.requested else 0
-        if self.requested and left <= 0:
-            return
-        self._done_before, self._t0, self.half_us = done, time.monotonic(), half_us
-        self.hw.pulses(self.p["step"], half_us, left)
+        self._done_before, self._t0, self.half_us = self.steps_done(), time.monotonic(), half_us
+        self.hw.pulses(self.p["step"], half_us, 0)
 
     def stop(self) -> int:
         """Stop now; returns the steps that were done."""
@@ -182,13 +121,22 @@ class Channel:
         return done
 
     def finished(self) -> bool:
-        return self.running and self.requested > 0 and not self.hw.busy(self.p["step"])
+        """A counted move is over only when its time is up AND lgpio has sent every pulse.
+        (Right after a start lgpio can report 'not busy' before the first pulse - trusting
+        that alone switched the driver off early and cut moves short by a random amount.)"""
+        if not (self.running and self.requested > 0):
+            return False
+        now = time.monotonic()
+        if now < self._end:
+            return False
+        return not self.hw.busy(self.p["step"]) or now > self._end + 1.0
 
 
 # =============================================================================
 # Conveyor + camera mount
 # =============================================================================
-class Conveyor:
+class PyMotors:
+    """Python port (lgpio pulse thread). Used when the team C program can't be built."""
     TICK = 0.02
 
     def __init__(self, settings, log, sim=False):
@@ -214,15 +162,7 @@ class Conveyor:
         if self.hw is not None:
             self.hw.close()
         self.hw = None
-        if not self.sim and self.s.motor_driver == "hat":
-            try:
-                self.hw = LgpioBackend()
-                self.error = ""
-            except Exception as e:
-                self.error = str(e)
-                self.log("WARN", f"Motors: {e} - panel runs simulated")
-        if self.hw is None:
-            self.hw = SimBackend()
+        self.hw = SimBackend()
         self.belt = Channel(self.hw, MOTOR_PINS["conveyor"])
         self.mount = Channel(self.hw, MOTOR_PINS["mount"])
 
@@ -364,3 +304,248 @@ class Conveyor:
         self._stop.set()
         self._thread.join(timeout=0.5)
         self.hw.close()
+
+
+# =============================================================================
+# The team's C motor program (motor_c/motord) - same code as ./motor
+# =============================================================================
+MOTOR_C_DIR = Path(__file__).resolve().parent.parent / "motor_c"
+
+
+class CMotors:
+    """Runs motor_c/motord: motor_control.c + HR8825.c + DEV_Config.c from the team's
+    GTK program, unchanged, so steps, speeds and timing are exactly the same.
+    The station sends it the same calls the GTK buttons made."""
+
+    def __init__(self, settings, log):
+        self.s, self.log = settings, log
+        self.error = ""
+        self._lock = threading.Lock()
+        self._cache, self._cache_t = None, 0.0
+        exe = MOTOR_C_DIR / "motord"
+        if not exe.exists() or any(f.stat().st_mtime > exe.stat().st_mtime
+                                   for f in MOTOR_C_DIR.glob("*.[ch]")):
+            self._build()
+        args = [str(exe)] + (["--smooth"] if settings.motor_timing == "precise" else [])
+        self.p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                  stderr=subprocess.DEVNULL, text=True, bufsize=1, cwd=MOTOR_C_DIR)
+        hello = ""
+        for _ in range(20):                      # skip any debug text before the ready line
+            hello = self.p.stdout.readline().strip()
+            if not hello or hello.startswith(("OK", "ERR")):
+                break
+        if not hello.startswith("OK"):
+            self.p.kill()
+            raise RuntimeError(hello or "motord did not start")
+        self.hardware = "hardware=1" in hello
+        self.realtime = "realtime=1" in hello
+        self.precise = "timing=precise" in hello
+        self.name = ("precise timing" if self.precise else "team C timing") + \
+            ("" if self.hardware else " (sim build)") + \
+            (" · real-time" if self.realtime else " · normal priority")
+        if self.hardware and not self.realtime:
+            self.log("WARN", "Motors: no real-time priority - run once: sudo setcap cap_sys_nice+ep "
+                             f"{MOTOR_C_DIR / 'motord'}  (smoother steps)")
+
+    def _build(self):
+        if not shutil.which("make") or not shutil.which("gcc"):
+            raise RuntimeError("motor_c/motord not built and no compiler - sudo apt install build-essential "
+                               "libglib2.0-dev liblgpio-dev, then: make -C motor_c")
+        r = subprocess.run(["make", "-C", str(MOTOR_C_DIR)], capture_output=True, text=True)
+        if r.returncode:
+            tail = (r.stderr or r.stdout).strip().splitlines()[-3:]
+            raise RuntimeError("building motor_c failed: " + " | ".join(tail) +
+                               " (sudo apt install build-essential libglib2.0-dev liblgpio-dev)")
+        self.log("INFO", "Motors: built motor_c/motord from the team motor code")
+        subprocess.run(["sudo", "-n", "setcap", "cap_sys_nice+ep", str(MOTOR_C_DIR / "motord")],
+                       capture_output=True)            # works if sudo needs no password; else see the log
+
+    def cmd(self, line: str) -> str:
+        with self._lock:
+            if self.p.poll() is not None:
+                raise RuntimeError("motor program stopped - restart the station")
+            self.p.stdin.write(line + "\n")
+            self.p.stdin.flush()
+            reply = self.p.stdout.readline().strip()
+            self._cache = None
+        if reply.startswith("ERR"):
+            raise ValueError(reply[4:])
+        return reply
+
+    def status(self):
+        now = time.monotonic()
+        if self._cache is None or now - self._cache_t > 0.08:
+            with self._lock:
+                self.p.stdin.write("status\n")
+                self.p.stdin.flush()
+                f = self.p.stdout.readline().split()
+            v = [int(x) for x in f[1:]]
+            keys = ["running", "osc", "cont", "dir", "speed", "done", "req", "leg_done", "osc_steps",
+                    "m_running", "m_dir", "m_done", "m_req", "m_pos", "cycles", "hw"]
+            self._cache, self._cache_t = dict(zip(keys, v)), now
+        return self._cache
+
+    def close(self):
+        try:
+            self.cmd("stopall")
+            self.p.stdin.write("quit\n")
+            self.p.stdin.flush()
+            self.p.wait(timeout=2)
+        except Exception:
+            self.p.kill()
+
+
+class Conveyor:
+    """What the dashboard uses. motor_driver: "c" = the team's C code (default), "off" = simulated."""
+
+    def __init__(self, settings, log, sim=False):
+        self.s, self.log, self.sim = settings, log, sim
+        self.c = None
+        self.py = None
+        self.error = ""
+        self._open()
+
+    def _open(self):
+        if self.c:
+            self.c.close()
+        if self.py:
+            self.py.close()
+        self.c = self.py = None
+        self.error = ""
+        if self.s.motor_driver == "c" and not self.sim:
+            try:
+                self.c = CMotors(self.s, self.log)
+                return
+            except Exception as e:
+                self.error = f"team C driver: {e}"
+                self.log("WARN", f"Motors: {e} - panel runs simulated")
+        self.py = PyMotors(self.s, self.log, sim=True)
+        if self.error:
+            self.py.error = self.error
+
+    def set_driver(self, kind):
+        self.s.motor_driver = kind
+        self._open()
+
+    def set_timing(self, timing):
+        """precise = smooth.c (busy-wait schedule + ramp); team = motor_control.c as is."""
+        self.s.motor_timing = timing
+        self._open()
+
+    # --------------------------------------------------- commands (as main.c)
+    def _speed(self):
+        return c_speed(self.s.conveyor_speed_pct)
+
+    def run(self, direction=1):
+        if self.c:
+            self.c.cmd(f"run {1 if direction > 0 else -1} {self._speed()}")
+            self.log("INFO", f"Conveyor running at {self.s.conveyor_speed_pct} %")
+        else:
+            self.py.run(direction)
+
+    def move(self, direction, steps):
+        if self.c:
+            self.c.cmd(f"move {1 if direction > 0 else -1} {self._speed()} {int(steps)}")
+        else:
+            self.py.move(direction, steps)
+
+    def auto(self, steps):
+        if self.c:
+            self.c.cmd(f"auto {self._speed()} {int(steps)}")
+        else:
+            self.py.auto(steps)
+
+    def stop(self, quiet=False):
+        if self.c:
+            was = self.c.status()["running"]
+            self.c.cmd("stop")
+            if was and not quiet:
+                self.log("INFO", "Conveyor stopped")
+        else:
+            self.py.stop(quiet)
+
+    def set_speed(self, pct):
+        self.s.conveyor_speed_pct = pct
+        if self.c:
+            st = self.c.status()
+            self.c.cmd(f"speed {st['dir'] or 1} {self._speed()}")      # motor_conveyor_settings
+        else:
+            self.py.set_speed(pct)
+
+    def mount_move(self, direction, steps):
+        if self.c:
+            self.c.cmd(f"mount {1 if direction > 0 else -1} {int(steps)}")
+        else:
+            self.py.mount_move(direction, steps)
+
+    def mount_goto(self, position):
+        if self.c:
+            try:
+                self.c.cmd(f"goto {int(position)}")
+                return True
+            except ValueError:
+                return False
+        return self.py.mount_goto(position)
+
+    def mount_set_reference(self):
+        if self.c:
+            if self.c.status()["m_running"]:
+                return False
+            self.c.cmd("ref")
+            self.log("INFO", "Camera height: 12 oz reference set (position 0)")
+            return True
+        return self.py.mount_set_reference()
+
+    def mount_stop(self):
+        self.c.cmd("mstop") if self.c else self.py.mount_stop()
+
+    def stop_all(self, quiet=False):
+        self.c.cmd("stopall") if self.c else self.py.stop_all(quiet)
+
+    def halt(self):
+        self.stop_all(quiet=True)
+
+    def status(self):
+        if not self.c:
+            st = self.py.status()
+            st["driver"] = self.s.motor_driver
+            return st
+        try:
+            v = self.c.status()
+        except Exception as e:                       # motord died - fall back so the dashboard keeps running
+            self.log("ERROR", f"Motors: team C driver stopped ({e}) - panel now simulated, restart the station")
+            try:
+                self.c.p.kill()
+            except Exception:
+                pass
+            self.c = None
+            self.error = f"team C driver stopped: {e}"
+            self.py = PyMotors(self.s, self.log, sim=True)
+            self.py.error = self.error
+            return self.status()
+        osc, run = v["osc"], v["running"]
+        mode = "stopped" if not run else "auto" if osc else "continuous" if v["cont"] else "move"
+        return {
+            "running": bool(run), "mode": mode, "dir": v["dir"],
+            "speed_pct": self.s.conveyor_speed_pct,
+            "steps_per_s": round(1e6 / (2 * half_period_us(c_speed(self.s.conveyor_speed_pct)))),
+            "mm_per_step": self.s.conveyor_mm_per_step,
+            "steps_done": v["leg_done"] if osc else v["done"],
+            "steps_requested": v["osc_steps"] if osc else v["req"],
+            "auto_cycles": v["cycles"],
+            "move_steps": self.s.conveyor_move_steps, "with_line": self.s.conveyor_with_line,
+            "mount_running": bool(v["m_running"]), "mount_dir": v["m_dir"],
+            "mount_position": None if v["m_pos"] == -999999 else v["m_pos"],
+            "mount_steps_done": v["m_done"], "mount_requested": v["m_req"],
+            "mount_move_steps": self.s.mount_move_steps,
+            "presets": MOUNT_PRESETS, "mount_fitted": self.s.mount_motor,
+            "driver": "c", "driver_name": self.c.name, "error": "",
+            "can_mm": self.s.can_diameter_mm, "max_steps": MAX_STEPS,
+            "timing": "precise" if self.c.precise else "team",
+        }
+
+    def close(self):
+        if self.c:
+            self.c.close()
+        if self.py:
+            self.py.close()

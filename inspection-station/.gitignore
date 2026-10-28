@@ -9,3 +9,6 @@ __pycache__/
 models/*.pt
 models/*.onnx
 models/*_ncnn_model/
+# built motor program
+motor_c/motord
+motor_c/motord_sim

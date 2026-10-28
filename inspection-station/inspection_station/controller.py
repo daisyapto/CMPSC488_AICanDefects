@@ -761,7 +761,7 @@ class Controller:
             return {"green": False, "yellow": True, "red": False}           # defect just found
         if self.running:
             return {"green": True, "yellow": False, "red": False}           # all good, inspecting
-        return {"green": int(now) % 2 == 0, "yellow": False, "red": False}  # ready, not inspecting
+        return {"green": False, "yellow": False, "red": False}              # stopped: all off
 
     def _light_loop(self):
         while not self._shutdown.is_set():

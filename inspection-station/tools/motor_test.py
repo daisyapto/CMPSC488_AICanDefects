@@ -72,8 +72,9 @@ step(5, f"{steps} steps at {pct} % ({rate} steps/s, {half} us half period)")
 try:
     lgpio.tx_pulse(h, P["step"], half, half, 0, steps)
     t0 = time.monotonic()
+    time.sleep(steps * 2 * half / 1e6)          # the move's own time first - tx_busy can read 0 at the start
     while lgpio.tx_busy(h, P["step"], lgpio.TX_PWM):
-        time.sleep(0.02)
+        time.sleep(0.01)
         if time.monotonic() - t0 > steps / rate + 5:
             print("still busy - stopping")
             break

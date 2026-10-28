@@ -487,6 +487,7 @@ function updateReject(id, status) {
 
 function renderTimeline() {
   const el = $("#timeline");
+  if (!el) return;                       // removed from the light UI
   const n = Math.max(1, Math.floor((el.clientWidth + 3) / 14));
   const shown = S.results.slice(-n);
   let html = "";
@@ -508,6 +509,7 @@ function scheduleTrend() {
 
 function drawTrend() {
   const cv = $("#trend");
+  if (!cv) return;                       // removed from the light UI
   const box = cv.parentElement.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
   if (box.width < 10 || box.height < 10) return;
@@ -662,6 +664,8 @@ function initSettingWidgets() {
     }
   });
   $("#yoloApply").addEventListener("click", () => setSetting("yolo_model", $("#yoloInput").value.trim()));
+  $("#hailoApply").addEventListener("click", () => setSetting("hailo_model", $("#hailoInput").value.trim()));
+  $("#hailoInput").addEventListener("input", () => (S.editing.hailo_model = Date.now()));
   $("#yoloInput").addEventListener("input", () => (S.editing.yolo_model = Date.now()));
   $("#folderApply").addEventListener("click", () => setSetting("image_folder", $("#folderInput").value.trim()));
   $("#folderInput").addEventListener("input", () => (S.editing.image_folder = Date.now()));
@@ -697,7 +701,11 @@ function syncSettings(st) {
   const eng = s.vision_engine;
   eh.classList.toggle("hidden", eng === "builtin");
   eh.classList.toggle("bad", !!cam.engine_error);
-  $("#yoloFields").classList.toggle("hidden", eng !== "yolo");
+  $("#yoloFields").classList.toggle("hidden", eng !== "yolo" && eng !== "hailo");
+  $("#hailoFields").classList.toggle("hidden", eng !== "hailo");
+  const hi = $("#hailoInput");
+  if (document.activeElement !== hi && !fresh("hailo_model")) hi.value = s.hailo_model;
+  $("#yoloInput").closest(".field").classList.toggle("hidden", eng === "hailo");
   const yb = $('.seg[data-setting="vision_engine"] button[data-v="yolo"]');
   if (yb) yb.classList.toggle("hidden", !st.yolo_available);
   ["vision_sensitivity", "vision_min_area"].forEach((k) =>
@@ -845,6 +853,8 @@ function setPage(page) {
   $("#pageReports").classList.toggle("hidden", page !== "reports");
   $("#pageHistory").classList.toggle("hidden", page !== "history");
   $("#pageDiag").classList.toggle("hidden", page !== "diag");
+  $("#pageMotors").classList.toggle("hidden", page !== "motors");
+  if (page === "motors" && S.status) renderConveyor(S.status.conveyor);
   clearInterval(diagTimer);
   if (page === "history") loadHistory();
   if (page === "diag") { loadDiag(); diagTimer = setInterval(loadDiag, 1000); }
@@ -1479,12 +1489,12 @@ function wire() {
 
   setInterval(refreshMe, 20000);
   const hashPage = location.hash.slice(1);
-  if (["review", "reports", "history", "diag"].includes(hashPage)) setPage(hashPage);
+  if (["review", "reports", "history", "diag", "motors"].includes(hashPage)) setPage(hashPage);
 
   wireArea();
   $("#liveImg").addEventListener("error", () => { S.liveOn = false; });   // retried on next status
-  window.addEventListener("resize", () => { renderTimeline(); scheduleTrend(); });
-  setInterval(scheduleTrend, 15000);
+
+
 }
 
 function toggleFullscreen() {
@@ -1498,24 +1508,15 @@ wire();
 connect();
 
 
-/* ------------------------------------------------------------ motors panel */
+/* ------------------------------------------------------------ motors page */
 const CONV = { editing: {} };
 const convPost = (action, body) => post(`/api/conveyor/${action}`, body);
-const cSpeed = (pct) => 53 + Math.floor(pct * 30 / 100 + 0.5);              // same as the motor program
-const stepsPerS = (pct) => Math.round(1e6 / (2 * (1100 - cSpeed(pct) * 10)));
+const cSpeed = (pct) => 53 + Math.floor(pct * 30 / 100 + 0.5);              // same as main.c
 
-function toggleConveyor(open) {
-  const p = $("#convPanel");
-  const show = open ?? p.classList.contains("hidden");
-  p.classList.toggle("hidden", !show);
-  try { localStorage.setItem("convOpen", show ? "1" : ""); } catch {}
-}
+function toggleConveyor() { setPage(S.page === "motors" ? "line" : "motors"); }
 
 function wireConveyor() {
-  $("#btnConveyor").addEventListener("click", () => toggleConveyor());
-  $("#convClose").addEventListener("click", () => toggleConveyor(false));
-  try { if (localStorage.getItem("convOpen")) toggleConveyor(true); } catch {}
-
+  $("#btnConveyor").addEventListener("click", toggleConveyor);
   const slider = (id, key, label, fmt) => {
     const el = $(id);
     let t = null;
@@ -1523,26 +1524,21 @@ function wireConveyor() {
       $(label).textContent = fmt(+el.value);
       CONV.editing[key] = Date.now();
       clearTimeout(t);
-      t = setTimeout(() => setSetting(key, +el.value), 120);
-      if (S.status) renderConveyor(S.status.conveyor);
+      t = setTimeout(() => setSetting(key, +el.value), 150);
     });
   };
-  slider("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", (v) => `${v} %`);
-  slider("#convSteps", "conveyor_move_steps", "#convStepsVal", (v) => `${v} st`);
-  slider("#mountSteps", "mount_move_steps", "#mountStepsVal", (v) => `${v} st`);
+  slider("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", (v) => `${v}%`);
+  slider("#convSteps", "conveyor_move_steps", "#convStepsVal", (v) => `${v} steps`);
+  slider("#mountSteps", "mount_move_steps", "#mountStepsVal", (v) => `${v} steps`);
 
-  // pressing the active button again stops that motor - like the motor program
+  // pressing the active button again stops it - like the motor program
   $$("[data-belt]").forEach((b) => b.addEventListener("click", () => {
-    const c = S.status && S.status.conveyor, k = b.dataset.belt, steps = +$("#convSteps").value;
-    if (c && b.classList.contains("active")) { convPost("stop"); return; }
+    if (b.classList.contains("active")) { convPost("stop"); return; }
+    const k = b.dataset.belt, steps = +$("#convSteps").value;
     if (k === "auto") convPost("auto", { steps });
     else convPost("move", { dir: k === "fwd" ? 1 : -1, steps });
   }));
-  $("#convRun").addEventListener("click", () => {
-    const c = S.status && S.status.conveyor;
-    convPost(c && c.mode === "continuous" ? "stop" : "run", { dir: 1 });
-  });
-  $("#convStop").addEventListener("click", () => convPost("stop"));
+  $("#convRun").addEventListener("click", () => convPost($("#convRun").classList.contains("active") ? "stop" : "run", { dir: 1 }));
   $("#convStopAll").addEventListener("click", () => convPost("stop_all"));
   $$("[data-mount]").forEach((b) => b.addEventListener("click", () => {
     if (b.classList.contains("active")) { convPost("mount_stop"); return; }
@@ -1551,107 +1547,90 @@ function wireConveyor() {
   $("#mountRef").addEventListener("click", () => convPost("mount_reference"));
   $("#convWithLine").addEventListener("change", (e) => setSetting("conveyor_with_line", e.target.checked));
   $("#mountFitted").addEventListener("change", (e) => setSetting("mount_motor", e.target.checked));
-  $$("#convDrvSeg button").forEach((b) => b.addEventListener("click", () => setSetting("motor_driver", b.dataset.v)));
-  $("#convCalApply").addEventListener("click", async () => {
-    const m = +$("#convCalMeasured").value;
-    if (!m) { toast("Enter how far the belt mark moved (mm)", "error"); return; }
-    if (await convPost("calibrate", { steps: +$("#convSteps").value, measured_mm: m })) $("#convCalMeasured").value = "";
-  });
-
-  // drag the panel by its header
-  const panel = $("#convPanel"), head = $("#convHead");
-  head.addEventListener("pointerdown", (e) => {
-    if (e.target.closest("button")) return;
-    const r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
-    head.setPointerCapture(e.pointerId);
-    const move = (ev) => {
-      panel.style.left = Math.max(0, Math.min(innerWidth - r.width, ev.clientX - dx)) + "px";
-      panel.style.top = Math.max(0, Math.min(innerHeight - 60, ev.clientY - dy)) + "px";
-      panel.style.right = "auto"; panel.style.bottom = "auto";
-    };
-    const up = () => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); };
-    head.addEventListener("pointermove", move);
-    head.addEventListener("pointerup", up);
-  });
+  $("#motorPrecise").addEventListener("change", (e) => setSetting("motor_timing", e.target.checked ? "precise" : "team"));
+  $$("[data-lamp]").forEach((b) => b.addEventListener("click", () => cmd("lamp", { key: b.dataset.lamp })));
+  $("#mcValve").addEventListener("click", () => cmd("test_burst"));
+  $("#mcLightsAuto").addEventListener("click", () => cmd("lights_auto"));
 }
 
 function renderConveyor(c) {
   if (!c) return;
-  const op = can("operator"), eng = can("engineer"), st = S.status || {}, off = !op || st.estop;
+  const st = S.status || {}, op = can("operator"), off = !op || st.estop;
   $("#convDot").classList.toggle("on", c.running || c.mount_running);
-  $("#convDriver").textContent = c.driver_name;
+  if (S.page !== "motors") return;                 // nothing else to draw while hidden
+
   const err = $("#convErr");
   err.classList.toggle("hidden", !c.error);
-  if (c.error) err.textContent = `Motors not available — panel is simulated. ${c.error}`;
-
+  if (c.error) err.textContent = `Motors not available - simulated. ${c.error}`;
+  $("#convDriver").textContent = `Driver: ${c.driver_name}`;
   const sync = (id, key, label, val, fmt) => {
     const el = $(id);
     if (Date.now() - (CONV.editing[key] || 0) > 1500) el.value = val;
     $(label).textContent = fmt(+el.value);
     el.disabled = !op;
   };
-  sync("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", c.speed_pct, (v) => `${v} %`);
-  sync("#convSteps", "conveyor_move_steps", "#convStepsVal", c.move_steps, (v) => `${v} st`);
-  sync("#mountSteps", "mount_move_steps", "#mountStepsVal", c.mount_move_steps, (v) => `${v} st`);
+  sync("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", c.speed_pct, (v) => `${v}%`);
+  sync("#convSteps", "conveyor_move_steps", "#convStepsVal", c.move_steps, (v) => `${v} steps`);
+  sync("#mountSteps", "mount_move_steps", "#mountStepsVal", c.mount_move_steps, (v) => `${v} steps`);
 
-  // conveyor
   const steps = +$("#convSteps").value;
-  const st1 = $("#convState");
-  st1.className = "conv-state " + (st.estop ? "bad" : c.mode === "auto" ? "jog" : c.running ? "on" : "");
-  st1.textContent = st.estop ? "E-stop" : !c.running ? "Stopped" : c.mode === "auto"
-    ? (c.dir > 0 ? "Auto →" : "Auto ←") : c.mode === "continuous" ? "Running →" : (c.dir > 0 ? "Forward →" : "Reverse ←");
-  const act = { fwd: c.running && c.mode === "move" && c.dir > 0, rev: c.running && c.mode === "move" && c.dir < 0, auto: c.running && c.mode === "auto" };
-  $$("[data-belt]").forEach((b) => { b.classList.toggle("active", act[b.dataset.belt]); b.disabled = act[b.dataset.belt] ? !S.canControl : off; });
-  const prog = (on) => on ? `${c.steps_done} / ${c.steps_requested}` : `${steps} steps`;
+  const act = { fwd: c.running && c.mode === "move" && c.dir > 0, rev: c.running && c.mode === "move" && c.dir < 0,
+                auto: c.running && c.mode === "auto" };
+  $$("[data-belt]").forEach((b) => { const a = act[b.dataset.belt]; b.classList.toggle("active", a); b.disabled = a ? !S.canControl : off; });
+  const prog = (a) => `Steps ${a ? c.steps_done : 0} / ${a ? c.steps_requested : steps}`;
   $("#convFwdSteps").textContent = prog(act.fwd);
   $("#convRevSteps").textContent = prog(act.rev);
-  $("#convAutoSteps").textContent = act.auto ? `${c.steps_done} / ${c.steps_requested} · ${c.auto_cycles}×` : `${steps} steps`;
-  const run = $("#convRun");
-  run.textContent = c.mode === "continuous" ? "■ Stop continuous" : "Run continuous ▶";
-  run.disabled = c.mode === "continuous" ? !S.canControl : off;
-  $("#convStop").disabled = !S.canControl || !c.running;
+  $("#convAutoSteps").textContent = prog(act.auto);
+  const runOn = c.running && c.mode === "continuous";
+  $("#convRun").classList.toggle("active", runOn);
+  $("#convRun").disabled = runOn ? !S.canControl : off;
   $("#convStopAll").disabled = !S.canControl;
+  $("#convState").textContent = "Conveyor: " + (st.estop ? "E-stop" : !c.running ? "Stopped" :
+    c.mode === "auto" ? (c.dir > 0 ? "Auto forward →" : "Auto reverse ←") :
+    c.mode === "continuous" ? "Running →" : (c.dir > 0 ? "Forward →" : "Reverse ←"));
 
-  const sps = stepsPerS(+$("#convSpeed").value);
-  $("#convSps").textContent = sps.toLocaleString();
-  const mms = c.mm_per_step ? sps * c.mm_per_step : null;
-  $("#convMm").textContent = mms ? `${Math.round(mms)} mm/s` : "calibrate";
-  $("#convRate").textContent = mms ? Math.round(mms * 60 / (c.can_mm || 66)) : "—";
-  const wl = $("#convWithLine");
-  if (document.activeElement !== wl) wl.checked = c.with_line;
-  wl.disabled = !eng;
-
-  // camera height (only when the motor is fitted)
-  $("#mountSec").classList.toggle("hidden", !c.mount_fitted);
-  const mf = $("#mountFitted");
-  if (document.activeElement !== mf) mf.checked = c.mount_fitted;
-  mf.disabled = !eng;
-  const ms = $("#mountState");
-  ms.className = "conv-state " + (c.mount_running ? "on" : "");
-  ms.textContent = c.mount_running ? `${c.mount_dir > 0 ? "Up ↑" : "Down ↓"} ${c.mount_steps_done}/${c.mount_requested}` : "Stopped";
-  $$("[data-mount]").forEach((b) => {
-    const a = c.mount_running && +b.dataset.mount === c.mount_dir;
-    b.classList.toggle("active", a);
-    b.disabled = a ? !S.canControl : off;
-  });
-  const pre = $("#mountPresets");
-  if (!pre.children.length) {
-    Object.entries(c.presets).forEach(([name, pos]) => {
+  // camera height (only when fitted)
+  $$(".mount-only").forEach((el) => el.classList.toggle("hidden", !c.mount_fitted));
+  const mf = $("#mountFitted"); mf.checked = c.mount_fitted; mf.disabled = !can("engineer");
+  const wl = $("#convWithLine"); wl.checked = c.with_line; wl.disabled = !can("engineer");
+  const mp = $("#motorPrecise"); mp.checked = (st.settings || {}).motor_timing !== "team";
+  mp.disabled = !can("operator") || c.running;
+  if (c.mount_fitted) {
+    const msteps = +$("#mountSteps").value;
+    $$("[data-mount]").forEach((b) => {
+      const a = c.mount_running && +b.dataset.mount === c.mount_dir;
+      b.classList.toggle("active", a); b.disabled = a ? !S.canControl : off;
+    });
+    const up = c.mount_running && c.mount_dir > 0, dn = c.mount_running && c.mount_dir < 0;
+    $("#mUpTxt").textContent = `Steps ${up ? c.mount_steps_done : 0} / ${up ? c.mount_requested : msteps}`;
+    $("#mDownTxt").textContent = `Steps ${dn ? c.mount_steps_done : 0} / ${dn ? c.mount_requested : msteps}`;
+    const pre = $("#mountPresets");
+    if (!pre.children.length) Object.entries(c.presets).forEach(([name, pos]) => {
       const b = document.createElement("button");
-      b.className = "btn btn-sm"; b.textContent = name; b.dataset.pos = pos;
+      b.className = "mc-flat"; b.textContent = name.replace(" ", ""); b.dataset.pos = pos;
       b.addEventListener("click", () => convPost("mount_goto", { position: pos }));
       pre.appendChild(b);
     });
+    const ref = c.mount_position !== null && c.mount_position !== undefined;
+    $$("#mountPresets button").forEach((b) => { b.disabled = off || !ref; b.classList.toggle("on", ref && !c.mount_running && c.mount_position === +b.dataset.pos); });
+    $("#mountPos").textContent = ref ? `12oz reference saved · Camera at ${c.mount_position} steps` : "Calibrate 12oz height before using presets";
+    $("#mountRef").disabled = off || c.mount_running;
+    $("#mountState").textContent = "Camera: " + (!c.mount_running ? "Stopped" : c.mount_dir > 0 ? "Up ↑" : "Down ↓");
   }
-  const ref = c.mount_position !== null && c.mount_position !== undefined;
-  $$("#mountPresets button").forEach((b) => {
-    b.disabled = off || !ref;
-    b.classList.toggle("on", ref && !c.mount_running && c.mount_position === +b.dataset.pos);
-    b.title = ref ? `${b.dataset.pos} steps above the 12 oz reference` : "Set the 12 oz reference first";
-  });
-  $("#mountPos").textContent = ref ? `Position: ${c.mount_position} steps` : "Position: set the 12 oz reference";
-  $("#mountRef").disabled = off || c.mount_running;
 
-  $$("#convDrvSeg button").forEach((b) => { b.classList.toggle("on", b.dataset.v === c.driver); b.disabled = !eng || c.running || c.mount_running; });
-  $("#convCalApply").disabled = !eng; $("#convCalMeasured").disabled = !eng;
+  // sensor + lights (same column as the motor program)
+  const sen = $("#mcSensor");
+  sen.textContent = st.sensor ? "● Can detected" : "○ No can";
+  sen.classList.toggle("on", !!st.sensor);
+  const lights = st.lights || {};
+  $$("[data-lamp]").forEach((b) => {
+    const on = !!lights[b.dataset.lamp];
+    b.classList.toggle("on", on);
+    b.querySelector("small").textContent = on ? "ON" : "OFF";
+    b.disabled = !op || st.running || st.estop;
+  });
+  $("#mcValve").classList.toggle("on", !!st.valve);
+  $("#mcValve").disabled = !op || st.running || st.estop;
+  $("#mcLightsAuto").disabled = !op || !st.manual;
+  $("#mcLightsAuto").textContent = st.manual ? "Lights: back to automatic" : "Lights: automatic";
 }

@@ -109,11 +109,12 @@ class Settings:
     camera_delay_ms: int = 30          # sensor -> can centred under the camera
     exposure_us: int = 2000
     gain_db: int = 0
-    vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo"
+    vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo" | "hailo" (AI HAT)
     yolo_model: str = "models/can_defects.pt"   # .pt / .onnx / *_ncnn_model folder (relative to the project)
     yolo_conf: int = 50                # % - detections below this confidence are ignored
     yolo_imgsz: int = 640              # model input size (smaller = faster, misses small defects)
     yolo_crop: bool = True             # crop to the can before YOLO (small defects stay visible)
+    hailo_model: str = "models/can_defects.hef"   # YOLO compiled for the AI HAT (Hailo-8); names in the same-named .txt
     active_cooler: bool = False        # Pi 5 active cooler fitted? Without it, YOLO runs only on inspected cans
     inspect_area: list = None          # [x0, y0, x1, y1] fractions of the image; None = whole view
     vision_sensitivity: int = 50       # 1..100
@@ -127,7 +128,8 @@ class Settings:
     nozzle_distance_mm: int = 0        # sensor beam -> air nozzle (0 = not measured)
 
     # motors (conveyor.py) - conveyor belt + camera height on the Waveshare Motor HAT
-    motor_driver: str = "hat"          # "hat" (Motor HAT on GPIO) | "off" (simulated)
+    motor_driver: str = "c"            # "c" (team C motor code, motor_c/) | "off" (simulated)
+    motor_timing: str = "precise"      # "precise" (motor_c/smooth.c: no lost steps under load) | "team" (motor_control.c timing)
     conveyor_speed_pct: int = 80       # 0-100 %, same slider as the motor program
     conveyor_move_steps: int = 5000    # Forward / Reverse / Auto distance (steps)
     conveyor_with_line: bool = False   # Start / Stop on the Line card also run / stop the belt
@@ -164,6 +166,8 @@ class Settings:
             if f.name not in data:
                 continue
             default, value = getattr(s, f.name), data[f.name]
+            if f.name == "motor_driver" and value not in ("c", "off"):
+                continue                             # old "hat" (Python port) setting -> team C code
             if f.name == "inspect_area":
                 if value is None or (isinstance(value, list) and len(value) == 4 and
                                      all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in value)):

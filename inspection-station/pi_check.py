@@ -158,6 +158,31 @@ def check_packages():
         fail(f"cannot import the station code ({e}) - run this from the inspection-station folder")
 
 
+def check_ai_hat():
+    section("3b. AI HAT (Hailo-8)")
+    rc, out = run(["lspci"])
+    if "hailo" not in out.lower():
+        warn("no Hailo AI accelerator on PCIe - fine unless you use the AI HAT engine",
+             "check the PCIe ribbon cable; Raspberry Pi OS: sudo apt install hailo-all")
+        return
+    ok("Hailo accelerator found on PCIe")
+    try:
+        import hailo_platform  # noqa: F401
+        ok("HailoRT Python (hailo_platform) installed")
+    except Exception as e:
+        warn(f"HailoRT Python not installed ({e})",
+             "Raspberry Pi OS: sudo apt install hailo-all - Ubuntu: HailoRT .deb files from the Hailo developer zone")
+        return
+    if shutil.which("hailortcli"):
+        rc, out = run(["hailortcli", "fw-control", "identify"])
+        (ok if rc == 0 else warn)("hailortcli identify: " + (out.strip().splitlines() or ["no answer"])[0])
+    from inspection_station.config import Settings
+    s, _ = Settings.load()
+    hef = Path(s.hailo_model)
+    hef = hef if hef.is_absolute() else HERE / hef
+    (ok if hef.exists() else warn)(f"AI HAT model {hef.name}: " + ("found" if hef.exists() else "not there yet - compile your YOLO to .hef"))
+
+
 def check_power_heat():
     section("3. Power and heat")
     rc, out = run(["vcgencmd", "get_throttled"])
@@ -484,7 +509,7 @@ def main():
     ap.add_argument("--outputs", action="store_true", help="click each relay, then one short air pulse")
     a = ap.parse_args()
     print(f"{B}Can inspection station - Raspberry Pi check{X}  ({HERE})")
-    for fn in (check_system, check_packages, check_power_heat, check_gpio):
+    for fn in (check_system, check_packages, check_power_heat, check_ai_hat, check_gpio):
         try:
             fn()
         except Exception as e:

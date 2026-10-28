@@ -208,8 +208,10 @@ class Hub:
                 "reference": (datetime.fromtimestamp(v.reference_time).strftime("%H:%M:%S")
                               if v.reference is not None else None),
                 "engine": ctl.settings.vision_engine,
-                "engine_error": {"team": v.team.error, "yolo": v.yolo.error}.get(ctl.settings.vision_engine, ""),
-                "yolo_info": v.yolo.info, "yolo_ms": v.yolo.ms,
+                "engine_error": {"team": v.team.error, "yolo": v.yolo.error,
+                                 "hailo": v.hailo.error}.get(ctl.settings.vision_engine, ""),
+                "yolo_info": v.hailo.info if ctl.settings.vision_engine == "hailo" else v.yolo.info,
+                "yolo_ms": v.hailo.ms if ctl.settings.vision_engine == "hailo" else v.yolo.ms,
                 "last_seq": m.last_seq,
                 "brightness": m.measure() if m.ok else None,
                 "auto_exposure": getattr(m, "_ae_running", False),
@@ -242,7 +244,7 @@ class Hub:
 
     def _status_loop(self):
         while True:
-            time.sleep(0.25)
+            time.sleep(0.5)                       # 2 updates/s - lighter for the Pi and its browser
             with self.lock:
                 if not self.subs:
                     continue
@@ -287,13 +289,13 @@ SETTING_RULES = {
     "vision_min_area": _int_range(5, 5000), "sim_defect_rate": _int_range(0, 100),
     "save_images": _choice("off", "fails", "all"),
     "webcam_index": _int_range(0, 9),
-    "vision_engine": _choice("builtin", "team", *(["yolo"] if YOLO_AVAILABLE else [])),
+    "vision_engine": _choice("builtin", "team", "hailo", *(["yolo"] if YOLO_AVAILABLE else [])),
     "active_cooler": _bool,
     "yolo_conf": _int_range(5, 95), "yolo_imgsz": _int_range(160, 1280), "yolo_crop": _bool,
     "camera_fps": _int_range(5, 30), "standby_after_min": _int_range(0, 120),
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
-    "conveyor_move_steps": _int_range(500, 9000), "mount_move_steps": _int_range(10, 5000),
+    "conveyor_move_steps": _int_range(500, 50000), "mount_move_steps": _int_range(10, 5000),
     "conveyor_with_line": _bool, "mount_motor": _bool,
 }
 
@@ -318,6 +320,15 @@ def apply_setting(ctl, key, value):
         ctl.settings.image_folder = str(Path(value).expanduser())
         if m is not None and ctl.settings.camera_backend == "folder":
             m.reopen()
+    elif key == "hailo_model":
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("enter the .hef file path")
+        p = Path(value.strip()).expanduser()
+        if not (p if p.is_absolute() else APP_DIR / p).exists():
+            raise ValueError(f"not found on the station: {p}")
+        ctl.settings.hailo_model = value.strip()
+        if m is not None:
+            m.preload_model()
     elif key == "yolo_model":
         if not isinstance(value, str) or not value.strip():
             raise ValueError("enter the model file path")
@@ -340,9 +351,15 @@ def apply_setting(ctl, key, value):
                 [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]
         ctl.settings.inspect_area = value
     elif key == "motor_driver":
-        if value not in ("hat", "off"):
+        if value not in ("c", "off"):
             raise ValueError("unknown motor driver")
         ctl.conveyor.set_driver(value)
+    elif key == "motor_timing":
+        if value not in ("precise", "team"):
+            raise ValueError("timing is precise or team")
+        if ctl.conveyor.status().get("running"):
+            raise ValueError("stop the belt first")
+        ctl.conveyor.set_timing(value)
     elif key == "conveyor_speed_pct":
         ctl.conveyor.set_speed(_int_range(0, 100)(value))
     elif key == "live_view":
@@ -382,11 +399,11 @@ CMD_ROLE = {                      # minimum role per command
     "stop": "viewer", "estop": "viewer",
     "start": "operator", "reset": "operator", "ack": "operator", "simulate": "operator",
     "wake": "operator", "pause": "operator", "check_camera": "operator",
-    "snapshot": "engineer", "teach": "engineer", "clear_ref": "engineer", "test_burst": "engineer",
-    "override": "engineer", "lamp": "engineer", "clear_session": "engineer",
+    "snapshot": "engineer", "teach": "engineer", "clear_ref": "engineer", "test_burst": "operator",
+    "override": "engineer", "lamp": "operator", "lights_auto": "operator", "clear_session": "engineer",
     "selftest": "engineer", "cleanup": "engineer", "auto_exposure": "engineer",
 }
-OPERATOR_SETTINGS = {"live_view", "conveyor_speed_pct", "conveyor_move_steps", "mount_move_steps"}
+OPERATOR_SETTINGS = {"live_view", "conveyor_speed_pct", "conveyor_move_steps", "mount_move_steps", "motor_timing"}
 CONVEYOR_ROLE = {"stop": "viewer", "stop_all": "viewer", "mount_stop": "viewer",
                  "run": "operator", "move": "operator", "auto": "operator",
                  "mount_move": "operator", "mount_goto": "operator",
@@ -640,7 +657,11 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
         elif name == "lamp":
             if body.get("key") not in LIGHT_PINS:
                 abort(400)
+            if not ctl.manual_override and not ctl.set_manual_override(True):
+                return fail("Lamps can be switched by hand only while the line is stopped")
             ctl.manual_toggle(body["key"])
+        elif name == "lights_auto":
+            ctl.set_manual_override(False)
         elif name == "check_camera":
             ctl.check_camera()
         elif name == "wake":
@@ -1008,12 +1029,12 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
                     lf = m.live_frame()
                     if lf is not None and lf[2] != shown and m.ok:
                         shown = lf[2]
-                        ok_, jpg = cv2.imencode(".jpg", lf[0], [cv2.IMWRITE_JPEG_QUALITY, 80])
+                        ok_, jpg = cv2.imencode(".jpg", lf[0], [cv2.IMWRITE_JPEG_QUALITY, 70])
                         if ok_:
                             b = jpg.tobytes()
                             yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
                                    + str(len(b)).encode() + b"\r\n\r\n" + b + b"\r\n")
-                    time.sleep(1 / 20)
+                    time.sleep(1 / 10)
             finally:
                 hub.viewers -= 1
                 m.live_visible = hub.viewers > 0

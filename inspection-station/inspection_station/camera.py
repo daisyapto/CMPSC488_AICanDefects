@@ -816,7 +816,7 @@ class CameraManager:
         self._applied_fps = None
         self.cam_temp = None                 # °C from the camera, if it reports it
         self._temp_at = 0.0
-        self.live_view = "detect"
+        self.live_view = "raw"           # detection runs on inspected cans only (lighter)
         self._live = None                    # (image, result, seq)
         self._live_lock = threading.Lock()
 
@@ -835,6 +835,10 @@ class CameraManager:
     def preload_model(self):
         """Warm up the YOLO model in the background when it is the selected engine."""
         from .edition import YOLO_AVAILABLE
+        if self.s.vision_engine == "hailo":
+            self.log("INFO", f"Loading {self.s.hailo_model} on the AI HAT ...")
+            threading.Thread(target=self.vision.hailo.preload, args=(self.params,), daemon=True,
+                             name="hailo-load").start()
         if YOLO_AVAILABLE and self.s.vision_engine == "yolo":
             p = self.params
             self.log("INFO", f"Loading YOLO model {self.s.yolo_model} ...")
@@ -847,7 +851,7 @@ class CameraManager:
                             area=tuple(self.s.inspect_area or (0, 0, 1, 1)),
                             engine=self.s.vision_engine, yolo_model=self.s.yolo_model,
                             yolo_conf=self.s.yolo_conf / 100, yolo_imgsz=self.s.yolo_imgsz,
-                            yolo_crop=self.s.yolo_crop)
+                            yolo_crop=self.s.yolo_crop, hailo_model=self.s.hailo_model)
 
     # ---------------------------------------------------------------- control
     def switch_source(self, name: str):
@@ -1114,7 +1118,7 @@ class CameraManager:
                 continue
             with self._live_lock:
                 self._live = (img, res, seq)
-            cap = {"normal": 15, "reduced": 5, "raw": 2}.get(mode, 15)   # live view fps by heat level
+            cap = {"normal": 8, "reduced": 4, "raw": 2}.get(mode, 8)     # live view fps by heat level
             if self.s.vision_engine in ("yolo", "team") and view not in ("raw", "focus"):
                 cap = min(cap, 2 if _ON_PI else 4)   # heavy engines: inspections first, keep the Pi cool
             spare = 1 / cap - (time.monotonic() - t0)

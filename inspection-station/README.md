@@ -287,9 +287,26 @@ wiring; it treats LOW as "air off".
 The Genie Nano camera connects to the Pi's Ethernet port - see **Camera
 (Teledyne DALSA Genie Nano)** below for the network setup.
 
+## AI HAT (Hailo-8, 26 TOPS)
+
+Settings › Detection engine › **AI HAT** runs your trained YOLO detection model on
+the AI HAT instead of the Pi's CPU (the CPU stays free for the camera, dashboard
+and motors). The AI HAT only runs neural networks - the Team engine
+(`team_vision.py`, OpenCV) can't use it.
+
+1. HAT software: Raspberry Pi OS `sudo apt install hailo-all`; Ubuntu: HailoRT
+   driver + runtime + Python wheel from the Hailo developer zone. Check with
+   `hailortcli fw-control identify` and `python3 pi_check.py` (section 3b).
+2. Train YOLOv8 on your can images, export ONNX, compile to **.hef** with the Hailo
+   Dataflow Compiler / Model Zoo **with the NMS post-process** (on an x86 Ubuntu PC).
+3. Copy it to `models/can_defects.hef` and the class names, one per line in
+   training order, to `models/can_defects.txt` (a class named good / ok / pass = pass).
+4. Settings › Detection engine › **AI HAT**. Min confidence and "crop to the can"
+   apply. The engine is in `inspection_station/hailo.py`.
+
 ## Motors: conveyor belt and camera height
 
-The **Motors** panel (belt button in the top bar, or press **C**) does what the
+The **Motors** page (Motors tab, belt button in the top bar, or press **C**) looks and works like the
 team's GTK motor program does, from the dashboard (also from a phone):
 
 * **Conveyor** - speed 0-100 %, Move distance (steps), **◀ Reverse / Forward ▶**
@@ -301,17 +318,35 @@ team's GTK motor program does, from the dashboard (also from a phone):
   12 oz height by hand first). The reference is lost when the station restarts.
 * **Stop all** and **E-stop** stop both motors at once.
 
-Hardware: Waveshare **Stepper Motor HAT (B)** (two HR8825 drivers), pins as in
-the motor program (`DEV_Config.h`, `MOTOR_PINS` in `config.py`):
+Hardware: Waveshare **Stepper Motor HAT (B)** (two HR8825 drivers).
+
+The motors are driven by **the team's own C motor code** - `motor_c/` holds
+`motor_control.c`, `HR8825.c`, `DEV_Config.c` and headers from the GTK motor
+program, unchanged (only the step limit can be raised from the Makefile), plus
+`motord.c`, a small command interface used instead of the GTK window. So speeds,
+steps, timing and pins are exactly those of `./motor`. `pi_setup.sh` builds it
+(`make -C motor_c`, needs `build-essential libglib2.0-dev liblgpio-dev`); the
+station also builds it on first start. Setup › Motors can switch to the Python
+port or to Simulated.
 
 | Motor | EN | DIR | STEP | M0 / M1 / M2 |
 |---|---|---|---|---|
 | 1 - conveyor | 12 | 13 | 19 | 16 / 17 / 20 |
 | 2 - camera height | 4 | 24 | 18 | 21 / 22 / 27 |
 
-Microstepping is set with the HAT's DIP switches. Speeds and step timing are the
-same as `motor_control.c` (half period 1100 - 10 x speed us). Steps are timed by
-lgpio's pulse thread, so the camera and dashboard don't make the motor stutter.
+Step limit per command: `MAX_STEPS` in `motor_c/Makefile` (50000; the GTK program
+used 9000), `MAX_STEPS` in `conveyor.py`, `conveyor_move_steps` in `web.py` and the
+Move slider `max` in `static/index.html`.
+
+**Precise step timing** (Motors page checkbox, on by default): `motor_c/smooth.c`
+generates the conveyor steps instead of the sleep loop in `motor_control.c` - every
+edge is placed on an absolute schedule with a short busy-wait, a late edge never
+causes a short pulse or a catch-up burst, the speed ramps up and down, and the
+driver stays enabled for the whole move (not switched off every 4 steps). Same
+pins, speed scale and commands. Untick it to use the team code's own timing. For
+the best result also reserve core 3 for it (`isolcpus=3 nohz_full=3 rcu_nocbs=3
+irqaffinity=0-2` in `/boot/firmware/cmdline.txt`) and run
+`sudo setcap cap_sys_nice+ep motor_c/motord` after every build.
 
 **Close the GTK motor program before starting the station** - only one program
 can drive the pins. **Never plug or unplug a motor while the HAT has power.**
