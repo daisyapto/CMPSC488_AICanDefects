@@ -91,7 +91,7 @@ class Relay:
 class StackLight:
     def __init__(self, io):
         self.lamps = {key: Relay(io, pin) for key, pin in LIGHT_PINS.items()}
-        self.buzzer = Relay(io, BUZZER_PIN)        # relay 4 - switched by hand (and by rejects until the rejector is wired)
+        self.buzzer = Relay(io, BUZZER_PIN)        # relay 4 - buzzer, switched by hand
 
     def set(self, key: str, on: bool, force: bool = False):
         self.lamps[key].set(on, force)
@@ -111,22 +111,28 @@ class StackLight:
 
 
 class Rejector:
-    """Reject solenoid on relay 4. Every burst ends with the valve closed."""
+    """Reject output on its own GPIO (REJECT_PIN). Every burst ends with it off.
+    With REJECT_PIN = None there is no rejector: nothing is driven and fire() returns False."""
 
     def __init__(self, io):
-        self.valve = Relay(io, REJECT_PIN)
+        self.valve = Relay(io, REJECT_PIN) if REJECT_PIN is not None else None
         self.locked_out = False
         self._lock = threading.Lock()
 
     @property
+    def connected(self) -> bool:
+        return self.valve is not None
+
+    @property
     def on(self) -> bool:
-        return self.valve.on
+        return bool(self.valve and self.valve.on)
 
     def safe(self):
-        self.valve.set(False, force=True)
+        if self.valve:
+            self.valve.set(False, force=True)
 
     def fire(self, pulses: int, on_s: float, off_s: float) -> bool:
-        if self.locked_out:
+        if self.locked_out or self.valve is None:
             return False
         with self._lock:
             try:

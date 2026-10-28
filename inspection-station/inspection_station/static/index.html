@@ -116,7 +116,7 @@
         <ul id="reasons" class="reasons"></ul>
         <div class="valve" id="valve">
           <span class="valve-icon"><svg viewBox="0 0 24 24"><path d="M4 12h6M14 12h6M10 8v8l4-4z"/></svg></span>
-          <div><div class="valve-title">Reject valve</div><div class="muted small" id="valvePins">relay 4</div></div>
+          <div><div class="valve-title">Rejector</div><div class="muted small" id="valvePins">not connected</div></div>
           <span class="valve-state" id="valveState">Closed</span>
         </div>
         <div class="valve buzzer-row" id="buzzerRow">
@@ -128,7 +128,10 @@
           <div><div class="label">Manual override</div><div class="muted small">click lamps to switch them</div></div>
           <label class="switch"><input type="checkbox" id="overrideToggle"><span></span></label>
         </div>
-        <button class="btn btn-quiet btn-block danger-text" id="btnBurst" data-cmd="test_burst">Test reject burst</button>
+        <div class="btn-row test-row">
+          <button class="btn btn-quiet" id="btnBeep" data-cmd="beep">Test buzzer</button>
+          <button class="btn btn-quiet danger-text" id="btnBurst" data-cmd="test_burst">Test rejector</button>
+        </div>
       </section>
     </aside>
 
@@ -174,7 +177,8 @@
         </section>
 
         <section class="card last-card">
-          <div class="card-head"><h2>Last inspected can</h2></div>
+          <div class="card-head"><h2>Last inspected can</h2><div class="spacer"></div>
+            <button class="btn btn-sm btn-quiet" id="btnLastClear" title="Clear the last inspected can">Clear</button></div>
           <div class="last-thumb" id="lastThumb" title="Click to enlarge">
             <img id="lastImg" alt="">
             <div class="last-empty" id="lastEmpty">No camera inspection yet</div>
@@ -182,7 +186,7 @@
           <div class="last-result" id="lastResult"><span class="tag neutral">—</span><span class="last-id" id="lastId"></span></div>
           <div class="last-summary" id="lastSummary">Select the <b>Camera</b> inspector in Settings and start the line.</div>
           <dl class="facts" id="lastFacts"></dl>
-          <div class="ref-box">
+          <div class="ref-box" id="refBox">
             <div class="ref-head"><span class="label">Good-can reference</span><span class="ref-state" id="refState">Not taught</span></div>
             <div class="btn-row">
               <button class="btn btn-sm btn-primary" data-cmd="teach">Teach good can</button>
@@ -195,7 +199,7 @@
       <div class="kpis">
         <div class="kpi" data-accent="blue"><div class="kpi-label">Inspected</div><div class="kpi-value" id="kN">0</div><div class="kpi-sub" id="kNsub">&nbsp;</div></div>
         <div class="kpi" data-accent="green"><div class="kpi-label">Passed</div><div class="kpi-value" id="kPass">0</div><div class="kpi-sub" id="kPassSub">&nbsp;</div></div>
-        <div class="kpi" data-accent="red"><div class="kpi-label">Rejected</div><div class="kpi-value" id="kFail">0</div><div class="kpi-sub" id="kFailSub">&nbsp;</div></div>
+        <div class="kpi" data-accent="red"><div class="kpi-label" id="kFailLabel">Rejected</div><div class="kpi-value" id="kFail">0</div><div class="kpi-sub" id="kFailSub">&nbsp;</div></div>
         <div class="kpi" data-accent="cyan"><div class="kpi-label">Yield</div><div class="kpi-value" id="kYield">—</div><div class="bar"><span id="kYieldBar"></span></div></div>
         <div class="kpi" data-accent="violet"><div class="kpi-label">Cans / min</div><div class="kpi-value" id="kRate">0</div><div class="kpi-sub">last 60 s</div></div>
         <div class="kpi" data-accent="amber"><div class="kpi-label">Inspect time</div><div class="kpi-value" id="kMs">—</div><div class="kpi-sub">ms average</div></div>
@@ -433,7 +437,7 @@
 
       <section class="group">
         <h3>Reject</h3>
-        <div class="field"><div><label>Rejector</label><div class="hint">off = cans are only marked PASS / FAIL, nothing fires · on = failed cans are rejected (until the rejector is wired, the buzzer on relay 4 sounds instead)</div></div><label class="switch"><input type="checkbox" data-setting="reject_enabled"><span></span></label></div>
+        <div class="field"><div><label>Rejector</label><div class="hint" id="rejHint">off = cans are only marked PASS / FAIL, nothing fires · on = failed cans are rejected by the rejector output</div></div><label class="switch"><input type="checkbox" data-setting="reject_enabled" id="rejToggle"><span></span></label></div>
         <div class="field"><div><label>Single-shot latch</label><div class="hint">lock after one fire (air test)</div></div><label class="switch amber"><input type="checkbox" data-setting="single_shot"><span></span></label></div>
         <div class="field"><label>Reject delay <i class="hint-i" title="Time from the sensor until the can reaches the air nozzle">?</i></label><div class="stepper" data-setting="reject_delay_ms" data-min="0" data-max="5000" data-step="5" data-unit="ms"></div></div>
         <div class="field"><label>Air pulses</label><div class="stepper" data-setting="pulses" data-min="1" data-max="10" data-step="1" data-unit=""></div></div>
@@ -597,7 +601,7 @@
         <button class="mc-btn light yellow" data-lamp="yellow">YELLOW<small>OFF</small></button>
         <button class="mc-btn light green" data-lamp="green">GREEN<small>OFF</small></button>
         <button class="mc-btn light valve" id="mcBuzzer">BUZZER<small>OFF</small></button>
-        <button class="mc-flat" id="mcValve">Reject test</button>
+        <button class="mc-flat" id="mcValve">Rejector test</button>
         <button class="mc-flat" id="mcLightsAuto">Lights: automatic</button>
       </div>
     </div>

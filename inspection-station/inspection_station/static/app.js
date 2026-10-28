@@ -37,7 +37,7 @@ const S = {
   rev: { status: "todo", result: "fail", date: "", items: [], total: 0, offset: 0, idx: -1, view: "ann", stats: null },
 };
 const MAX_ROWS = 300;
-const REJECT_LABEL = { "-": "", pending: "pending…", fired: "fired", missed: "MISSED", disabled: "reject off", locked: "LOCKED", off: "rejector off" };
+const REJECT_LABEL = { "-": "", pending: "pending…", fired: "fired", missed: "MISSED", disabled: "reject off", locked: "LOCKED", off: "" };
 const ESCAPED = new Set(["missed", "disabled", "locked"]);
 const RANK = { viewer: 0, operator: 1, engineer: 2 };
 const can = (role) => RANK[S.role] >= RANK[role];
@@ -255,7 +255,9 @@ function renderControls(st) {
   $("#btnReset").disabled = !op;
   $("#btnAck").disabled = !op || !st.warning;
   $("#btnSim").disabled = !op || !st.running;
-  $("#btnBurst").disabled = !eng || st.running || st.estop;
+  $("#btnBurst").disabled = !op || !st.rejector_connected || st.running || st.estop;
+  $("#btnBurst").title = st.rejector_connected ? "Fire one reject burst" : "Rejector not connected yet (REJECT_PIN in config.py)";
+  $("#btnBeep").disabled = !op || st.running || st.estop;
   const ov = $("#overrideToggle");
   ov.checked = st.manual;
   ov.disabled = !eng || st.running || st.estop;
@@ -312,13 +314,12 @@ function renderTower(st) {
   const ul = $("#reasons");
   if (ul.innerHTML !== html) ul.innerHTML = html;
 
-  $("#btnBurst").classList.toggle("hidden", !st.rejector);
   const v = $("#valve");
   v.classList.toggle("open", st.valve);
   v.classList.toggle("locked", !st.valve && st.locked);
   $("#valveState").textContent = st.valve ? "Air on" : st.locked ? "Locked out" : "Closed";
-  if (S.pins) $("#valvePins").textContent = st.rejector ? `GPIO ${S.pins.reject}` +
-    (S.pins.reject === S.pins.buzzer ? " · not wired yet - rejects sound the buzzer" : "") : "Rejector off - cans are only marked PASS / FAIL";
+  if (S.pins) $("#valvePins").textContent = !st.rejector_connected ? "Not connected yet - cans are only marked PASS / FAIL"
+    : st.rejector ? `GPIO ${S.pins.reject}` : `GPIO ${S.pins.reject} · off in Settings - cans are only marked PASS / FAIL`;
   if (S.pins) $("#buzzerPins").textContent = `GPIO ${S.pins.buzzer} · relay 4`;
   const bz = $("#btnBuzzer");
   $("#buzzerRow").classList.toggle("open", !!st.buzzer);
@@ -387,12 +388,22 @@ function renderCamera(st) {
   ref.classList.toggle("ok", !!cam.reference);
 
   // last inspected can
+  $("#refBox").classList.toggle("hidden", cam.engine !== "builtin");   // reference is only used by the Built-in engine
   const last = cam.last;
+  if (!last && cam.last_seq !== S.lastSeqShown) {                     // cleared
+    S.lastSeqShown = cam.last_seq;
+    $("#lastImg").removeAttribute("src");
+    $("#lastEmpty").classList.remove("hidden");
+    $("#lastResult").innerHTML = `<span class="tag neutral">—</span><span class="last-id"></span>`;
+    $("#lastSummary").textContent = cam.last_seq ? "Cleared — waiting for the next can." : "No camera inspection yet.";
+    $("#lastFacts").innerHTML = "";
+    $("#lastThumb").dataset.img = "";
+  }
   if (last && cam.last_seq !== S.lastSeqShown) {
     S.lastSeqShown = cam.last_seq;
     $("#lastImg").src = `/video/last.jpg?seq=${cam.last_seq}`;
     $("#lastEmpty").classList.add("hidden");
-    $("#lastResult").innerHTML = `<span class="tag ${last.pass ? "pass" : "fail"}">${last.pass ? "PASS" : "DEFECT"}</span><span class="last-id">Can #${last.id}</span>`;
+    $("#lastResult").innerHTML = `<span class="tag ${last.pass ? "pass" : "fail"}">${last.pass ? "PASS" : S.status && S.status.rejector && S.status.rejector_connected ? "DEFECT" : "FAIL"}</span><span class="last-id">Can #${last.id}</span>`;
     $("#lastSummary").textContent = last.summary;
     $("#lastFacts").innerHTML = `
       <dt>Confidence</dt><dd>${Math.round(last.conf * 100)}%</dd>
@@ -411,9 +422,11 @@ function renderKpis(s) {
   $("#kPass").textContent = s.passed.toLocaleString();
   $("#kPassSub").textContent = s.n ? `${(s.passed / s.n * 100).toFixed(1)}% of cans` : " ";
   $("#kFail").textContent = s.failed.toLocaleString();
+  const rj = S.status && S.status.rejector && S.status.rejector_connected;
+  $("#kFailLabel").textContent = rj ? "Rejected" : "Failed";
   const fs = $("#kFailSub");
   if (s.escaped) { fs.textContent = `⚠ ${s.escaped} not rejected`; fs.classList.add("warn"); }
-  else { fs.textContent = s.failed ? `${s.fired} blown off` : " "; fs.classList.remove("warn"); }
+  else { fs.textContent = !s.failed ? " " : rj ? `${s.fired} blown off` : `${(s.failed / s.n * 100).toFixed(1)}% of cans`; fs.classList.remove("warn"); }
   const y = s.yield;
   const ky = $("#kYield");
   ky.textContent = y == null ? "—" : `${y.toFixed(1)}%`;
@@ -687,6 +700,9 @@ function syncSettings(st) {
     if (document.activeElement !== input && !fresh(el.dataset.setting)) input.value = s[el.dataset.setting];
   });
   $$('input[type="checkbox"][data-setting]').forEach((cb) => { if (!fresh(cb.dataset.setting)) cb.checked = !!s[cb.dataset.setting]; });
+  const rt = $("#rejToggle");
+  if (rt && !st.rejector_connected) { rt.disabled = true; rt.checked = false;
+    $("#rejHint").textContent = "Not connected yet - cans are only marked PASS / FAIL. When the rejector is wired, set REJECT_PIN in config.py, restart, then turn this on."; }
   $$(".seg[data-setting]").forEach((el) => $$("button", el).forEach((b) => b.classList.toggle("on", b.dataset.v === s[el.dataset.setting])));
   $$("#inspectorCards .radio-card").forEach((b) => b.classList.toggle("on", b.dataset.insp === s.inspector));
   $$("#sourceSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === s.camera_backend));
@@ -1325,6 +1341,7 @@ function openModal(path, title) {
 
 function wire() {
   $("#btnBuzzer").addEventListener("click", () => cmd("lamp", { key: "buzzer" }));
+  $("#btnLastClear").addEventListener("click", () => cmd("clear_last"));
   wireDelay();
   $$("[data-cmd]").forEach((b) => b.addEventListener("click", () => cmd(b.dataset.cmd)));
   $("#overrideToggle").addEventListener("change", (e) => cmd("override", { on: e.target.checked }));
@@ -1670,7 +1687,7 @@ function renderConveyor(c) {
   mb.classList.toggle("on", !!st.buzzer);
   mb.querySelector("small").textContent = st.buzzer ? "ON" : "OFF";
   mb.disabled = !op || st.running || st.estop;
-  $("#mcValve").classList.toggle("hidden", !st.rejector);
+  $("#mcValve").classList.toggle("hidden", !st.rejector_connected);
   $("#mcValve").disabled = !op || st.running || st.estop;
   $("#mcLightsAuto").disabled = !op || !st.manual;
   $("#mcLightsAuto").textContent = st.manual ? "Lights: back to automatic" : "Lights: automatic";

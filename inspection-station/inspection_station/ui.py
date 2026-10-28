@@ -670,7 +670,7 @@ class Dashboard:
         vt = tk.Frame(valve, bg=SURFACE2)
         vt.pack(side="left", pady=5)
         tk.Label(vt, text="REJECT VALVE", font=F.chip, fg=TEXT, bg=SURFACE2).pack(anchor="w")
-        tk.Label(vt, text=f"GPIO {REJECT_PIN} · relay 4", font=F.small, fg=MUTED,
+        tk.Label(vt, text=f"GPIO {REJECT_PIN}" if REJECT_PIN is not None else "not connected", font=F.small, fg=MUTED,
                  bg=SURFACE2).pack(anchor="w")
         self.valve_txt = tk.Label(valve, text="CLOSED", font=F.chip, fg=MUTED, bg=SURFACE2,
                                   width=11, anchor="e")

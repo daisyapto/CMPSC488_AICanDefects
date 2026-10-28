@@ -289,7 +289,7 @@ class Controller:
             "faults": [msg for _, msg in self.faults()],
             "manual": self.manual_override,
             "lights": self.lights.state, "valve": self.rejector.on, "buzzer": self.lights.buzzer.on,
-            "rejector": self.settings.reject_enabled,
+            "rejector": self.settings.reject_enabled, "rejector_connected": self.rejector.connected,
             "locked": self.rejector.locked_out,
             "sensor": self.sensor.active, "sensor_mode": self.sensor.mode,
             "cam_ip": self.camera.ip, "cam_online": self.camera.online,
@@ -505,7 +505,19 @@ class Controller:
         else:
             self.lights.set(key, not self.lights.state[key])
 
+    def beep(self, seconds: float = 0.6):
+        """Buzzer test: one short beep (relay 4)."""
+        def run():
+            self.lights.buzzer.set(True)
+            time.sleep(seconds)
+            self.lights.buzzer.set(False)
+        self.log("INFO", "Buzzer test")
+        threading.Thread(target=run, daemon=True).start()
+
     def test_burst(self):
+        if not self.rejector.connected:
+            self.log("WARN", "Rejector not connected - set REJECT_PIN in config.py when it is wired")
+            return
         if self.running or self.estop:
             self.log("WARN", "Test burst only while stopped and not in E-stop")
             return
@@ -598,17 +610,23 @@ class Controller:
             was = self.manual_override
             try:
                 self.manual_override = True
-                self.log("INFO", "Self-test: green, yellow, red lamp, then one air burst")
+                self.log("INFO", "Self-test: green, yellow, red lamp, buzzer"
+                         + (", then one reject burst" if self.rejector.connected else ""))
                 for key in ("green", "yellow", "red"):
                     self.lights.all_off()
                     self.lights.set(key, True)
                     time.sleep(1.0)
                 self.lights.all_off()
+                self.lights.buzzer.set(True)
+                time.sleep(0.5)
+                self.lights.all_off()
                 time.sleep(0.3)
-                s = self.settings
-                ok = self.rejector.fire(s.pulses, s.pulse_on_ms / 1000, s.pulse_off_ms / 1000)
+                ok = True
+                if self.rejector.connected:
+                    s = self.settings
+                    ok = self.rejector.fire(s.pulses, s.pulse_on_ms / 1000, s.pulse_off_ms / 1000)
                 self.log("INFO" if ok else "WARN", "Self-test finished" if ok
-                         else "Self-test: air burst blocked - rejector locked out (press Reset)")
+                         else "Self-test: reject burst blocked - rejector locked out (press Reset)")
             finally:
                 self.manual_override = was
                 self.selftest_running = False
@@ -644,8 +662,8 @@ class Controller:
         else:
             self._streak += 1
             self._defect_until = time.monotonic() + DEFECT_LAMP_S
-            if not s.reject_enabled:
-                result.reject = REJ_OFF
+            if not s.reject_enabled or not self.rejector.connected:
+                result.reject = REJ_OFF               # pass / fail only
             elif self.estop or self.rejector.locked_out:
                 result.reject = LOCKED
             else:

@@ -9,7 +9,7 @@ Endpoints
   GET  /                    dashboard (static/index.html)
   GET  /api/stream          Server-Sent Events: init, status (4/s), result, reject, log, sensor
   POST /api/cmd/<name>      start, stop, estop, reset, ack, simulate, test_burst, override,
-                            lamp, snapshot, teach, clear_ref, pause, check_camera, clear_session
+                            lamp, snapshot, teach, clear_ref, clear_last, pause, check_camera, clear_session
   POST /api/conveyor/<a>    run {dir}, move {dir, steps}, auto {steps}, stop, stop_all, mount_move {dir, steps},
                             mount_goto {position}, mount_reference, mount_stop, calibrate {steps, measured_mm}
   POST /api/settings        {"key": value, ...} - validated, applied, saved to config.json
@@ -400,7 +400,7 @@ CMD_ROLE = {                      # minimum role per command
     "start": "operator", "reset": "operator", "ack": "operator", "simulate": "operator",
     "wake": "operator", "pause": "operator", "check_camera": "operator",
     "snapshot": "engineer", "teach": "engineer", "clear_ref": "engineer", "test_burst": "operator",
-    "override": "engineer", "lamp": "operator", "lights_auto": "operator", "clear_session": "engineer",
+    "clear_last": "operator", "beep": "operator", "override": "engineer", "lamp": "operator", "lights_auto": "operator", "clear_session": "engineer",
     "selftest": "engineer", "cleanup": "engineer", "auto_exposure": "engineer",
 }
 OPERATOR_SETTINGS = {"live_view", "conveyor_speed_pct", "conveyor_move_steps", "mount_move_steps", "motor_timing"}
@@ -408,7 +408,7 @@ CONVEYOR_ROLE = {"stop": "viewer", "stop_all": "viewer", "mount_stop": "viewer",
                  "run": "operator", "move": "operator", "auto": "operator",
                  "mount_move": "operator", "mount_goto": "operator",
                  "mount_reference": "operator", "calibrate": "engineer"}
-NOT_AUDITED = {"simulate", "pause", "check_camera", "lamp"}
+NOT_AUDITED = {"simulate", "pause", "check_camera", "lamp", "clear_last"}
 
 
 class Auth:
@@ -649,7 +649,18 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
                 return fail("Start the line first")
             ctl.simulate_can()
         elif name == "test_burst":
+            if not ctl.rejector.connected:
+                return fail("Rejector not connected - set REJECT_PIN in config.py when it is wired")
             ctl.test_burst()
+        elif name == "beep":
+            if ctl.running or ctl.estop:
+                return fail("Buzzer test only while stopped")
+            ctl.beep()
+        elif name == "clear_last":
+            if m is not None:
+                m.last = None
+                m.last_seq += 1
+            hub.publish({"type": "last_cleared"})
         elif name == "override":
             if not ctl.set_manual_override(bool(body.get("on"))):
                 return fail("Manual override only while stopped")

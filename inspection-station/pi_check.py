@@ -223,14 +223,15 @@ def check_power_heat():
 
 def check_gpio():
     section("4. GPIO, relays and boot safety")
-    from inspection_station.config import LIGHT_PINS, MOTOR_PINS, REJECT_PIN, SENSOR_PIN, check_pin_conflicts
+    from inspection_station.config import BUZZER_PIN, LIGHT_PINS, MOTOR_PINS, REJECT_PIN, SENSOR_PIN, check_pin_conflicts
     try:
         check_pin_conflicts()
         ok(f"pins: green {LIGHT_PINS['green']}, yellow {LIGHT_PINS['yellow']}, red {LIGHT_PINS['red']}, "
-           f"reject {REJECT_PIN}, sensor {SENSOR_PIN} - no duplicates")
+           f"buzzer {BUZZER_PIN}, rejector {REJECT_PIN if REJECT_PIN is not None else 'not connected'}, "
+           f"sensor {SENSOR_PIN} - no duplicates")
     except SystemExit as e:
         fail(str(e))
-    outs = sorted([*LIGHT_PINS.values(), REJECT_PIN])
+    outs = sorted([*LIGHT_PINS.values(), BUZZER_PIN])     # relay board (active-low)
     cfg = boot_config()
     text = cfg.read_text() if cfg else ""
     want = f"gpio={','.join(map(str, outs))}=op,dh"
@@ -306,7 +307,7 @@ def check_sensor(seconds=15):
 
 def check_outputs():
     section("4c. Relay click test")
-    from inspection_station.config import LIGHT_PINS, REJECT_PIN
+    from inspection_station.config import BUZZER_PIN, LIGHT_PINS, REJECT_PIN
     if not shutil.which("pinctrl"):
         warn("pinctrl missing - skipped")
         return
@@ -316,11 +317,18 @@ def check_outputs():
         time.sleep(1)
         run(["pinctrl", "set", str(pin), "op", "dh"])
         time.sleep(0.3)
-    input("    Air test next: keep hands clear of the nozzle, then press Enter (Ctrl+C to skip)...")
+    print(f"    buzzer ON for 0.5 s (relay 4 on GPIO {BUZZER_PIN})")
+    run(["pinctrl", "set", str(BUZZER_PIN), "op", "dl"])
+    time.sleep(0.5)
+    run(["pinctrl", "set", str(BUZZER_PIN), "op", "dh"])
+    if REJECT_PIN is None:
+        ok("done - you should have seen green, yellow, red and heard the buzzer (rejector not connected yet)")
+        return
+    input("    Rejector test next: keep hands clear of the nozzle, then press Enter (Ctrl+C to skip)...")
     run(["pinctrl", "set", str(REJECT_PIN), "op", "dl"])
     time.sleep(0.05)
     run(["pinctrl", "set", str(REJECT_PIN), "op", "dh"])
-    ok("done - you should have seen green, yellow, red, and heard one short air pulse")
+    ok("done - you should have seen green, yellow, red, heard the buzzer and one short reject pulse")
 
 
 def check_network():

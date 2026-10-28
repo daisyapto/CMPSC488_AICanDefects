@@ -34,9 +34,10 @@ LIGHT_PINS = {
     "red": 26,             # header pin 37 -> relay 3
 }
 BUZZER_PIN = 23            # header pin 16 -> relay 4 -> buzzer
-# Reject output. The rejector isn't wired yet, so rejects sound the buzzer on relay 4.
-# When the rejector is connected, set its GPIO here (and its relay/driver logic).
-REJECT_PIN = BUZZER_PIN
+# Rejector output - its own GPIO, separate from the buzzer. Not connected yet:
+# None = no rejector, cans are only marked PASS / FAIL. When it is wired, put its
+# GPIO number here (a free pin, e.g. 7 = header pin 26) and turn "Rejector" on in Settings.
+REJECT_PIN = None
 
 # Motors: Waveshare Stepper Motor HAT (B), from the team motor program (DEV_Config.h)
 MOTOR_PINS = {
@@ -79,7 +80,7 @@ DISK_MIN_MB = 300                # red fault below this much free storage
 
 def check_pin_conflicts():
     pins = [SENSOR_PIN, BUZZER_PIN, *LIGHT_PINS.values(), *[p for m in MOTOR_PINS.values() for p in m.values()]]
-    if REJECT_PIN != BUZZER_PIN:
+    if REJECT_PIN is not None:
         pins.append(REJECT_PIN)
     dup = sorted({p for p in pins if pins.count(p) > 1})
     if dup:

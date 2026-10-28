@@ -51,6 +51,7 @@ async function loadAlarms() {
 function onStatus(st) {
   S.status = st;
   renderBanner(st);
+  S.rejector = !!st.rejector && !!st.rejector_connected;
   renderKpis(st.stats);
   renderCan(st);
   renderSide(st);
@@ -96,6 +97,7 @@ function renderKpis(s) {
   $("#kN").textContent = s.n.toLocaleString();
   $("#kNsub").textContent = `since ${s.started}`;
   $("#kFail").textContent = s.failed.toLocaleString();
+  $("#kFailLabel").textContent = S.rejector ? "Rejected" : "Failed";
   const fs = $("#kFailSub");
   fs.textContent = s.escaped ? `⚠ ${s.escaped} not rejected` : s.n ? `${(s.failed / s.n * 100).toFixed(1)}% of cans` : " ";
   fs.style.color = s.escaped ? "var(--orange)" : "";
@@ -129,19 +131,20 @@ function renderLatest() {
   const r = S.results[S.results.length - 1];
   const panel = $(".can-panel"), tag = $("#canTag");
   if (!r) { tag.textContent = ""; tag.className = "tag"; panel.classList.remove("pass", "fail"); return; }
-  const escaped = !r.pass && ESCAPED.has(r.reject);
+  const plain = r.reject === "off";              // rejector off: just PASS / FAIL
+  const escaped = !r.pass && !plain && ESCAPED.has(r.reject);
   tag.className = `tag ${r.pass ? "pass" : escaped ? "escaped" : "fail"}`;
-  tag.textContent = r.pass ? "PASS" : escaped ? "NOT REJECTED" : "DEFECT";
+  tag.textContent = r.pass ? "PASS" : plain ? "FAIL" : escaped ? "NOT REJECTED" : "DEFECT";
   panel.classList.toggle("pass", r.pass);
   panel.classList.toggle("fail", !r.pass);
   $("#canFoot").innerHTML = `<span><b>Can #${r.id}</b></span><span class="muted">${esc(r.t)}</span>` +
     (r.pass ? "" : `<span><b>${esc(r.defect || "Defect")}</b></span>`) +
     `<span class="muted">${Math.round(r.conf * 100)}% sure</span>` +
-    (r.pass ? "" : `<span class="muted">${r.reject === "fired" ? "blown off" : r.reject === "pending" ? "air pending" : r.reject === "off" ? "rejector off" : esc(r.reject)}</span>`);
+    (r.pass || plain ? "" : `<span class="muted">${r.reject === "fired" ? "blown off" : r.reject === "pending" ? "air pending" : esc(r.reject)}</span>`);
   $("#canEmpty").classList.add("hidden");
   // no camera image (e.g. simulated inspector): show the result itself, big
   const bw = $("#bigWord");
-  bw.textContent = r.pass ? "PASS" : escaped ? "NOT REJECTED" : (r.defect || "DEFECT").toUpperCase();
+  bw.textContent = r.pass ? "PASS" : plain ? "FAIL" : escaped ? "NOT REJECTED" : (r.defect || "DEFECT").toUpperCase();
   bw.className = r.pass ? "pass" : escaped ? "escaped" : "fail";
   $("#bigSub").textContent = `Can #${r.id} · ${r.t}`;
 }
