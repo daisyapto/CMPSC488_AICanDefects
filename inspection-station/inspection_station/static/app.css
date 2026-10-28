@@ -96,8 +96,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 @keyframes blink { 50% { opacity: .15; } }
 
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; flex-shrink: 1; min-width: 0; }
-.topbar-right > :not(.chips) { flex-shrink: 0; }          /* login / display / fullscreen / settings never get pushed off */
-.chips { display: flex; gap: 8px; min-width: 0; flex-shrink: 1; overflow: hidden; }
+.topbar-right > * { flex-shrink: 0; }          /* login / display / fullscreen / settings never get pushed off */
+/* status chips: their own slim row under the topbar, so the clock / buttons never cover them */
+.topbar { flex-wrap: wrap; row-gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; flex: 0 0 100%; justify-content: flex-end; margin-top: -2px; }
+.chips .chip { height: 28px; }
 .chip {
   display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
@@ -488,7 +491,6 @@ table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
   .col-main { grid-template-rows: auto auto auto; }
   .tabs-card { min-height: 380px; }
   .trend-card { min-height: 280px; }
-  .chips .chip:first-child { display: none; }
 }
 @media (max-width: 1400px) {
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -500,7 +502,6 @@ table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
   body { overflow: auto; }
   .layout { grid-template-columns: minmax(0, 1fr); overflow: visible; }
   .col-left { display: grid; grid-template-columns: 1fr 1fr; }
-  .chips { display: none; }
 }
 @media (max-width: 760px) {
   .topbar { flex-wrap: wrap; gap: 10px 14px; padding: 10px 14px; }
@@ -759,22 +760,18 @@ table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 @media (max-width: 1800px) {
   .brand-sub { display: none; }
-  .chips #chipGpio { display: none; }
 }
 @media (max-width: 1600px) {
-  .chips #chipSensor { display: none; }
   .nav button { padding: 7px 10px; }
 }
 @media (max-width: 1500px) {
   .brand > div { display: none; }
 }
 @media (max-width: 1250px) {
-  .chips #chipCamera { display: none; }
 }
 @media (max-width: 1400px) {
   .hist-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .brand > div { display: none; }
-  .chips #chipSensor { display: none; }
 }
 @media (max-width: 1100px) {
   .hist-row, .diag-grid { grid-template-columns: 1fr; }
@@ -891,3 +888,6 @@ html { zoom: 1.2; }                                    /* everything 20 % larger
 body { background: var(--bg) !important; }
 .card, .kpi, .drawer, .modal-box { box-shadow: none !important; background-image: none !important; }
 .row-bottom { grid-template-columns: 1fr !important; }
+
+/* capture delay: stepper + "Find with a can" side by side in Settings */
+.delay-set { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }

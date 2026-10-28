@@ -257,7 +257,6 @@ function renderControls(st) {
   $("#btnSim").disabled = !op || !st.running;
   $("#btnBurst").disabled = !op || !st.rejector_connected || st.running || st.estop;
   $("#btnBurst").title = st.rejector_connected ? "Fire one reject burst" : "Rejector not connected yet (REJECT_PIN in config.py)";
-  $("#btnBeep").disabled = !op || st.running || st.estop;
   const ov = $("#overrideToggle");
   ov.checked = st.manual;
   ov.disabled = !eng || st.running || st.estop;

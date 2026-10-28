@@ -38,12 +38,6 @@
     </div>
 
     <div class="topbar-right">
-      <div class="chips">
-        <div class="chip" id="chipGpio"><span class="dot"></span><span class="k">GPIO</span><span class="v">—</span></div>
-        <div class="chip hidden" id="chipTemp" title="Raspberry Pi / camera temperature"><span class="dot"></span><span class="k">Temp</span><span class="v">—</span></div>
-        <div class="chip" id="chipSensor"><span class="dot"></span><span class="k">Sensor</span><span class="v">—</span></div>
-        <div class="chip" id="chipCamera"><span class="dot"></span><span class="k">Camera</span><span class="v">—</span></div>
-      </div>
       <div class="clock"><div id="clock">--:--:--</div><div id="dateLine" class="muted">&nbsp;</div></div>
       <button class="user-btn" id="btnUser" title="Operator / engineer login">
         <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
@@ -63,6 +57,12 @@
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>
     </div>
+    <div class="chips">
+        <div class="chip" id="chipGpio"><span class="dot"></span><span class="k">GPIO</span><span class="v">—</span></div>
+        <div class="chip hidden" id="chipTemp" title="Raspberry Pi / camera temperature"><span class="dot"></span><span class="k">Temp</span><span class="v">—</span></div>
+        <div class="chip" id="chipSensor"><span class="dot"></span><span class="k">Sensor</span><span class="v">—</span></div>
+        <div class="chip" id="chipCamera"><span class="dot"></span><span class="k">Camera</span><span class="v">—</span></div>
+      </div>
   </header>
 
   <div id="connBanner" class="banner danger hidden">Connection to the station lost — reconnecting…</div>
@@ -128,10 +128,7 @@
           <div><div class="label">Manual override</div><div class="muted small">click lamps to switch them</div></div>
           <label class="switch"><input type="checkbox" id="overrideToggle"><span></span></label>
         </div>
-        <div class="btn-row test-row">
-          <button class="btn btn-quiet" id="btnBeep" data-cmd="beep">Test buzzer</button>
-          <button class="btn btn-quiet danger-text" id="btnBurst" data-cmd="test_burst">Test rejector</button>
-        </div>
+        <button class="btn btn-quiet btn-block danger-text" id="btnBurst" data-cmd="test_burst">Test rejector</button>
       </section>
     </aside>
 
@@ -149,7 +146,6 @@
             </div>
             <div class="head-actions">
               <button class="btn btn-sm btn-quiet" id="btnArea" title="Draw where the can is - detection ignores everything outside">Area</button>
-              <button class="btn btn-sm btn-quiet" id="btnDelay" title="Find the capture delay: pass a can, pick the frame where it is centred">Delay</button>
               <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" title="Set the exposure so the picture is bright enough">Auto exposure</button>
               <button class="btn btn-sm btn-quiet" data-cmd="snapshot" title="Save a full-resolution frame">Snapshot</button>
               <button class="btn btn-sm btn-quiet" id="btnPause" data-cmd="pause">Pause</button>
@@ -186,11 +182,11 @@
           <div class="last-result" id="lastResult"><span class="tag neutral">—</span><span class="last-id" id="lastId"></span></div>
           <div class="last-summary" id="lastSummary">Select the <b>Camera</b> inspector in Settings and start the line.</div>
           <dl class="facts" id="lastFacts"></dl>
-          <div class="ref-box" id="refBox">
+          <div class="ref-box hidden" id="refBox">
             <div class="ref-head"><span class="label">Good-can reference</span><span class="ref-state" id="refState">Not taught</span></div>
             <div class="btn-row">
               <button class="btn btn-sm btn-primary" data-cmd="teach">Teach good can</button>
-              <button class="btn btn-sm btn-quiet" data-cmd="clear_ref">Clear</button>
+              <button class="btn btn-sm btn-quiet" data-cmd="clear_ref">Forget reference</button>
             </div>
           </div>
         </section>
@@ -409,7 +405,7 @@
         <div class="field"><label>Gain</label><div class="stepper" data-setting="gain_db" data-min="0" data-max="48" data-step="1" data-unit=""></div></div>
         <div class="field"><div><label>Image brightness</label><div class="hint" id="brightHint">—</div></div>
           <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" id="btnAutoExp">Auto-set exposure</button></div>
-        <div class="field"><label>Capture delay <i class="hint-i" title="Time from the sensor until the can is centred under the camera">?</i></label><div class="stepper" data-setting="camera_delay_ms" data-min="0" data-max="1000" data-step="5" data-unit="ms"></div></div>
+        <div class="field"><label>Capture delay <i class="hint-i" title="Time from the sensor until the can is centred under the camera">?</i></label><div class="delay-set"><div class="stepper" data-setting="camera_delay_ms" data-min="0" data-max="1000" data-step="5" data-unit="ms"></div><button class="btn btn-sm btn-quiet" id="btnDelay" title="Pass one can, then pick the frame where it is centred">Find with a can…</button></div></div>
       </section>
 
       <section class="group">
