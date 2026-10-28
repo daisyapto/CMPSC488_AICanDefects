@@ -1237,6 +1237,10 @@ function renderAudit() {
 /* --------------------------------------------------------- inspection area */
 const AREA = { on: false, start: null, rect: null, prevView: null };
 
+// CSS zoom (the UI is 20 % larger): positions read from the page are screen pixels,
+// positions written with style.left/top are the element's own (zoomed) pixels.
+const zoomOf = (el) => (el.offsetWidth ? el.getBoundingClientRect().width / el.offsetWidth : 1) || 1;
+
 function imgContentBox() {
   const el = $("#liveImg"), b = el.getBoundingClientRect();
   const nw = el.naturalWidth || 4, nh = el.naturalHeight || 3;
@@ -1249,11 +1253,11 @@ function showAreaBox() {
   const box = $("#areaBox"), r = AREA.rect;
   box.classList.toggle("hidden", !r);
   if (!r) return;
-  const c = imgContentBox(), vp = $("#viewport").getBoundingClientRect();
-  box.style.left = `${c.left - vp.left + r[0] * c.width}px`;
-  box.style.top = `${c.top - vp.top + r[1] * c.height}px`;
-  box.style.width = `${(r[2] - r[0]) * c.width}px`;
-  box.style.height = `${(r[3] - r[1]) * c.height}px`;
+  const c = imgContentBox(), vpEl = $("#viewport"), vp = vpEl.getBoundingClientRect(), z = zoomOf(vpEl);
+  box.style.left = `${(c.left - vp.left + r[0] * c.width) / z}px`;
+  box.style.top = `${(c.top - vp.top + r[1] * c.height) / z}px`;
+  box.style.width = `${(r[2] - r[0]) * c.width / z}px`;
+  box.style.height = `${(r[3] - r[1]) * c.height / z}px`;
 }
 
 function areaMode(on) {
@@ -1528,11 +1532,11 @@ function wireConveyor() {
   const panel = $("#pageMotors"), head = $("#mcHead");
   head.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button")) return;
-    const r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    const r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top, z = zoomOf(panel);
     head.setPointerCapture(e.pointerId);
     const move = (ev) => {
-      panel.style.left = Math.max(0, Math.min(innerWidth - 80, ev.clientX - dx)) + "px";
-      panel.style.top = Math.max(0, Math.min(innerHeight - 40, ev.clientY - dy)) + "px";
+      panel.style.left = Math.max(0, Math.min(innerWidth - 80, ev.clientX - dx)) / z + "px";
+      panel.style.top = Math.max(0, Math.min(innerHeight - 40, ev.clientY - dy)) / z + "px";
       panel.style.right = "auto"; panel.style.bottom = "auto";
     };
     const up = () => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); };
