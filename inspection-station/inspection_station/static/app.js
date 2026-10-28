@@ -853,8 +853,7 @@ function setPage(page) {
   $("#pageReports").classList.toggle("hidden", page !== "reports");
   $("#pageHistory").classList.toggle("hidden", page !== "history");
   $("#pageDiag").classList.toggle("hidden", page !== "diag");
-  $("#pageMotors").classList.toggle("hidden", page !== "motors");
-  if (page === "motors" && S.status) renderConveyor(S.status.conveyor);
+
   clearInterval(diagTimer);
   if (page === "history") loadHistory();
   if (page === "diag") { loadDiag(); diagTimer = setInterval(loadDiag, 1000); }
@@ -1489,7 +1488,7 @@ function wire() {
 
   setInterval(refreshMe, 20000);
   const hashPage = location.hash.slice(1);
-  if (["review", "reports", "history", "diag", "motors"].includes(hashPage)) setPage(hashPage);
+  if (["review", "reports", "history", "diag"].includes(hashPage)) setPage(hashPage);
 
   wireArea();
   $("#liveImg").addEventListener("error", () => { S.liveOn = false; });   // retried on next status
@@ -1513,10 +1512,33 @@ const CONV = { editing: {} };
 const convPost = (action, body) => post(`/api/conveyor/${action}`, body);
 const cSpeed = (pct) => 53 + Math.floor(pct * 30 / 100 + 0.5);              // same as main.c
 
-function toggleConveyor() { setPage(S.page === "motors" ? "line" : "motors"); }
+function toggleConveyor(open) {
+  const p = $("#pageMotors");
+  const show = open ?? p.classList.contains("hidden");
+  p.classList.toggle("hidden", !show);
+  try { localStorage.setItem("motorsOpen", show ? "1" : ""); } catch {}
+  if (show && S.status) renderConveyor(S.status.conveyor);
+}
 
 function wireConveyor() {
-  $("#btnConveyor").addEventListener("click", toggleConveyor);
+  $("#btnConveyor").addEventListener("click", () => toggleConveyor());
+  $("#mcClose").addEventListener("click", () => toggleConveyor(false));
+  try { if (localStorage.getItem("motorsOpen")) toggleConveyor(true); } catch {}
+  // drag the panel by its header
+  const panel = $("#pageMotors"), head = $("#mcHead");
+  head.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button")) return;
+    const r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    head.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      panel.style.left = Math.max(0, Math.min(innerWidth - 80, ev.clientX - dx)) + "px";
+      panel.style.top = Math.max(0, Math.min(innerHeight - 40, ev.clientY - dy)) + "px";
+      panel.style.right = "auto"; panel.style.bottom = "auto";
+    };
+    const up = () => { head.removeEventListener("pointermove", move); head.removeEventListener("pointerup", up); };
+    head.addEventListener("pointermove", move);
+    head.addEventListener("pointerup", up);
+  });
   const slider = (id, key, label, fmt) => {
     const el = $(id);
     let t = null;
@@ -1557,7 +1579,8 @@ function renderConveyor(c) {
   if (!c) return;
   const st = S.status || {}, op = can("operator"), off = !op || st.estop;
   $("#convDot").classList.toggle("on", c.running || c.mount_running);
-  if (S.page !== "motors") return;                 // nothing else to draw while hidden
+  if ($("#pageMotors").classList.contains("hidden")) return;   // nothing else to draw while closed
+  $("#mcHeadState").textContent = c.running ? (c.mode === "auto" ? "Auto" : c.mode === "continuous" ? "Running" : "Moving") : "Stopped";
 
   const err = $("#convErr");
   err.classList.toggle("hidden", !c.error);

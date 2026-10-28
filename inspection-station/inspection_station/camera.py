@@ -816,7 +816,7 @@ class CameraManager:
         self._applied_fps = None
         self.cam_temp = None                 # °C from the camera, if it reports it
         self._temp_at = 0.0
-        self.live_view = "raw"           # detection runs on inspected cans only (lighter)
+        self.live_view = "detect"        # live inspection overlay (2 per second on the Pi)
         self._live = None                    # (image, result, seq)
         self._live_lock = threading.Lock()
 

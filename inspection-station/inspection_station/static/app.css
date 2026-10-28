@@ -817,22 +817,28 @@ table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
 .conv-btn { position: relative; }
 .conv-dot { position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; }
 .conv-dot.on { background: var(--green); }
-#pageMotors { padding: 20px; overflow: auto; }
-.mc { display: flex; gap: 20px; align-items: flex-start; max-width: 985px; margin: 0 auto; color: var(--text); }
-.mc-main { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.mc-side { width: 176px; display: flex; flex-direction: column; gap: 2px; align-items: stretch; }
-.mc-title { font-size: 20px; font-weight: 750; text-align: center; margin: 0 0 6px; }
-.mc-sub { margin-top: 28px; }
-.mc-err { font-size: 14px; color: #ffd27a; background: #3d2a08; padding: 8px 10px; }
-.mc-slider { display: grid; grid-template-columns: 132px 1fr 120px; gap: 10px; align-items: center; font-size: 17px; }
+/* small floating panel, same look as the GTK motor program */
+.mc-float { position: fixed; right: 14px; bottom: 14px; z-index: 60; width: 430px; max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 80px); overflow: auto; background: #1f2229; border: 1px solid var(--line-2); color: var(--text); }
+.mc-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px;
+  background: #2a2d35; cursor: grab; user-select: none; font-size: 14px; }
+.mc-head .spacer { flex: 1; }
+.mc-x { width: 28px; height: 28px; border: 0; background: transparent; color: var(--muted); font-size: 20px; cursor: pointer; }
+.mc { display: flex; gap: 8px; align-items: flex-start; padding: 8px; }
+.mc-main { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mc-side { width: 82px; display: flex; flex-direction: column; gap: 2px; }
+.mc-title { font-size: 12px; font-weight: 750; text-align: center; margin: 2px 0 4px; }
+.mc-sub { margin-top: 10px; }
+.mc-err { font-size: 12px; color: #ffd27a; background: #3d2a08; padding: 6px 8px; }
+.mc-slider { display: grid; grid-template-columns: 74px 1fr 64px; gap: 6px; align-items: center; font-size: 12px; }
 .mc-slider input { width: 100%; accent-color: #3b82f6; }
 .mc-slider b { font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
-.mc-grid { margin: 28px auto 0; display: grid; gap: 2px;
-  grid-template-columns: repeat(3, 176px); grid-template-rows: repeat(3, 176px);
+.mc-grid { margin: 8px auto 0; display: grid; gap: 2px;
+  grid-template-columns: repeat(3, 98px); grid-template-rows: repeat(3, 78px);
   grid-template-areas: "run up ." "rev osc fwd" ". down stop"; }
-.mc-btn { border: 0; border-radius: 0; color: #fff; font: inherit; font-size: 17px; font-weight: 750; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 7px; }
-.mc-btn small { font-size: 15px; font-weight: 700; }
+.mc-btn { border: 0; border-radius: 0; color: #fff; font: inherit; font-size: 13px; font-weight: 750; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px; }
+.mc-btn small { font-size: 11px; font-weight: 700; }
 .mc-btn:disabled { opacity: .45; cursor: not-allowed; }
 .mc-btn.conv { background: #8653b3; }
 .mc-btn.mount { background: #198754; }
@@ -841,27 +847,26 @@ table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
 .mc-btn.stop { background: #d64747; border-radius: 3px; }
 .mc-btn.active { background: #e88e8e; color: #251919; outline: 2px solid #f0bbbb; outline-offset: -2px; }
 .mc-btn.center.active, .mc-btn.run.active { background: #2867ad; color: #fff; outline-color: #6195cd; }
-.mc-btn.light { height: 132px; border: 1px solid #5a5a66; color: #ededed; }
+.mc-btn.light { height: 58px; border: 1px solid #5a5a66; color: #ededed; font-size: 12px; }
 .mc-btn.light.red { background: #594548; } .mc-btn.light.red.on { background: #d64747; color: #fff; }
 .mc-btn.light.yellow { background: #514f45; } .mc-btn.light.yellow.on { background: #f3cc18; color: #261e00; }
 .mc-btn.light.green { background: #414a46; } .mc-btn.light.green.on { background: #198754; color: #fff; }
 .mc-btn.light.valve { background: #49454c; } .mc-btn.light.valve.on { background: #8653b3; color: #fff; }
-.mc-sensor { font-size: 20px; font-weight: 750; padding: 10px 4px; color: #c6cbd4; text-align: center; }
+.mc-sensor { font-size: 12px; font-weight: 750; padding: 4px 2px; color: #c6cbd4; text-align: center; }
 .mc-sensor.on { color: #f3cc18; }
-.mc-note { color: #a4a4a4; font-size: 14px; text-align: center; }
-.mc-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
-.mc-flat { height: 45px; background: #49454c; color: #ededed; border: 0; border-radius: 0; font: inherit; font-size: 16px; cursor: pointer; }
+.mc-note { color: #a4a4a4; font-size: 11px; text-align: center; }
+.mc-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 6px; }
+.mc-flat { height: 32px; background: #49454c; color: #ededed; border: 0; border-radius: 0; font: inherit; font-size: 12px; cursor: pointer; }
 .mc-flat.on { outline: 2px solid #198754; outline-offset: -2px; }
 .mc-flat:disabled { opacity: .45; cursor: not-allowed; }
-.mc-wide { width: 100%; margin-bottom: 8px; }
-.mc-side .mc-flat { margin-top: 8px; }
-.mc-status { font-weight: 600; font-size: 17px; min-height: 26px; }
-.mc-opts { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; font-size: 14px; color: var(--muted); }
+.mc-wide { width: 100%; margin-bottom: 4px; }
+.mc-side .mc-flat { margin-top: 4px; height: auto; padding: 4px 2px; font-size: 11px; }
+.mc-status { font-weight: 600; font-size: 12px; min-height: 18px; }
+.mc-opts { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; font-size: 11px; color: var(--muted); }
 .mc-opts .mc-note { text-align: left; }
-@media (max-width: 760px) {
-  .mc { flex-direction: column; } .mc-side { width: 100%; }
-  .mc-grid { grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 110px); width: 100%; }
-  .mc-btn.light { height: 80px; }
+@media (max-width: 560px) {
+  .mc-float { left: 6px; right: 6px; width: auto; }
+  .mc-grid { grid-template-columns: repeat(3, 1fr); width: 100%; }
 }
 
 /* ------------------------------------------------------------ light mode for the Pi */

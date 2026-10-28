@@ -30,7 +30,6 @@
       <button data-page="review">Review <span class="nav-count hidden" id="navReviewCount"></span></button>
       <button data-page="reports">Reports</button>
       <button data-page="history">History</button>
-      <button data-page="motors">Motors</button>
       <button data-page="diag">Diagnostics</button>
     </nav>
 
@@ -136,6 +135,7 @@
             <span class="badge" id="camSource">—</span>
             <div class="spacer"></div>
             <div class="seg" id="viewSeg">
+              <button data-v="detect" title="Live inspection: can rings and defect boxes">Detection</button>
               <button data-v="raw">Live</button>
               <button data-v="focus" title="Full-resolution centre + sharpness score, for focusing the lens">Focus</button>
             </div>
@@ -526,7 +526,9 @@
   </div>
 
   <!-- ============================================================ motors -->
-  <main class="page hidden" id="pageMotors">
+  <section class="mc-float hidden" id="pageMotors" aria-label="Motors">
+    <div class="mc-head" id="mcHead"><b>Motors</b><span class="mc-note" id="mcHeadState"></span><span class="spacer"></span>
+      <button class="mc-x" id="mcClose" aria-label="Close">×</button></div>
     <div class="mc">
       <div class="mc-main">
         <h2 class="mc-title">MOTOR CONTROLS</h2>
@@ -570,7 +572,7 @@
         <button class="mc-flat" id="mcLightsAuto">Lights: automatic</button>
       </div>
     </div>
-  </main>
+  </section>
 
   <div class="toasts" id="toasts"></div>
 
