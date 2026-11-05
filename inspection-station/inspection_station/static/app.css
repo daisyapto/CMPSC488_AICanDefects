@@ -1010,3 +1010,40 @@ tbody tr:hover td { background: rgba(148, 163, 184, .04); }
 }
 
 #engineHint:not(.hidden) { margin: 0 0 12px; }
+
+/* ============================================================ compact header
+   One row: logo, pages, line state, status chips, clock and buttons.
+   The chip names (GPIO / Sensor / Camera) move into the tooltip; the date and
+   uptime move under the clock only when there is room. */
+.topbar { flex-wrap: nowrap; gap: 12px; padding: 6px 16px; min-height: 0; row-gap: 0; }
+.brand { gap: 10px; }
+.brand-logo { height: 34px; }
+.brand-title { font-size: 15px; }
+.brand-sub { display: none; }
+html.branded .brand > div { padding-left: 10px; }
+.nav button { padding: 6px 11px; }
+.state-pill { padding: 6px 14px 6px 11px; min-width: 0; font-size: 13px; margin-right: auto; }
+.chips { order: 4; flex: 0 1 auto; flex-wrap: nowrap; justify-content: flex-end; margin: 0; min-width: 0; overflow: hidden; gap: 6px; }
+.chips .chip { height: 30px; padding: 0 10px; flex-shrink: 1; min-width: 0; }
+.chip .v { max-width: 150px; }
+.topbar-right { order: 5; margin-left: 0; gap: 8px; }
+.clock { line-height: 1.15; }
+#clock { font-size: 16px; }
+#dateLine { font-size: 10.5px; }
+.icon-btn { width: 34px; height: 34px; }
+.user-btn { padding-top: 4px; padding-bottom: 4px; }
+.user-btn small { display: none; }
+@media (max-width: 2000px) {
+  .brand > div { display: none; }               /* the logo already names the station */
+}
+@media (max-width: 1750px) {
+  .chip .k { display: none; }                   /* name moves into the tooltip */
+  #dateLine { display: none; }
+}
+@media (max-width: 1650px) {
+  .chips { display: none; }                     /* status stays on the Diagnostics page */
+}
+@media (max-width: 760px) {
+  .topbar { flex-wrap: wrap; row-gap: 8px; padding: 8px 12px; }
+  .topbar-right { margin-left: auto; }
+}

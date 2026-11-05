@@ -270,12 +270,14 @@ function renderHeader(st) {
   $("#clock").textContent = st.time;
   const up = Math.floor(st.uptime);
   $("#dateLine").textContent = `${st.date} · up ${Math.floor(up / 3600)}:${String(Math.floor(up % 3600 / 60)).padStart(2, "0")}:${String(up % 60).padStart(2, "0")}`;
+  $("#clock").parentElement.title = $("#dateLine").textContent;
 }
 
 function setChip(sel, text, state) {
   const c = $(sel);
   $(".v", c).textContent = text;
   $(".dot", c).className = `dot ${state}`;
+  c.title = `${$(".k", c).textContent}: ${text}`;   // the chip name is hidden in the compact header
 }
 
 function renderControls(st) {
