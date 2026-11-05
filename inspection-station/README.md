@@ -304,7 +304,20 @@ and motors). The AI HAT only runs neural networks - the Team engine
 4. Settings › Detection engine › **AI HAT**. Min confidence and "crop to the can"
    apply. The engine is in `inspection_station/hailo.py`.
 
-## Motors: conveyor belt and camera height
+## Conveyor: KEYENCE (default) or the Pi Motor HAT
+
+**Settings › Conveyor** chooses who drives the belt:
+
+* **KEYENCE** (default) - the KEYENCE conveyor runs on its own controller. The station
+  only reads the trigger sensor and drives the stack light, buzzer and camera. The belt
+  button in the top bar opens **Outputs** (sensor, lamps, buzzer, rejector test); there are no
+  motor controls, Start / Stop / E-stop on the dashboard do not stop the belt (use the
+  KEYENCE controller's own stop), and the motor program is not started.
+  Capture and reject delays assume a constant belt speed - after changing the speed on the
+  KEYENCE controller, run **Find with a can…** again.
+* **Pi Motor HAT** - the older setup below, where the Pi drives the belt itself.
+
+## Motors: conveyor belt and camera height (Pi Motor HAT only)
 
 The **Motors** page (Motors tab, belt button in the top bar, or press **C**) looks and works like the
 team's GTK motor program does, from the dashboard (also from a phone):

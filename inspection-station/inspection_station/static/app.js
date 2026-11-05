@@ -5,6 +5,34 @@
    ========================================================================== */
 "use strict";
 
+/* Skip DOM writes that don't change anything. The status arrives twice a second and most
+   values are the same as last time; on the Pi every needless write costs a style/layout pass. */
+(() => {
+  const same = (el, get, v) => get.call(el) === v;
+  const tc = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+  Object.defineProperty(Node.prototype, "textContent", { configurable: true, get: tc.get, set(v) {
+    v = v == null ? "" : String(v);
+    const only = this.childNodes.length === 0 || (this.childNodes.length === 1 && this.firstChild.nodeType === 3);
+    if (!(only && same(this, tc.get, v))) tc.set.call(this, v);
+  } });
+  const cn = Object.getOwnPropertyDescriptor(Element.prototype, "className");
+  Object.defineProperty(Element.prototype, "className", { configurable: true, get: cn.get, set(v) {
+    if (!same(this, cn.get, String(v))) cn.set.call(this, v);
+  } });
+  const ti = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "title");
+  Object.defineProperty(HTMLElement.prototype, "title", { configurable: true, get: ti.get, set(v) {
+    if (!same(this, ti.get, String(v))) ti.set.call(this, v);
+  } });
+  for (const P of [HTMLButtonElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement]) {
+    const d = Object.getOwnPropertyDescriptor(P.prototype, "disabled");
+    Object.defineProperty(P.prototype, "disabled", { configurable: true, get: d.get, set(v) {
+      if (d.get.call(this) !== !!v) d.set.call(this, v);
+    } });
+  }
+  const sa = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (k, v) { if (this.getAttribute(k) !== String(v)) sa.call(this, k, v); };
+})();
+
 const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -198,10 +226,12 @@ function onStatus(st) {
   S.status = st;
   renderHeader(st);
   renderControls(st);
-  renderTower(st);
+  if (S.page === "line") {                 // Line-page widgets: only drawn while that page is shown
+    renderTower(st);
+    renderKpis(st.stats);
+    renderDefects(st.stats);
+  }
   renderCamera(st);
-  renderKpis(st.stats);
-  renderDefects(st.stats);
   renderProduction(st);
   syncSettings(st);
   renderRecipeDrawer(st);
@@ -875,6 +905,7 @@ function setPage(page) {
   $("#pageReports").classList.toggle("hidden", page !== "reports");
   $("#pageHistory").classList.toggle("hidden", page !== "history");
   $("#pageDiag").classList.toggle("hidden", page !== "diag");
+  if (page === "line" && S.status) onStatus(S.status);   // catch up on what was skipped
 
   clearInterval(diagTimer);
   if (page === "history") loadHistory();
@@ -954,6 +985,7 @@ function renderReviewGrid() {
   empty.classList.toggle("hidden", r.items.length > 0);
   empty.innerHTML = r.stats && r.stats.images === 0
     ? "No saved images yet.<br>Set <b>Settings › Detection › Save images</b> to Fails or All, select the Camera inspector and run the line."
+    : r.status === "todo" ? "All caught up — nothing waiting for review with these filters."
     : "Nothing here with these filters.";
 }
 
@@ -1221,9 +1253,10 @@ function renderDiag() {
   ov.disabled = !eng || !stopped;
   $$("#dgLamps .lamp-btn").forEach((x) => {
     x.disabled = !eng || !(st && st.manual);
-    x.classList.toggle("lit", !!(st && st.lights[x.dataset.key]));
+    x.classList.toggle("lit", !!(st && (x.dataset.key === "buzzer" ? st.buzzer : st.lights[x.dataset.key])));
   });
-  $('#pageDiag [data-cmd="test_burst"]').disabled = !eng || !stopped;
+  $('#pageDiag [data-cmd="test_burst"]').disabled = !eng || !stopped || !(st && st.rejector_connected);
+  $("#dgRejPin").textContent = st && st.rejector_connected && S.pins ? `\u00a0· GPIO ${S.pins.reject}` : "\u00a0· not connected";
   // camera
   const c = d.camera;
   $("#dgCamera").innerHTML = `<dt>Source</dt><dd>${esc(c.source)}</dd>
@@ -1366,6 +1399,19 @@ function wire() {
   });
   $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal" || e.target.closest("#modalClose")) $("#modal").classList.remove("open"); });
 
+  // Settings: one section at a time, picked from the list on the left
+  const groups = $$("#drawer .group[data-set]");
+  let saved = null;
+  try { saved = localStorage.getItem("settingsSection"); } catch {}
+  const showSet = (key) => {
+    groups.forEach((g) => g.classList.toggle("on", g.dataset.set === key));
+    $$("#setNav button").forEach((b) => b.classList.toggle("on", b.dataset.set === key));
+    $(".drawer-body").scrollTop = 0;
+    try { localStorage.setItem("settingsSection", key); } catch {}
+  };
+  $("#setNav").innerHTML = groups.map((g) => `<button data-set="${g.dataset.set}">${esc(g.dataset.title)}</button>`).join("");
+  $$("#setNav button").forEach((b) => b.addEventListener("click", () => showSet(b.dataset.set)));
+  showSet(groups.some((g) => g.dataset.set === saved) ? saved : groups[0].dataset.set);
   const drawer = (open) => { $("#drawer").classList.toggle("open", open); $("#scrim").classList.toggle("open", open); };
   $("#btnSettings").addEventListener("click", () => drawer(true));
   $("#btnCloseDrawer").addEventListener("click", () => drawer(false));
@@ -1619,7 +1665,18 @@ function wireConveyor() {
 function renderConveyor(c) {
   if (!c) return;
   const st = S.status || {}, op = can("operator"), off = !op || st.estop;
-  $("#convDot").classList.toggle("on", c.running || c.mount_running);
+  const ext = !!c.external;                       // KEYENCE conveyor: panel = sensor, lights, buzzer only
+  $("#convDot").classList.toggle("on", !ext && (c.running || c.mount_running));
+  $("#btnConveyor").title = ext ? "Outputs: sensor, lights, buzzer (C)" : "Motors: conveyor + camera height (C)";
+  $("#btnConveyor").setAttribute("aria-label", ext ? "Outputs" : "Motors");
+  $("#mcTitle").textContent = ext ? "Outputs" : "Motors";
+  $("#mcMain").classList.toggle("hidden", ext);
+  $("#mcExt").classList.toggle("hidden", !ext);
+  $("#pageMotors").classList.toggle("mc-compact", ext);
+  if (ext) {
+    if (!$("#pageMotors").classList.contains("hidden")) { $("#mcHeadState").textContent = ""; renderOutputs(st, op); }
+    return;
+  }
   if ($("#pageMotors").classList.contains("hidden")) return;   // nothing else to draw while closed
   $("#mcHeadState").textContent = c.running ? (c.mode === "auto" ? "Auto" : c.mode === "continuous" ? "Running" : "Moving") : "Stopped";
 
@@ -1682,6 +1739,10 @@ function renderConveyor(c) {
     $("#mountState").textContent = "Camera: " + (!c.mount_running ? "Stopped" : c.mount_dir > 0 ? "Up ↑" : "Down ↓");
   }
 
+  renderOutputs(st, op);
+}
+
+function renderOutputs(st, op) {
   // sensor + lights (same column as the motor program)
   const sen = $("#mcSensor");
   sen.textContent = st.sensor ? "● Can detected" : "○ No can";

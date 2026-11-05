@@ -297,6 +297,7 @@ SETTING_RULES = {
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
     "conveyor_move_steps": _int_range(500, 50000), "mount_move_steps": _int_range(10, 5000),
     "conveyor_with_line": _bool, "mount_motor": _bool,
+    "conveyor_drive": _choice("external", "motor_hat"),
 }
 
 
@@ -372,6 +373,19 @@ def apply_setting(ctl, key, value):
         value = SETTING_RULES[key](value)
         if key == "sim_defect_rate":
             ctl.set_defect_rate(value)
+        elif key == "conveyor_drive":
+            if ctl.running:
+                raise ValueError("stop the line first")
+            from .conveyor import make_conveyor
+            try:
+                ctl.conveyor.stop_all(quiet=True)
+                ctl.conveyor.close()
+            except Exception:
+                pass
+            ctl.set_setting(key, value)
+            ctl.conveyor = make_conveyor(ctl.settings, ctl.log, sim=ctl.io.sim)
+            ctl.log("INFO", "Conveyor: KEYENCE (own controller)" if value == "external"
+                    else "Conveyor: driven by the Pi Motor HAT")
         else:
             ctl.set_setting(key, value)
         if key in ("exposure_us", "gain_db") and m is not None:
@@ -545,6 +559,20 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
     @app.get("/display")
     def display():
         return send_file(STATIC_DIR / "display.html")
+
+    @app.get("/brand/logo")
+    def brand_logo():
+        """Company logo (static/brand/yards-logo.svg or .png) - 404 = screens show the can icon."""
+        names = ["yards-logo.svg", "yards-logo.png", "yards-logo.webp", "logo.svg", "logo.png"]
+        if request.args.get("bg") == "light":             # printed reports: dark logo version first
+            names = ["yards-logo-dark.svg", "yards-logo-dark.png"] + names
+        for name in names:
+            f = STATIC_DIR / "brand" / name
+            if f.is_file():
+                resp = send_file(f, max_age=0)
+                resp.headers["Cache-Control"] = "no-cache"
+                return resp
+        abort(404)
 
     # ---------------------------------------------------------------- stream
     @app.get("/api/stream")
@@ -738,6 +766,8 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
             return e
         body = request.get_json(silent=True) or {}
         cv = ctl.conveyor
+        if ctl.settings.conveyor_drive == "external":
+            return fail("The conveyor runs on its own KEYENCE controller - start, stop and set its speed there")
         if action not in ("stop", "stop_all", "mount_stop") and ctl.estop:
             return fail("E-stop is active - press Reset first")
 

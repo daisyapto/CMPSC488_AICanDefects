@@ -133,7 +133,10 @@ class Settings:
     camera_distance_mm: int = 0        # sensor beam -> centre of the camera view (0 = not measured)
     nozzle_distance_mm: int = 0        # sensor beam -> air nozzle (0 = not measured)
 
-    # motors (conveyor.py) - conveyor belt + camera height on the Waveshare Motor HAT
+    # conveyor: "external" = KEYENCE conveyor on its own controller (the Pi only reads the
+    # sensor and drives the stack light, buzzer and camera); "motor_hat" = the Pi drives the belt
+    conveyor_drive: str = "external"
+    # motors (conveyor.py) - conveyor belt + camera height on the Waveshare Motor HAT (motor_hat only)
     motor_driver: str = "c"            # "c" (team C motor code, motor_c/) | "off" (simulated)
     motor_timing: str = "precise"      # "precise" (motor_c/smooth.c: no lost steps under load) | "team" (motor_control.c timing)
     conveyor_speed_pct: int = 80       # 0-100 %, same slider as the motor program
@@ -172,6 +175,8 @@ class Settings:
             if f.name not in data:
                 continue
             default, value = getattr(s, f.name), data[f.name]
+            if f.name == "conveyor_drive" and value not in ("external", "motor_hat"):
+                continue
             if f.name == "motor_driver" and value not in ("c", "off"):
                 continue                             # old "hat" (Python port) setting -> team C code
             if f.name == "inspect_area":

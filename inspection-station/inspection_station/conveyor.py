@@ -549,3 +549,59 @@ class Conveyor:
             self.c.close()
         if self.py:
             self.py.close()
+
+
+class ExternalConveyor:
+    """The belt is a KEYENCE conveyor with its own controller: the Pi does not drive it.
+    Same interface as Conveyor so the rest of the station does not care; Start / Stop / E-stop
+    of the line leave the belt alone, and the Motors commands answer with a clear message."""
+
+    MSG = "The conveyor runs on its own KEYENCE controller - start, stop and set its speed there"
+
+    def __init__(self, settings, log):
+        self.s, self.log = settings, log
+        self.error = ""
+
+    # called by the line (Start / Stop / E-stop / shutdown): nothing to drive
+    def run(self, direction=1):
+        pass
+
+    def stop(self, quiet=False):
+        pass
+
+    def stop_all(self, quiet=False):
+        pass
+
+    def halt(self):
+        pass
+
+    def mount_stop(self):
+        pass
+
+    def close(self):
+        pass
+
+    # manual motor commands from the dashboard
+    def _refuse(self, *a, **k):
+        raise ValueError(self.MSG)
+
+    move = auto = set_speed = mount_move = set_driver = set_timing = _refuse
+
+    def mount_goto(self, position):
+        raise ValueError(self.MSG)
+
+    def mount_set_reference(self):
+        raise ValueError(self.MSG)
+
+    def status(self):
+        return {"external": True, "running": False, "mount_running": False, "mode": "external",
+                "driver": "external", "driver_name": "KEYENCE conveyor (own controller)", "error": "",
+                "mount_fitted": False, "speed_pct": 0, "move_steps": self.s.conveyor_move_steps,
+                "with_line": False, "can_mm": self.s.can_diameter_mm}
+
+
+def make_conveyor(settings, log, sim=False):
+    """KEYENCE conveyor (default) or the Pi's Motor HAT, from Settings.conveyor_drive."""
+    if settings.conveyor_drive == "motor_hat":
+        return Conveyor(settings, log, sim=sim)
+    return ExternalConveyor(settings, log)

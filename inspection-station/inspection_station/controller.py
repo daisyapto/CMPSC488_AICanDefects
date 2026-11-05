@@ -31,7 +31,7 @@ from .config import (CAM_MAX_C, CAM_WARN_C, CPU_CRITICAL_C, CPU_HOT_C, CPU_WARM_
 from .alarms import AlarmLog
 from .review import cleanup_images
 from .hardware import CameraLink, Rejector, SensorInput, StackLight
-from .conveyor import Conveyor
+from .conveyor import make_conveyor
 from .audit import Audit
 from .batches import BatchManager
 from .health import SystemHealth
@@ -207,7 +207,7 @@ class Controller:
         self.rejector = Rejector(io)
         self.scheduler = RejectScheduler(self.rejector, self._on_reject_done)
         self.sensor = SensorInput(io, self._on_sensor_edge, settings.sensor_backend, self.log)
-        self.conveyor = Conveyor(settings, self.log, sim=io.sim)
+        self.conveyor = make_conveyor(settings, self.log, sim=io.sim)
 
         self.running = False
         self.estop = False
@@ -355,7 +355,11 @@ class Controller:
             self.log("ERROR", f"E-stop: motors did not stop cleanly ({e}) - switch the motor HAT off")
         for can_id in self.scheduler.cancel_all():
             self._on_reject_done(can_id, LOCKED, 0.0)
-        self.log("ALARM", "E-STOP - inspection halted, reject valve locked out")
+        if self.settings.conveyor_drive == "external":
+            self.log("ALARM", "E-STOP - inspection halted, reject valve locked out. "
+                              "The KEYENCE conveyor is not stopped by the Pi - use its own stop")
+        else:
+            self.log("ALARM", "E-STOP - inspection halted, reject valve locked out")
 
     def reset(self):
         """Clears E-stop, latched faults and warnings, and re-arms the rejector."""

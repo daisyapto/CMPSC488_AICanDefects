@@ -38,6 +38,8 @@ body.idle { cursor: none; }
 .b-title { font-size: calc(var(--u) * 6.6); font-weight: 700; letter-spacing: -.01em; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .b-sub { font-size: calc(var(--u) * 2.6); font-weight: 600; opacity: .9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: calc(var(--u) * .4); }
 .b-right { display: flex; align-items: center; gap: calc(var(--u) * 3.4); flex: none; }
+.b-logo { height: calc(var(--u) * 8); width: auto; max-width: calc(var(--u) * 28); object-fit: contain; display: block;
+  padding-right: calc(var(--u) * 3.4); border-right: 1px solid rgba(255, 255, 255, .18); }
 .b-recipe { display: flex; flex-direction: column; text-align: right; }
 .b-recipe span { font-size: calc(var(--u) * 1.7); text-transform: uppercase; letter-spacing: .1em; opacity: .7; font-weight: 600; }
 .b-recipe b { font-size: calc(var(--u) * 2.8); }

@@ -4,6 +4,34 @@
    ========================================================================== */
 "use strict";
 
+/* Skip DOM writes that don't change anything. The status arrives twice a second and most
+   values are the same as last time; on the Pi every needless write costs a style/layout pass. */
+(() => {
+  const same = (el, get, v) => get.call(el) === v;
+  const tc = Object.getOwnPropertyDescriptor(Node.prototype, "textContent");
+  Object.defineProperty(Node.prototype, "textContent", { configurable: true, get: tc.get, set(v) {
+    v = v == null ? "" : String(v);
+    const only = this.childNodes.length === 0 || (this.childNodes.length === 1 && this.firstChild.nodeType === 3);
+    if (!(only && same(this, tc.get, v))) tc.set.call(this, v);
+  } });
+  const cn = Object.getOwnPropertyDescriptor(Element.prototype, "className");
+  Object.defineProperty(Element.prototype, "className", { configurable: true, get: cn.get, set(v) {
+    if (!same(this, cn.get, String(v))) cn.set.call(this, v);
+  } });
+  const ti = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "title");
+  Object.defineProperty(HTMLElement.prototype, "title", { configurable: true, get: ti.get, set(v) {
+    if (!same(this, ti.get, String(v))) ti.set.call(this, v);
+  } });
+  for (const P of [HTMLButtonElement, HTMLInputElement, HTMLSelectElement, HTMLTextAreaElement]) {
+    const d = Object.getOwnPropertyDescriptor(P.prototype, "disabled");
+    Object.defineProperty(P.prototype, "disabled", { configurable: true, get: d.get, set(v) {
+      if (d.get.call(this) !== !!v) d.set.call(this, v);
+    } });
+  }
+  const sa = Element.prototype.setAttribute;
+  Element.prototype.setAttribute = function (k, v) { if (this.getAttribute(k) !== String(v)) sa.call(this, k, v); };
+})();
+
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const params = new URLSearchParams(location.search);

@@ -32,7 +32,6 @@ def _leave_last_core_for_motors():
 
 
 def main():
-    _leave_last_core_for_motors()
     ap = argparse.ArgumentParser(description="Can inspection station")
     ap.add_argument("--sim", action="store_true", help="simulation mode: do not touch GPIO")
     ap.add_argument("--port", type=int, default=8080, help="web dashboard port (default 8080)")
@@ -50,6 +49,8 @@ def main():
 
     check_pin_conflicts()
     settings, warning = Settings.load()
+    if settings.conveyor_drive == "motor_hat":   # KEYENCE conveyor: no motor core to keep free
+        _leave_last_core_for_motors()
     from .edition import EDITION, YOLO_AVAILABLE
     if not YOLO_AVAILABLE and settings.vision_engine == "yolo":
         settings.vision_engine = "builtin"

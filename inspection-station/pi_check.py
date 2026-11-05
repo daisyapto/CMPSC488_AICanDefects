@@ -265,8 +265,15 @@ def check_gpio():
         else:
             warn(f"GPIO {p}: not set up yet ({o.split('//')[0].strip()}) - the station sets it at start; "
                  "the config.txt line above makes it safe during boot")
+    try:
+        from inspection_station.config import Settings
+        motor_hat = Settings.load()[0].conveyor_drive == "motor_hat"
+    except Exception:
+        motor_hat = False
     en = sorted(m["en"] for m in MOTOR_PINS.values())
-    if re.search(r"^\s*gpio=" + ",".join(map(str, en)) + r"=op,dl", text, re.M):
+    if not motor_hat:
+        ok("conveyor: KEYENCE on its own controller - no motor pins used by the station")
+    elif re.search(r"^\s*gpio=" + ",".join(map(str, en)) + r"=op,dl", text, re.M):
         ok(f"motor drivers held off during boot (EN {', '.join(map(str, en))} low)")
     else:
         warn(f"motor driver EN pins {en} not set at boot - a driver can power its motor until the station "

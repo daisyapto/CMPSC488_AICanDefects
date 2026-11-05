@@ -135,6 +135,8 @@ def render_report(b: dict, review: dict | None, station: str = "Yards Brewing ·
 body {{ margin: 0; background: #eef1f5; color: #111827; font: 13px/1.5 InterLocal, system-ui, sans-serif; font-feature-settings: "tnum"; }}
 .page {{ max-width: 960px; margin: 24px auto; background: #fff; padding: 40px 44px; border-radius: 10px; box-shadow: 0 4px 24px rgba(0,0,0,.08); }}
 header {{ display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111827; padding-bottom: 16px; margin-bottom: 20px; }}
+header .hl {{ display: flex; align-items: center; gap: 16px; }}
+header .logo {{ height: 48px; width: auto; max-width: 180px; object-fit: contain; }}
 h1 {{ font-size: 22px; margin: 0 0 2px; }} h2 {{ font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #2563eb; margin: 26px 0 10px; }}
 .sub {{ color: #6b7280; }} .status {{ font-weight: 700; padding: 4px 10px; border-radius: 6px; background: #ecfdf5; color: #047857; }}
 .status.live {{ background: #eff6ff; color: #1d4ed8; }}
@@ -166,7 +168,7 @@ body.embed .page {{ margin: 16px auto; }}
 </style></head><body class="{'embed' if embed else ''}">
 {"" if embed else f'<div class="toolbar"><a href="/api/batch/{e(b["id"])}.csv">Download CSV</a><button onclick="print()">Print / save as PDF</button></div>'}
 <div class="page">
-<header><div><h1>Batch report — Lot {e(b['lot'])}</h1><div class="sub">{e(station)} · Can inspection station</div></div>
+<header><div class="hl"><img class="logo" src="/brand/logo?bg=light" alt="" onerror="this.remove()"><div><h1>Batch report — Lot {e(b['lot'])}</h1><div class="sub">{e(station)} · Can inspection station</div></div></div>
 <span class="status {'live' if not end else ''}">{status}</span></header>
 
 <div class="meta">
