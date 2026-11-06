@@ -158,31 +158,6 @@ def check_packages():
         fail(f"cannot import the station code ({e}) - run this from the inspection-station folder")
 
 
-def check_ai_hat():
-    section("3b. AI HAT (Hailo-8)")
-    rc, out = run(["lspci"])
-    if "hailo" not in out.lower():
-        warn("no Hailo AI accelerator on PCIe - fine unless you use the AI HAT engine",
-             "check the PCIe ribbon cable; Raspberry Pi OS: sudo apt install hailo-all")
-        return
-    ok("Hailo accelerator found on PCIe")
-    try:
-        import hailo_platform  # noqa: F401
-        ok("HailoRT Python (hailo_platform) installed")
-    except Exception as e:
-        warn(f"HailoRT Python not installed ({e})",
-             "Raspberry Pi OS: sudo apt install hailo-all - Ubuntu: HailoRT .deb files from the Hailo developer zone")
-        return
-    if shutil.which("hailortcli"):
-        rc, out = run(["hailortcli", "fw-control", "identify"])
-        (ok if rc == 0 else warn)("hailortcli identify: " + (out.strip().splitlines() or ["no answer"])[0])
-    from inspection_station.config import Settings
-    s, _ = Settings.load()
-    hef = Path(s.hailo_model)
-    hef = hef if hef.is_absolute() else HERE / hef
-    (ok if hef.exists() else warn)(f"AI HAT model {hef.name}: " + ("found" if hef.exists() else "not there yet - compile your YOLO to .hef"))
-
-
 def check_power_heat():
     section("3. Power and heat")
     rc, out = run(["vcgencmd", "get_throttled"])
@@ -217,13 +192,13 @@ def check_power_heat():
     if rpm and rpm.isdigit() and int(rpm) > 0:
         ok(f"Active Cooler fan spinning ({rpm} rpm)")
     else:
-        warn("no fan detected (or it is off because the Pi is cool) - without the Active Cooler use the lite "
-             "edition / keep 'Active cooler fitted' off")
+        warn("no fan detected (or it is off because the Pi is cool) - without the Active Cooler keep "
+             "'Active cooler fitted' off (or use the Team engine)")
 
 
 def check_gpio():
     section("4. GPIO, relays and boot safety")
-    from inspection_station.config import BUZZER_PIN, LIGHT_PINS, MOTOR_PINS, REJECT_PIN, SENSOR_PIN, check_pin_conflicts
+    from inspection_station.config import BUZZER_PIN, LIGHT_PINS, REJECT_PIN, SENSOR_PIN, check_pin_conflicts
     try:
         check_pin_conflicts()
         ok(f"pins: green {LIGHT_PINS['green']}, yellow {LIGHT_PINS['yellow']}, red {LIGHT_PINS['red']}, "
@@ -265,19 +240,7 @@ def check_gpio():
         else:
             warn(f"GPIO {p}: not set up yet ({o.split('//')[0].strip()}) - the station sets it at start; "
                  "the config.txt line above makes it safe during boot")
-    try:
-        from inspection_station.config import Settings
-        motor_hat = Settings.load()[0].conveyor_drive == "motor_hat"
-    except Exception:
-        motor_hat = False
-    en = sorted(m["en"] for m in MOTOR_PINS.values())
-    if not motor_hat:
-        ok("conveyor: KEYENCE on its own controller - no motor pins used by the station")
-    elif re.search(r"^\s*gpio=" + ",".join(map(str, en)) + r"=op,dl", text, re.M):
-        ok(f"motor drivers held off during boot (EN {', '.join(map(str, en))} low)")
-    else:
-        warn(f"motor driver EN pins {en} not set at boot - a driver can power its motor until the station "
-             "starts", f"add 'gpio={','.join(map(str, en))}=op,dl' to config.txt (sudo bash pi_setup.sh)")
+    ok("conveyor: KEYENCE on its own controller - no motor pins used by the station")
     s = levels[SENSOR_PIN]
     ok(f"sensor GPIO {SENSOR_PIN} now reads {'LOW' if '| lo' in s else 'HIGH' if '| hi' in s else '?'} "
        f"({'beam blocked' if '| lo' in s else 'clear'} for an active-low sensor)")
@@ -524,7 +487,7 @@ def main():
     ap.add_argument("--outputs", action="store_true", help="click each relay, then one short air pulse")
     a = ap.parse_args()
     print(f"{B}Can inspection station - Raspberry Pi check{X}  ({HERE})")
-    for fn in (check_system, check_packages, check_power_heat, check_ai_hat, check_gpio):
+    for fn in (check_system, check_packages, check_power_heat, check_gpio):
         try:
             fn()
         except Exception as e:

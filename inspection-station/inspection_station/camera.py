@@ -838,10 +838,6 @@ class CameraManager:
     def preload_model(self):
         """Warm up the YOLO model in the background when it is the selected engine."""
         from .edition import YOLO_AVAILABLE
-        if self.s.vision_engine == "hailo":
-            self.log("INFO", f"Loading {self.s.hailo_model} on the AI HAT ...")
-            threading.Thread(target=self.vision.hailo.preload, args=(self.params,), daemon=True,
-                             name="hailo-load").start()
         if YOLO_AVAILABLE and self.s.vision_engine == "yolo":
             p = self.params
             self.log("INFO", f"Loading YOLO model {self.s.yolo_model} ...")
@@ -854,7 +850,7 @@ class CameraManager:
                             area=tuple(self.s.inspect_area or (0, 0, 1, 1)),
                             engine=self.s.vision_engine, yolo_model=self.s.yolo_model,
                             yolo_conf=self.s.yolo_conf / 100, yolo_imgsz=self.s.yolo_imgsz,
-                            yolo_crop=self.s.yolo_crop, hailo_model=self.s.hailo_model)
+                            yolo_crop=self.s.yolo_crop)
 
     # ---------------------------------------------------------------- control
     def switch_source(self, name: str):

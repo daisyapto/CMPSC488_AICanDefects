@@ -39,24 +39,16 @@ BUZZER_PIN = 23            # header pin 16 -> relay 4 -> buzzer
 # GPIO number here (a free pin, e.g. 7 = header pin 26) and turn "Rejector" on in Settings.
 REJECT_PIN = None
 
-# Motors: Waveshare Stepper Motor HAT (B), from the team motor program (DEV_Config.h)
-MOTOR_PINS = {
-    "conveyor": {"en": 12, "dir": 13, "step": 19, "m0": 16, "m1": 17, "m2": 20},   # MOTOR1
-    "mount":    {"en": 4,  "dir": 24, "step": 18, "m0": 21, "m1": 22, "m2": 27},   # MOTOR2 camera up/down
-}
-
 WIRING = [  # (physical pin, signal, connected to)
     (2, "5V", "Sensor power"),
     (4, "5V", "Relay board VCC"),
     (6, "GND", "Sensor GND"),
     (9, "GND", "Relay board GND"),
-    (16, "GPIO23", "Relay 4 - reject solenoid"),
+    (16, "GPIO23", "Relay 4 - buzzer"),
     (22, "GPIO25", "Sensor signal (through divider)"),
     (29, "GPIO5", "Relay 1 - green lamp"),
     (31, "GPIO6", "Relay 2 - yellow lamp"),
     (37, "GPIO26", "Relay 3 - red lamp"),
-    # Motor HAT (B): conveyor EN 12, DIR 13, STEP 19, M0-M2 16/17/20;
-    # camera mount EN 4, DIR 24, STEP 18, M0-M2 21/22/27 - see MOTOR_PINS.
 ]
 
 # =============================================================================
@@ -79,7 +71,7 @@ DISK_MIN_MB = 300                # red fault below this much free storage
 
 
 def check_pin_conflicts():
-    pins = [SENSOR_PIN, BUZZER_PIN, *LIGHT_PINS.values(), *[p for m in MOTOR_PINS.values() for p in m.values()]]
+    pins = [SENSOR_PIN, BUZZER_PIN, *LIGHT_PINS.values()]
     if REJECT_PIN is not None:
         pins.append(REJECT_PIN)
     dup = sorted({p for p in pins if pins.count(p) > 1})
@@ -115,12 +107,11 @@ class Settings:
     camera_delay_ms: int = 30          # sensor -> can centred under the camera
     exposure_us: int = 2000
     gain_db: int = 0
-    vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo" | "hailo" (AI HAT)
+    vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo"
     yolo_model: str = "models/can_classifier.pt"   # .pt / .onnx / *_ncnn_model folder (relative to the project)
     yolo_conf: int = 60                # % - detection: boxes below this are ignored · classifier: fail score that fails the can
     yolo_imgsz: int = 640              # model input size (smaller = faster, misses small defects)
     yolo_crop: bool = False            # crop to the can before YOLO - only for models trained on crops (can_classifier.pt is trained on full frames)
-    hailo_model: str = "models/can_defects.hef"   # YOLO compiled for the AI HAT (Hailo-8); names in the same-named .txt
     active_cooler: bool = False        # Pi 5 active cooler fitted? Without it, YOLO runs only on inspected cans
     inspect_area: list = None          # [x0, y0, x1, y1] fractions of the image; None = whole view
     vision_sensitivity: int = 50       # 1..100
@@ -133,18 +124,8 @@ class Settings:
     camera_distance_mm: int = 0        # sensor beam -> centre of the camera view (0 = not measured)
     nozzle_distance_mm: int = 0        # sensor beam -> air nozzle (0 = not measured)
 
-    # conveyor: "external" = KEYENCE conveyor on its own controller (the Pi only reads the
-    # sensor and drives the stack light, buzzer and camera); "motor_hat" = the Pi drives the belt
-    conveyor_drive: str = "external"
-    # motors (conveyor.py) - conveyor belt + camera height on the Waveshare Motor HAT (motor_hat only)
-    motor_driver: str = "c"            # "c" (team C motor code, motor_c/) | "off" (simulated)
-    motor_timing: str = "precise"      # "precise" (motor_c/smooth.c: no lost steps under load) | "team" (motor_control.c timing)
-    conveyor_speed_pct: int = 80       # 0-100 %, same slider as the motor program
-    conveyor_move_steps: int = 5000    # Forward / Reverse / Auto distance (steps)
-    conveyor_with_line: bool = False   # Start / Stop on the Line card also run / stop the belt
-    conveyor_mm_per_step: float = 0.0  # 0 = not calibrated
-    mount_move_steps: int = 1000       # camera up / down distance (steps)
-    mount_motor: bool = False          # camera height motor fitted on MOTOR2 (shows the Camera height section)
+    # The conveyor runs on its own controller (KEYENCE): the Pi only reads the sensor and
+    # drives the camera, stack light, buzzer and rejector output.
 
     # storage
     keep_images_days: int = 30         # delete saved images older than this (labelled ones kept); 0 = keep all
@@ -153,9 +134,6 @@ class Settings:
     camera_fps: int = 20               # camera frame rate while running (lower = cooler)
     standby_after_min: int = 10        # line stopped this long -> camera standby (0 = never)
 
-    # access control (engineer PIN, stored hashed - set it from the dashboard)
-    engineer_pin_hash: str = ""
-    engineer_pin_salt: str = ""
 
     @property
     def burst_ms(self) -> int:
@@ -175,10 +153,8 @@ class Settings:
             if f.name not in data:
                 continue
             default, value = getattr(s, f.name), data[f.name]
-            if f.name == "conveyor_drive" and value not in ("external", "motor_hat"):
-                continue
-            if f.name == "motor_driver" and value not in ("c", "off"):
-                continue                             # old "hat" (Python port) setting -> team C code
+            if f.name == "vision_engine" and value not in ("team", "builtin", "yolo"):
+                continue                             # old "hailo" (AI HAT) setting -> default
             if f.name == "inspect_area":
                 if value is None or (isinstance(value, list) and len(value) == 4 and
                                      all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in value)):

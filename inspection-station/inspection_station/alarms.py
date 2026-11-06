@@ -67,7 +67,7 @@ GUIDES = {
         "The station has reduced its load (live detection off, lower frame rate).",
         "Fit the Raspberry Pi 5 Active Cooler, or improve airflow around the case.",
         "Lower Settings > Heat & power > Camera frame rate.",
-        "Without a cooler, use the lite edition (no YOLO) or turn off 'Active cooler fitted'.",
+        "Without a cooler, use the Team engine or turn off 'Active cooler fitted'.",
     ]),
     "overheat": ("Overheated - inspection stopped", "fault", [
         "The Pi reached a critical temperature, so inspection was stopped (results would be unreliable).",

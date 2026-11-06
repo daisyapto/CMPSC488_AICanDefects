@@ -4,7 +4,7 @@
   lite  - Built-in + Team only. No YOLO: lighter on the Pi's CPU and heat,
           for running without the active cooler.
 
-tools/build_editions.py sets this when it builds the two zips.
+The demo branch ships the full edition; set EDITION = "lite" to hide YOLO.
 """
 EDITION = "full"
 YOLO_AVAILABLE = EDITION == "full"

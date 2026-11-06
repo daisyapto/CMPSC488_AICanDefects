@@ -40,13 +40,12 @@
 
     <div class="topbar-right">
       <div class="clock"><div id="clock">--:--:--</div><div id="dateLine" class="muted">&nbsp;</div></div>
-      <button class="user-btn" id="btnUser" title="Operator / engineer login">
+      <button class="user-btn" id="btnUser" title="Log in / switch user">
         <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
         <span><b id="userRole">Operator</b><small id="userName"></small></span>
       </button>
-      <button class="icon-btn conv-btn" id="btnConveyor" title="Motors: conveyor + camera height (C)" aria-label="Motors">
-        <svg viewBox="0 0 24 24"><rect x="2" y="13" width="20" height="6" rx="3"/><circle cx="5.5" cy="16" r="1.2"/><circle cx="18.5" cy="16" r="1.2"/><rect x="9" y="6" width="6" height="7" rx="1.5"/></svg>
-        <span class="conv-dot" id="convDot"></span>
+      <button class="icon-btn" id="btnOutputs" title="Outputs: sensor, lights, buzzer (O)" aria-label="Outputs">
+        <svg viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="20" rx="2"/><circle cx="12" cy="7" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="17" r="1.6"/></svg>
       </button>
       <a class="icon-btn" id="btnDisplay" href="/display" target="_blank" title="Line display — big screen view for a monitor next to the line" aria-label="Line display">
         <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
@@ -67,8 +66,11 @@
   </header>
 
   <div id="connBanner" class="banner danger hidden">Connection to the station lost — reconnecting…</div>
-  <div id="pinBanner" class="banner warn hidden">
-    The engineer PIN is still the default <b>1234</b> — change it in Settings › Security.
+  <div id="setupBanner" class="banner warn hidden">
+    No accounts yet — <a href="#" id="setupOpen">create the first engineer account</a> to control the station.
+  </div>
+  <div id="loginBanner" class="banner info hidden">
+    Nobody is logged in — view only. <b>E-stop</b> and <b>Stop</b> still work. <a href="#" id="loginOpen">Log in</a> to run the line.
   </div>
   <div id="roBanner" class="banner info hidden">
     View-only on this device. <b>E-stop</b> and <b>Stop</b> still work. Full control is on the station screen
@@ -226,7 +228,20 @@
           <div class="tab-panel" data-panel="defects"><div class="defects" id="defects"></div></div>
           <div class="tab-panel" data-panel="alarms"><div class="alarms" id="alarms"></div></div>
           <div class="tab-panel" data-panel="log"><div class="log" id="log"></div></div>
-          <div class="tab-panel" data-panel="audit"><div class="table-wrap"><table class="results audit">
+          <div class="tab-panel" data-panel="audit">
+            <div class="audit-filter">
+              <select id="afWho" class="input" title="Person"><option value="">Everyone</option></select>
+              <select id="afRole" class="input" title="Role"><option value="">All roles</option><option value="operator">Operators</option><option value="engineer">Engineers</option><option value="viewer">Not logged in</option></select>
+              <input id="afAction" class="input" placeholder="Action or detail contains…" maxlength="40">
+              <input id="afFrom" class="input" type="date" title="From">
+              <input id="afTo" class="input" type="date" title="To">
+              <button class="btn btn-sm btn-primary" id="afApply">Filter</button>
+              <button class="btn btn-sm btn-quiet" id="afLive">Live</button>
+              <span class="muted small" id="afInfo">Live — latest 200 actions</span>
+              <div class="spacer"></div>
+              <a class="btn btn-sm btn-quiet" id="afCsv" href="/api/audit.csv" download>Export audit CSV</a>
+            </div>
+            <div class="table-wrap"><table class="results audit">
             <thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Details</th><th>From</th></tr></thead>
             <tbody id="auditRows"></tbody></table></div></div>
         </section>
@@ -418,13 +433,8 @@
       <section class="group" data-set="detection" data-title="Detection">
         <h3>Detection</h3>
         <p class="group-intro">How defects are found in the picture, and which pictures are kept.</p>
-        <div class="field"><div><label>Detection engine</label><div class="hint">Team: rim and zone checks (team_vision.py). YOLO: trained model on the Pi. AI HAT: trained model on the Hailo-8.</div></div><div class="seg" data-setting="vision_engine" data-options="builtin:Built-in,team:Team,yolo:YOLO,hailo:AI HAT"></div></div>
+        <div class="field"><div><label>Detection engine</label><div class="hint">Team: rim and zone checks (team_vision.py). YOLO: trained model on the Pi.</div></div><div class="seg" data-setting="vision_engine" data-options="builtin:Built-in,team:Team,yolo:YOLO"></div></div>
         <div class="hint block hidden" id="engineHint"></div>
-        <div id="hailoFields" class="hidden">
-          <div class="field col"><label>AI HAT model (.hef, on the station)</label>
-            <div class="input-row"><input id="hailoInput" class="input mono" spellcheck="false" placeholder="models/can_defects.hef"><button class="btn btn-sm btn-primary" id="hailoApply">Apply</button></div>
-            <div class="hint">Class names: same file name with .txt (one per line). Min confidence and crop below also apply.</div></div>
-        </div>
         <div id="yoloFields" class="hidden">
           <div class="field col"><label>YOLO model file (on the station)</label>
             <div class="input-row"><input id="yoloInput" class="input mono" spellcheck="false" placeholder="models/can_defects.pt"><button class="btn btn-sm btn-primary" id="yoloApply">Apply</button></div></div>
@@ -439,12 +449,6 @@
         <div class="field"><div><label>Also save marked-up copy</label><div class="hint">A second image with the defects boxed.</div></div><label class="switch"><input type="checkbox" data-setting="save_annotated"><span></span></label></div>
       </section>
 
-      <section class="group" data-set="conveyor" data-title="Conveyor">
-        <h3>Conveyor</h3>
-        <p class="group-intro">Which conveyor the station is on.</p>
-        <div class="field"><div><label>Conveyor</label><div class="hint">KEYENCE: the belt runs on its own controller; the station only reads the sensor and drives the lights, buzzer and camera. Motor HAT: the Pi drives the belt (Motors panel). Stop the line before changing.</div></div><div class="seg" data-setting="conveyor_drive" data-options="external:KEYENCE,motor_hat:Pi Motor HAT"></div></div>
-        <div class="hint block">Capture delay and reject delay assume the belt speed stays the same. After changing the speed on the KEYENCE controller, run <b>Find with a can…</b> (Camera) again.</div>
-      </section>
 
       <section class="group" data-set="reject" data-title="Rejector">
         <h3>Rejector</h3>
@@ -472,12 +476,22 @@
         <div class="field"><label>Defects in a row</label><div class="stepper" data-setting="alarm_after" data-min="1" data-max="50" data-step="1" data-unit=""></div></div>
         <div class="field"><label>Defect rate over last <span id="warnWindow">50</span></label><div class="stepper" data-setting="warn_rate_pct" data-min="5" data-max="100" data-step="5" data-unit="%"></div></div>
       </section>
-      <section class="group" data-set="security" data-title="Security">
-        <h3>Security</h3>
-        <p class="group-intro">Who can change what.</p>
-        <div class="field col"><label>Change engineer PIN</label>
-          <div class="input-row"><input id="pinNew" class="input mono" type="password" inputmode="numeric" maxlength="8" placeholder="4-8 digits"><button class="btn btn-sm btn-primary" id="pinSave">Change</button></div>
-          <div class="hint">Operators can run the line, choose recipes and start batches. Settings, teaching, labelling and recipes need the engineer PIN. Engineers are logged out after 15 minutes without activity.</div></div>
+      <section class="group" data-set="security" data-title="Accounts">
+        <h3>Accounts</h3>
+        <p class="group-intro">One account per person, so the audit trail shows who did what. Operators log in with a
+          4-6 digit PIN and can run the line, choose recipes and start batches. Engineers log in with a password and can
+          change everything. Accounts are turned off, never deleted, so old records keep their name.</p>
+        <div class="user-list" id="userList"></div>
+        <div class="field col"><label>Add a person</label>
+          <div class="add-user">
+            <input id="nuName" class="input" placeholder="Name, e.g. Daisy Aptovska" maxlength="40">
+            <input id="nuUser" class="input mono" placeholder="username, e.g. daisy" maxlength="24" autocapitalize="off">
+            <select id="nuRole" class="input"><option value="operator">Operator · PIN</option><option value="engineer">Engineer · password</option></select>
+            <input id="nuSecret" class="input mono" type="password" placeholder="PIN, 4-6 digits" autocomplete="new-password">
+            <button class="btn btn-sm btn-primary" id="nuAdd">Add</button>
+          </div>
+          <div class="hint">Operators are logged out after 30 minutes without activity, engineers after 15. Five wrong
+            attempts lock an account for 5 minutes.</div></div>
       </section>
       <p class="drawer-foot">Changes apply immediately, are saved on the station and recorded in the audit trail.</p>
     </div>
@@ -494,12 +508,46 @@
     </div>
   </div>
   <div class="modal" id="loginModal">
-    <form class="dialog" id="loginForm" autocomplete="off">
-      <div class="dialog-head"><h2>Engineer login</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
-      <label class="lbl">Your name<input class="input" id="loginName" maxlength="30" required></label>
-      <label class="lbl">PIN<input class="input mono" id="loginPin" type="password" inputmode="numeric" maxlength="8" required></label>
+    <form class="dialog login-dlg" id="loginForm" autocomplete="off">
+      <div class="dialog-head"><h2 id="loginTitle">Log in</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <div class="login-current hidden" id="loginCurrent">
+        <span>Logged in: <b id="loginCurName"></b> <span class="role" id="loginCurRole"></span></span>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-sm btn-quiet" id="loginChange">Change my PIN / password</button>
+        <button type="button" class="btn btn-sm btn-quiet" id="loginLogout">Log out</button>
+      </div>
+      <div class="muted small" id="loginPick">Who are you?</div>
+      <div class="login-users" id="loginUsers"></div>
+      <label class="lbl hidden" id="loginSecretLbl"><span id="loginSecretName">PIN</span>
+        <input class="input mono" id="loginSecret" type="password" autocomplete="off"></label>
       <div class="form-error" id="loginErr"></div>
-      <button class="btn btn-primary btn-block" type="submit">Log in</button>
+      <button class="btn btn-primary btn-block" type="submit" id="loginGo" disabled>Log in</button>
+    </form>
+  </div>
+
+  <div class="modal" id="setupModal">
+    <form class="dialog" id="setupForm" autocomplete="off">
+      <div class="dialog-head"><h2>Create the first engineer account</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <p class="muted small">The station has no accounts yet. This engineer account can then add everyone else in
+        Settings › Accounts. There is no default password.</p>
+      <label class="lbl">Your name<input class="input" id="suName" maxlength="40" required></label>
+      <label class="lbl">Username<input class="input mono" id="suUser" maxlength="24" autocapitalize="off" required placeholder="lowercase, e.g. anatoly"></label>
+      <label class="lbl">Password<input class="input mono" id="suPass" type="password" autocomplete="new-password" required placeholder="at least 8 characters, a letter and a digit"></label>
+      <label class="lbl">Repeat password<input class="input mono" id="suPass2" type="password" autocomplete="new-password" required></label>
+      <div class="form-error" id="suErr"></div>
+      <button class="btn btn-primary btn-block" type="submit">Create account and log in</button>
+    </form>
+  </div>
+
+  <div class="modal" id="secretModal">
+    <form class="dialog" id="secretForm" autocomplete="off">
+      <div class="dialog-head"><h2 id="scTitle">Change PIN</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+      <p class="muted small" id="scIntro"></p>
+      <label class="lbl" id="scCurLbl">Current<input class="input mono" id="scCur" type="password" autocomplete="off"></label>
+      <label class="lbl"><span id="scNewName">New PIN</span><input class="input mono" id="scNew" type="password" autocomplete="new-password" required></label>
+      <label class="lbl">Repeat<input class="input mono" id="scNew2" type="password" autocomplete="new-password" required></label>
+      <div class="form-error" id="scErr"></div>
+      <button class="btn btn-primary btn-block" type="submit" id="scGo">Save</button>
     </form>
   </div>
 
@@ -509,7 +557,7 @@
         <button class="icon-btn" id="dlClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
       <div class="dl-wait" id="dlWait">
         <b id="dlWaitTitle">Pass one can through the sensor</b>
-        <span class="muted" id="dlWaitText">Run the conveyor or push a can by hand. The line can be stopped.
+        <span class="muted" id="dlWaitText">Run the KEYENCE conveyor or push a can by hand. The line can be stopped.
           The camera records what happens after the sensor fires, then you pick the frame where the can is centred.</span>
       </div>
       <div class="dl-result hidden" id="dlResult">
@@ -530,7 +578,7 @@
       <div class="dialog-head"><h2>Start a batch</h2><button type="button" class="icon-btn" data-close aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
       <p class="muted small">Every can inspected until you end the batch is counted in its report.</p>
       <label class="lbl">Lot / batch number<input class="input" id="batchLot" maxlength="40" required placeholder="e.g. 2410-A"></label>
-      <label class="lbl">Operator<input class="input" id="batchOp" maxlength="40" placeholder="your name"></label>
+      <label class="lbl">Operator<input class="input" id="batchOp" maxlength="40" readonly title="The logged-in person"></label>
       <label class="lbl">Note <span class="muted">(optional)</span><input class="input" id="batchNote" maxlength="200"></label>
       <div class="dialog-info">Recipe: <b id="batchRecipe">—</b></div>
       <div class="form-error" id="batchErr"></div>
@@ -573,55 +621,22 @@
     </div>
   </div>
 
-  <!-- ============================================================ motors -->
-  <section class="mc-float hidden" id="pageMotors" aria-label="Motors">
-    <div class="mc-head" id="mcHead"><b id="mcTitle">Motors</b><span class="mc-note" id="mcHeadState"></span><span class="spacer"></span>
+  <!-- ============================================================ outputs -->
+  <section class="mc-float hidden" id="pageOutputs" aria-label="Outputs">
+    <div class="mc-head" id="mcHead"><b>Outputs</b><span class="spacer"></span>
       <button class="mc-x" id="mcClose" aria-label="Close">×</button></div>
-    <div class="mc">
-      <div class="mc-main" id="mcMain">
-        <h2 class="mc-title">MOTOR CONTROLS</h2>
-        <div class="mc-err hidden" id="convErr"></div>
-        <div class="mc-err hidden" id="convRO">View-only on this device - speed and steps can't be changed here. Use the station screen, or start the station with <b>--remote-control</b>.</div>
-        <div class="mc-slider"><label for="convSpeed">Conveyor speed</label><input type="range" id="convSpeed" min="0" max="100" step="1"><span class="mc-numwrap"><input type="number" class="mc-num" id="convSpeedVal" min="0" max="100" step="1" inputmode="numeric"><small>%</small></span></div>
-        <div class="mc-slider"><label for="convSteps">Conveyor move</label><input type="range" id="convSteps" min="500" max="50000" step="100"><span class="mc-numwrap"><input type="number" class="mc-num" id="convStepsVal" min="500" max="50000" step="1" inputmode="numeric"><small>steps</small></span></div>
-        <div class="mc-slider mount-only"><label for="mountSteps">Camera move</label><input type="range" id="mountSteps" min="10" max="5000" step="10"><span class="mc-numwrap"><input type="number" class="mc-num" id="mountStepsVal" min="10" max="5000" step="1" inputmode="numeric"><small>steps</small></span></div>
-        <div class="mc-grid">
-          <button class="mc-btn mount mount-only" style="grid-area:up" data-mount="1">▲ CAMERA UP<small id="mUpTxt"></small></button>
-          <button class="mc-btn conv" style="grid-area:rev" data-belt="rev">◀ REVERSE<small id="convRevSteps"></small></button>
-          <button class="mc-btn center" style="grid-area:osc" data-belt="auto">⇄ AUTO<small id="convAutoSteps"></small></button>
-          <button class="mc-btn conv" style="grid-area:fwd" data-belt="fwd">FORWARD ▶<small id="convFwdSteps"></small></button>
-          <button class="mc-btn mount mount-only" style="grid-area:down" data-mount="-1">▼ CAMERA DOWN<small id="mDownTxt"></small></button>
-          <button class="mc-btn stop" style="grid-area:stop" id="convStopAll">■ STOP ALL</button>
-          <button class="mc-btn run" style="grid-area:run" id="convRun">RUN ▶▶<small>continuous</small></button>
-        </div>
-        <div class="mount-only">
-          <h2 class="mc-title mc-sub">CAMERA PRESETS</h2>
-          <div class="mc-presets" id="mountPresets"></div>
-          <button class="mc-flat mc-wide" id="mountRef">Set 12oz reference</button>
-          <div class="mc-note" id="mountPos">Calibrate 12oz height before using presets</div>
-        </div>
-        <div class="mc-status" id="convState">Conveyor: Stopped</div>
-        <div class="mc-status mount-only" id="mountState">Camera: Stopped</div>
-        <div class="mc-opts">
-          <label><input type="checkbox" id="convWithLine"> Run belt with the line (Start / Stop)</label>
-          <label><input type="checkbox" id="mountFitted"> Camera height motor fitted</label>
-          <label><input type="checkbox" id="motorPrecise"> Precise step timing (no lost steps when the Pi is busy)</label>
-          <span class="mc-note" id="convDriver"></span>
-        </div>
-      </div>
-      <div class="mc-side">
-        <div class="mc-ext hidden" id="mcExt"><b>Conveyor: KEYENCE</b>It runs on its own controller - start, stop and set its speed there. The station reads the sensor and drives the lights and buzzer.</div>
-        <h2 class="mc-title">SENSOR</h2>
-        <div class="mc-note">GPIO 25</div>
-        <div class="mc-sensor" id="mcSensor">○ No can</div>
-        <h2 class="mc-title mc-sub">LIGHTS</h2>
-        <button class="mc-btn light red" data-lamp="red">RED<small>OFF</small></button>
-        <button class="mc-btn light yellow" data-lamp="yellow">YELLOW<small>OFF</small></button>
-        <button class="mc-btn light green" data-lamp="green">GREEN<small>OFF</small></button>
-        <button class="mc-btn light valve" id="mcBuzzer">BUZZER<small>OFF</small></button>
-        <button class="mc-flat" id="mcValve">Rejector test</button>
-        <button class="mc-flat" id="mcLightsAuto">Lights: automatic</button>
-      </div>
+    <div class="mc-side">
+      <div class="mc-ext"><b>Conveyor: KEYENCE</b>It runs on its own controller - start, stop and set its speed there. The station reads the sensor and drives the lights, buzzer and rejector.</div>
+      <h2 class="mc-title">SENSOR</h2>
+      <div class="mc-note">GPIO 25</div>
+      <div class="mc-sensor" id="mcSensor">○ No can</div>
+      <h2 class="mc-title mc-sub">LIGHTS</h2>
+      <button class="mc-btn light red" data-lamp="red">RED<small>OFF</small></button>
+      <button class="mc-btn light yellow" data-lamp="yellow">YELLOW<small>OFF</small></button>
+      <button class="mc-btn light green" data-lamp="green">GREEN<small>OFF</small></button>
+      <button class="mc-btn light valve" id="mcBuzzer">BUZZER<small>OFF</small></button>
+      <button class="mc-flat" id="mcValve">Rejector test</button>
+      <button class="mc-flat" id="mcLightsAuto">Lights: automatic</button>
     </div>
   </section>
 

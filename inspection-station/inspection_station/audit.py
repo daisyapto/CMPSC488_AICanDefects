@@ -31,8 +31,8 @@ class Audit:
         except OSError:
             pass
 
-    def record(self, who: str, role: str, action: str, detail: str = "", source: str = "station"):
-        entry = {"t": datetime.now().isoformat(timespec="seconds"), "who": who or "-",
+    def record(self, who: str, role: str, action: str, detail: str = "", source: str = "station", user: str = ""):
+        entry = {"t": datetime.now().isoformat(timespec="seconds"), "who": who or "-", "user": user,
                  "role": role, "action": action, "detail": detail, "source": source}
         with self.lock:
             self.recent.append(entry)

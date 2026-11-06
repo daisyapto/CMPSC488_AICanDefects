@@ -10,8 +10,6 @@ Endpoints
   GET  /api/stream          Server-Sent Events: init, status (4/s), result, reject, log, sensor
   POST /api/cmd/<name>      start, stop, estop, reset, ack, simulate, test_burst, override,
                             lamp, snapshot, teach, clear_ref, clear_last, pause, check_camera, clear_session
-  POST /api/conveyor/<a>    run {dir}, move {dir, steps}, auto {steps}, stop, stop_all, mount_move {dir, steps},
-                            mount_goto {position}, mount_reference, mount_stop, calibrate {steps, measured_mm}
   POST /api/settings        {"key": value, ...} - validated, applied, saved to config.json
   GET  /video/live          MJPEG live camera view (with detection overlay)
   GET  /video/last.jpg      annotated image of the last inspected can
@@ -21,6 +19,10 @@ Endpoints
   GET  /api/alarms          active alarms + history, with troubleshooting steps
   GET  /api/history?days=   per-day totals from the daily logs
   GET  /api/diag            diagnostics: sensor timing / belt speed, storage, system
+
+Accounts (accounts.py): every person logs in with their own account - operators
+with a PIN, engineers with a password - so the audit trail names who did what.
+Nobody logged in = view only (plus E-stop and Stop).
 
 Safety: devices other than the Pi itself are view-only (plus E-stop and Stop)
 unless the server is started with --remote-control.
@@ -47,6 +49,8 @@ from pathlib import Path
 from flask import Flask, Response, abort, jsonify, request, send_file
 
 from . import __version__
+from .accounts import Accounts
+from .audit import AUDIT_FILE
 from .edition import EDITION, YOLO_AVAILABLE
 from .config import APP_DIR, BUZZER_PIN, DATA_DIR, LIGHT_PINS, REJECT_PIN, SENSOR_PIN
 from .controller import CSV_HEADER, ESCAPED, FIRED, SOURCES
@@ -208,10 +212,9 @@ class Hub:
                 "reference": (datetime.fromtimestamp(v.reference_time).strftime("%H:%M:%S")
                               if v.reference is not None else None),
                 "engine": ctl.settings.vision_engine,
-                "engine_error": {"team": v.team.error, "yolo": v.yolo.error,
-                                 "hailo": v.hailo.error}.get(ctl.settings.vision_engine, ""),
-                "yolo_info": v.hailo.info if ctl.settings.vision_engine == "hailo" else v.yolo.info,
-                "yolo_ms": v.hailo.ms if ctl.settings.vision_engine == "hailo" else v.yolo.ms,
+                "engine_error": {"team": v.team.error, "yolo": v.yolo.error}.get(ctl.settings.vision_engine, ""),
+                "yolo_info": v.yolo.info,
+                "yolo_ms": v.yolo.ms,
                 "last_seq": m.last_seq,
                 "brightness": m.measure() if m.ok else None,
                 "auto_exposure": getattr(m, "_ae_running", False),
@@ -289,15 +292,12 @@ SETTING_RULES = {
     "vision_min_area": _int_range(5, 5000), "sim_defect_rate": _int_range(0, 100),
     "save_images": _choice("off", "fails", "all"),
     "webcam_index": _int_range(0, 9),
-    "vision_engine": _choice("builtin", "team", "hailo", *(["yolo"] if YOLO_AVAILABLE else [])),
+    "vision_engine": _choice("builtin", "team", *(["yolo"] if YOLO_AVAILABLE else [])),
     "active_cooler": _bool,
     "yolo_conf": _int_range(5, 95), "yolo_imgsz": _int_range(160, 1280), "yolo_crop": _bool,
     "camera_fps": _int_range(5, 30), "standby_after_min": _int_range(0, 120),
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
-    "conveyor_move_steps": _int_range(500, 50000), "mount_move_steps": _int_range(10, 5000),
-    "conveyor_with_line": _bool, "mount_motor": _bool,
-    "conveyor_drive": _choice("external", "motor_hat"),
 }
 
 
@@ -321,15 +321,6 @@ def apply_setting(ctl, key, value):
         ctl.settings.image_folder = str(Path(value).expanduser())
         if m is not None and ctl.settings.camera_backend == "folder":
             m.reopen()
-    elif key == "hailo_model":
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError("enter the .hef file path")
-        p = Path(value.strip()).expanduser()
-        if not (p if p.is_absolute() else APP_DIR / p).exists():
-            raise ValueError(f"not found on the station: {p}")
-        ctl.settings.hailo_model = value.strip()
-        if m is not None:
-            m.preload_model()
     elif key == "yolo_model":
         if not isinstance(value, str) or not value.strip():
             raise ValueError("enter the model file path")
@@ -351,19 +342,6 @@ def apply_setting(ctl, key, value):
             value = None if (x0 <= 0.001 and y0 <= 0.001 and x1 >= 0.999 and y1 >= 0.999) else \
                 [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]
         ctl.settings.inspect_area = value
-    elif key == "motor_driver":
-        if value not in ("c", "off"):
-            raise ValueError("unknown motor driver")
-        ctl.conveyor.set_driver(value)
-    elif key == "motor_timing":
-        if value not in ("precise", "team"):
-            raise ValueError("timing is precise or team")
-        if ctl.conveyor.status().get("running"):
-            raise ValueError("stop the belt first")
-        ctl.conveyor.set_timing(value)
-    elif key == "conveyor_speed_pct":
-        ctl.conveyor.set_speed(_int_range(0, 100)(value))
-        ctl.save_settings()                       # keep the speed after a restart
     elif key == "live_view":
         if m is None or value not in ("detect", "raw", "mask", "edges", "focus"):
             raise ValueError("unknown view")
@@ -373,19 +351,6 @@ def apply_setting(ctl, key, value):
         value = SETTING_RULES[key](value)
         if key == "sim_defect_rate":
             ctl.set_defect_rate(value)
-        elif key == "conveyor_drive":
-            if ctl.running:
-                raise ValueError("stop the line first")
-            from .conveyor import make_conveyor
-            try:
-                ctl.conveyor.stop_all(quiet=True)
-                ctl.conveyor.close()
-            except Exception:
-                pass
-            ctl.set_setting(key, value)
-            ctl.conveyor = make_conveyor(ctl.settings, ctl.log, sim=ctl.io.sim)
-            ctl.log("INFO", "Conveyor: KEYENCE (own controller)" if value == "external"
-                    else "Conveyor: driven by the Pi Motor HAT")
         else:
             ctl.set_setting(key, value)
         if key in ("exposure_us", "gain_db") and m is not None:
@@ -407,92 +372,17 @@ def apply_setting(ctl, key, value):
 # =============================================================================
 # Access control: viewer < operator < engineer
 # =============================================================================
-DEFAULT_PIN = "1234"
-IDLE_LOGOUT_S = 15 * 60
 ROLE_RANK = {"viewer": 0, "operator": 1, "engineer": 2}
 CMD_ROLE = {                      # minimum role per command
     "stop": "viewer", "estop": "viewer",
     "start": "operator", "reset": "operator", "ack": "operator", "simulate": "operator",
     "wake": "operator", "pause": "operator", "check_camera": "operator",
-    "snapshot": "engineer", "teach": "engineer", "clear_ref": "engineer", "test_burst": "operator",
+    "snapshot": "engineer", "teach": "engineer", "clear_ref": "engineer", "test_burst": "engineer",
     "clear_last": "operator", "beep": "operator", "override": "engineer", "lamp": "operator", "lights_auto": "operator", "clear_session": "engineer",
     "selftest": "engineer", "cleanup": "engineer", "auto_exposure": "engineer",
 }
-OPERATOR_SETTINGS = {"live_view", "conveyor_speed_pct", "conveyor_move_steps", "mount_move_steps", "motor_timing"}
-CONVEYOR_ROLE = {"stop": "viewer", "stop_all": "viewer", "mount_stop": "viewer",
-                 "run": "operator", "move": "operator", "auto": "operator",
-                 "mount_move": "operator", "mount_goto": "operator",
-                 "mount_reference": "operator", "calibrate": "engineer"}
+OPERATOR_SETTINGS = {"live_view"}
 NOT_AUDITED = {"simulate", "pause", "check_camera", "lamp", "clear_last"}
-
-
-class Auth:
-    """Engineer PIN login. The PIN is stored hashed (PBKDF2) in config.json."""
-
-    def __init__(self, ctl):
-        self.ctl = ctl
-        self.sessions: dict[str, dict] = {}
-        self.lock = threading.Lock()
-        self.fails = 0
-        self.locked_until = 0.0
-
-    @property
-    def default_pin(self) -> bool:
-        return not self.ctl.settings.engineer_pin_hash
-
-    @staticmethod
-    def _hash(pin: str, salt: str) -> str:
-        return hashlib.pbkdf2_hmac("sha256", pin.encode(), bytes.fromhex(salt), 120_000).hex()
-
-    def _check(self, pin: str) -> bool:
-        s = self.ctl.settings
-        if not s.engineer_pin_hash:
-            return hmac.compare_digest(pin, DEFAULT_PIN)
-        return hmac.compare_digest(self._hash(pin, s.engineer_pin_salt), s.engineer_pin_hash)
-
-    def login(self, name: str, pin: str) -> str:
-        name = name.strip()
-        if not 1 <= len(name) <= 30:
-            raise ValueError("Enter your name")
-        with self.lock:
-            wait = self.locked_until - time.monotonic()
-            if wait > 0:
-                raise ValueError(f"Too many wrong PINs - try again in {wait:.0f} s")
-            if not self._check(str(pin)):
-                self.fails += 1
-                if self.fails >= 5:
-                    self.fails, self.locked_until = 0, time.monotonic() + 60
-                raise ValueError("Wrong PIN")
-            self.fails = 0
-            token = secrets.token_urlsafe(24)
-            self.sessions[token] = {"name": name, "last": time.monotonic()}
-            return token
-
-    def user(self, token, touch=True):
-        with self.lock:
-            s = self.sessions.get(token or "")
-            if not s:
-                return None
-            if time.monotonic() - s["last"] > IDLE_LOGOUT_S:
-                del self.sessions[token]
-                return None
-            if touch:
-                s["last"] = time.monotonic()
-            return s
-
-    def logout(self, token):
-        with self.lock:
-            self.sessions.pop(token or "", None)
-
-    def set_pin(self, pin: str):
-        if not (pin.isdigit() and 4 <= len(pin) <= 8):
-            raise ValueError("PIN must be 4-8 digits")
-        if pin == DEFAULT_PIN:
-            raise ValueError("choose a PIN other than the default")
-        salt = secrets.token_hex(16)
-        self.ctl.settings.engineer_pin_salt = salt
-        self.ctl.settings.engineer_pin_hash = self._hash(pin, salt)
-        self.ctl.save_settings()
 
 
 # =============================================================================
@@ -502,10 +392,11 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
     app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
     session = Session()
     hub = Hub(ctl, session)
-    auth = Auth(ctl)
+    accounts = Accounts()
     review = ReviewStore()
     history = History()
     app.config["hub"] = hub
+    app.config["accounts"] = accounts
 
     def is_local() -> bool:
         return request.remote_addr in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
@@ -513,15 +404,18 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
     def can_control() -> bool:
         return remote_control or is_local()
 
+    def current(touch=True):
+        """The logged-in account of this browser, or None."""
+        if not can_control():
+            return None
+        return accounts.session(request.cookies.get("sid"), touch)
+
     def identity(touch=True):
-        """(role, name) of the caller."""
+        """(role, name) of the caller. Nobody logged in = viewer."""
         if not can_control():
             return "viewer", "viewer"
-        s = auth.user(request.cookies.get("eng"), touch)
-        if s:
-            return "engineer", s["name"]
-        b = ctl.batches.active
-        return "operator", (b["operator"] if b else "operator")
+        u = current(touch)
+        return (u["role"], u["name"]) if u else ("viewer", "not logged in")
 
     def source():
         return "station" if is_local() else request.remote_addr
@@ -531,14 +425,17 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
         role, _ = identity()
         if ROLE_RANK[role] >= ROLE_RANK[min_role]:
             return None
-        if role == "viewer":
+        if not can_control():
             return jsonify(ok=False, error="View-only device - use the station screen, "
                                            "or start the server with --remote-control"), 403
-        return jsonify(ok=False, error="Engineer login required", login=True), 403
+        if role == "viewer":
+            return jsonify(ok=False, error="Log in to do this", login=True), 403
+        return jsonify(ok=False, error="An engineer account is needed for this", login=True), 403
 
     def audit(action, detail=""):
+        u = current(touch=False)
         role, name = identity(touch=False)
-        ctl.audit.record(name, role, action, detail, source())
+        ctl.audit.record(name, role, action, detail, source(), user=u["username"] if u else "")
 
     def ok(**kw):
         return jsonify(ok=True, **kw)
@@ -579,8 +476,10 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
     def stream():
         q = hub.subscribe()
         role, name = identity()
+        u = current(touch=False)
         init = {"type": "init", "version": __version__, "can_control": can_control(),
-                "role": role, "name": name, "default_pin": auth.default_pin,
+                "role": role, "name": name, "username": u["username"] if u else "",
+                "setup_needed": accounts.setup_needed,
                 "status": hub.status(), "results": session.recent(), "logs": list(hub.logs),
                 "audit": list(ctl.audit.recent)[-200:], "defect_types": DEFECT_TYPES,
                 "inspectors": [{"name": n, "description": i.description} for n, i in ctl.inspectors.items()],
@@ -605,48 +504,165 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
     # ------------------------------------------------------------------ auth
     @app.get("/api/me")
     def me():
+        u = current(touch=False)
         role, name = identity(touch=False)
-        s = auth.user(request.cookies.get("eng"), touch=False) if role == "engineer" else None
-        left = int(IDLE_LOGOUT_S - (time.monotonic() - s["last"])) if s else None
-        return ok(role=role, name=name, idle_left=left, default_pin=auth.default_pin,
+        return ok(role=role, name=name, username=u["username"] if u else "",
+                  idle_left=u["idle_left"] if u else None, setup_needed=accounts.setup_needed,
                   can_control=can_control())
+
+    def login_cookie(resp, token):
+        resp.set_cookie("sid", token, httponly=True, samesite="Strict")
+        return resp
+
+    @app.get("/api/login_users")
+    def login_users():
+        if not can_control():
+            return need("operator")
+        return ok(users=accounts.login_choices(), setup_needed=accounts.setup_needed)
+
+    @app.post("/api/setup")
+    def setup():
+        """First start: create the first engineer account (no default password exists)."""
+        if not can_control():
+            return need("engineer")
+        if not accounts.setup_needed:
+            return fail("Setup is already done - log in as an engineer to add accounts")
+        body = request.get_json(silent=True) or {}
+        try:
+            acc = accounts.add(str(body.get("username", "")), str(body.get("name", "")), "engineer",
+                               str(body.get("password", "")))
+            token, acc, _ = accounts.login(acc["username"], str(body.get("password", "")))
+        except ValueError as e:
+            return fail(str(e), 400)
+        ctl.audit.record(acc["name"], "engineer", "first engineer account created", acc["username"],
+                         source(), user=acc["username"])
+        return login_cookie(ok(role="engineer", name=acc["name"]), token)
 
     @app.post("/api/login")
     def login():
+        """Log in, or switch user: a new login replaces whoever was logged in on this browser."""
         if not can_control():
             return need("operator")
         body = request.get_json(silent=True) or {}
+        username = str(body.get("username", ""))[:24].strip().lower()
+        before = current(touch=False)
         try:
-            token = auth.login(str(body.get("name", "")), str(body.get("pin", "")))
+            token, acc, events = accounts.login(username, str(body.get("secret", "")))
         except ValueError as e:
-            ctl.audit.record(str(body.get("name", ""))[:30] or "-", "operator", "login failed", str(e), source())
+            for ev in getattr(e, "events", ["login failed"]):
+                ctl.audit.record(username or "-", "-", ev, "", source(), user=username)
             return fail(str(e), 401)
-        resp = ok(role="engineer", name=body["name"].strip(), default_pin=auth.default_pin)
-        resp.set_cookie("eng", token, httponly=True, samesite="Strict")
-        audit_name = body["name"].strip()
-        ctl.audit.record(audit_name, "engineer", "login", "", source())
-        return resp
+        accounts.logout(request.cookies.get("sid"))
+        detail = f"switched from {before['name']}" if before and before["username"] != acc["username"] else ""
+        ctl.audit.record(acc["name"], acc["role"], "login", detail, source(), user=acc["username"])
+        return login_cookie(ok(role=acc["role"], name=acc["name"]), token)
 
     @app.post("/api/logout")
     def logout():
-        role, name = identity(touch=False)
-        if role == "engineer":
-            ctl.audit.record(name, role, "logout", "", source())
-        auth.logout(request.cookies.get("eng"))
+        u = current(touch=False)
+        if u:
+            ctl.audit.record(u["name"], u["role"], "logout", "", source(), user=u["username"])
+        accounts.logout(request.cookies.get("sid"))
         resp = ok()
-        resp.delete_cookie("eng")
+        resp.delete_cookie("sid")
         return resp
 
-    @app.post("/api/pin")
-    def change_pin():
-        if (e := need("engineer")):
-            return e
+    @app.post("/api/me/secret")
+    def change_own_secret():
+        u = current()
+        if not u:
+            return need("operator")
+        body = request.get_json(silent=True) or {}
         try:
-            auth.set_pin(str((request.get_json(silent=True) or {}).get("pin", "")))
+            what = accounts.change_own(u["username"], str(body.get("current", "")), str(body.get("new", "")))
         except ValueError as e:
             return fail(str(e), 400)
-        audit("engineer PIN changed")
-        return ok(message="Engineer PIN changed")
+        audit(what)
+        return ok(message=what[0].upper() + what[1:])
+
+    @app.get("/api/users")
+    def users():
+        if (e := need("engineer")):
+            return e
+        return ok(users=accounts.list())
+
+    @app.post("/api/users")
+    def add_user():
+        if (e := need("engineer")):
+            return e
+        body = request.get_json(silent=True) or {}
+        try:
+            acc = accounts.add(str(body.get("username", "")), str(body.get("name", "")),
+                               str(body.get("role", "")), str(body.get("secret", "")))
+        except ValueError as e:
+            return fail(str(e), 400)
+        audit("account added", f"{acc['name']} ({acc['username']}), {acc['role']}")
+        return ok(message=f"Account {acc['username']} added", user=acc)
+
+    @app.post("/api/users/<username>")
+    def update_user(username):
+        if (e := need("engineer")):
+            return e
+        body = request.get_json(silent=True) or {}
+        me_ = current(touch=False)
+        try:
+            changes = accounts.update(username, by=me_["username"], name=body.get("name"), role=body.get("role"),
+                                      active=body.get("active"),
+                                      secret=str(body["secret"]) if body.get("secret") else None)
+        except ValueError as e:
+            return fail(str(e), 400)
+        if changes:
+            audit("account changed", f"{username}: {', '.join(changes)}")
+        return ok(message=f"{username}: {', '.join(changes) or 'nothing changed'}")
+
+    # ----------------------------------------------------------------- audit
+    def audit_query():
+        """Entries from data/audit.jsonl filtered by ?who= &action= &role= &from= &to= (dates YYYY-MM-DD)."""
+        who = request.args.get("who", "").strip().lower()
+        action = request.args.get("action", "").strip().lower()
+        role = request.args.get("role", "").strip().lower()
+        d0, d1 = request.args.get("from", ""), request.args.get("to", "")
+        out = []
+        try:
+            with AUDIT_FILE.open() as f:
+                for line in f:
+                    try:
+                        e = json.loads(line)
+                    except ValueError:
+                        continue
+                    day = e.get("t", "")[:10]
+                    if d0 and day < d0 or d1 and day > d1:
+                        continue
+                    if who and who not in (e.get("user", "").lower(), e.get("who", "").lower()):
+                        continue
+                    if role and e.get("role", "") != role:
+                        continue
+                    if action and action not in e.get("action", "").lower() and action not in e.get("detail", "").lower():
+                        continue
+                    out.append(e)
+        except OSError:
+            pass
+        return out
+
+    @app.get("/api/audit")
+    def audit_list():
+        if (e := need("operator")):
+            return e
+        rows = audit_query()
+        return ok(total=len(rows), entries=rows[-1000:])
+
+    @app.get("/api/audit.csv")
+    def audit_csv():
+        if (e := need("operator")):
+            return e
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["time", "name", "username", "role", "action", "details", "from"])
+        for e in audit_query():
+            w.writerow([e.get("t", ""), e.get("who", ""), e.get("user", ""), e.get("role", ""),
+                        e.get("action", ""), e.get("detail", ""), e.get("source", "")])
+        return Response(buf.getvalue(), mimetype="text/csv", headers={
+            "Content-Disposition": f"attachment; filename=audit_{datetime.now():%Y%m%d_%H%M}.csv"})
 
     # -------------------------------------------------------------- commands
     @app.post("/api/cmd/<name>")
@@ -758,64 +774,6 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
             audit(name.replace("_", " "), detail)
         return ok(message=msg)
 
-    @app.post("/api/conveyor/<action>")
-    def conveyor(action):
-        if action not in CONVEYOR_ROLE:
-            abort(404)
-        if (e := need(CONVEYOR_ROLE[action])):
-            return e
-        body = request.get_json(silent=True) or {}
-        cv = ctl.conveyor
-        if ctl.settings.conveyor_drive == "external":
-            return fail("The conveyor runs on its own KEYENCE controller - start, stop and set its speed there")
-        if action not in ("stop", "stop_all", "mount_stop") and ctl.estop:
-            return fail("E-stop is active - press Reset first")
-
-        def num(key, default):
-            try:
-                return int(body.get(key, default))
-            except (TypeError, ValueError):
-                raise ValueError(f"{key} must be a number")
-        try:
-            if action == "run":
-                cv.run(1 if num("dir", 1) >= 0 else -1)
-            elif action == "move":
-                cv.move(1 if num("dir", 1) >= 0 else -1, num("steps", ctl.settings.conveyor_move_steps))
-            elif action == "auto":
-                cv.auto(num("steps", ctl.settings.conveyor_move_steps))
-            elif action == "stop":
-                cv.stop()
-            elif action == "stop_all":
-                cv.stop_all()
-            elif action == "mount_move":
-                cv.mount_move(1 if num("dir", 1) >= 0 else -1, num("steps", ctl.settings.mount_move_steps))
-            elif action == "mount_stop":
-                cv.mount_stop()
-            elif action == "mount_goto":
-                if not cv.mount_goto(num("position", 0)):
-                    return fail("Set the 12 oz reference first")
-            elif action == "mount_reference":
-                if not cv.mount_set_reference():
-                    return fail("Stop the camera before setting the reference")
-            elif action == "calibrate":
-                steps, mm = float(body["steps"]), float(body["measured_mm"])
-                if steps <= 0 or mm <= 0:
-                    return fail("enter the steps and the measured distance", 400)
-                ctl.set_setting("conveyor_mm_per_step", round(mm / steps, 5))
-                ctl.save_settings()
-                audit("conveyor calibrated", f"{mm:g} mm for {steps:g} steps")
-                return ok(message=f"Calibrated: {mm / steps * 1000:.1f} mm per 1000 steps")
-        except (ValueError, KeyError, TypeError) as e:
-            return fail(str(e) or "bad request", 400)
-        except Exception as e:                       # lgpio errors
-            ctl.log("ERROR", f"Motors: {action} failed ({e})")
-            return fail(f"Motor error: {e}")
-        if action not in ("calibrate",):
-            audit(action.replace("_", " ") if action.startswith("mount") else f"conveyor {action}",
-                  " ".join(f"{k}={v}" for k, v in body.items()))
-        hub.publish({"type": "status", "status": hub.status()})
-        return ok()
-
     # ------------------------------------------------------ capture-delay tuner
     @app.post("/api/delay/<action>")
     def delay_tuner(action):
@@ -926,14 +884,14 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
         body = request.get_json(silent=True) or {}
         try:
             if action == "start":
-                b = ctl.start_batch(str(body.get("lot", "")), str(body.get("operator", "")),
+                _, who = identity(touch=False)             # the batch carries the logged-in person
+                b = ctl.start_batch(str(body.get("lot", "")), who,
                                     str(body.get("note", "")))
                 audit("batch started", f"lot {b['lot']}, recipe {b['recipe']}")
                 return ok(id=b["id"])
             if action == "end":
-                role, who = identity(touch=False)          # before the batch (and its operator) closes
                 b = ctl.end_batch()
-                ctl.audit.record(who, role, "batch ended", f"lot {b['lot']}: {b['n']} cans", source())
+                audit("batch ended", f"lot {b['lot']}: {b['n']} cans")
                 return ok(id=b["id"], message=f"Batch {b['lot']} ended - report ready")
         except ValueError as e:
             return fail(str(e))
@@ -1105,10 +1063,6 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
                           "nozzle_distance_mm": s.nozzle_distance_mm},
                   selftest=ctl.selftest_running, running=ctl.running, estop=ctl.estop,
                   keep_images_days=s.keep_images_days)
-
-    @app.get("/api/audit")
-    def audit_list():
-        return ok(entries=list(ctl.audit.recent))
 
     # ----------------------------------------------------------- images/video
     @app.get("/video/live")

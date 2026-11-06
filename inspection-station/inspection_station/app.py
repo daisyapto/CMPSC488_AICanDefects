@@ -5,7 +5,6 @@ Entry point.
     python3 run.py --kiosk            Pi: fullscreen Chromium on the station screen
     python3 run.py --sim              simulation - no GPIO is touched (safe demo on the Pi)
     python3 run.py --remote-control   let other devices on the network control the line
-    python3 run.py --tk               the older desktop (Tkinter) dashboard
 """
 from __future__ import annotations
 
@@ -16,19 +15,6 @@ import signal
 from .config import Settings, check_pin_conflicts
 from .controller import Controller
 from .hardware import make_io
-
-
-def _leave_last_core_for_motors():
-    """The motor program (motor_c/motord) runs on the last CPU core; keep the station,
-    the camera bridge and their threads on the other cores so its step timing stays even."""
-    import os
-    try:
-        last = (os.cpu_count() or 1) - 1          # the motor core (isolcpus may already hide it)
-        cores = set(os.sched_getaffinity(0)) - {last}
-        if cores:
-            os.sched_setaffinity(0, cores)
-    except (AttributeError, OSError):
-        pass                                       # not Linux
 
 
 def main():
@@ -43,14 +29,10 @@ def main():
     ap.add_argument("--no-browser", action="store_true", help="do not open a browser")
     ap.add_argument("--remote-control", action="store_true",
                     help="allow other devices to control the line (default: view-only + E-stop/Stop)")
-    ap.add_argument("--tk", action="store_true", help="use the older Tkinter desktop dashboard")
-    ap.add_argument("--fullscreen", action="store_true", help="(Tk only) start fullscreen")
     args = ap.parse_args()
 
     check_pin_conflicts()
     settings, warning = Settings.load()
-    if settings.conveyor_drive == "motor_hat":   # KEYENCE conveyor: no motor core to keep free
-        _leave_last_core_for_motors()
     from .edition import EDITION, YOLO_AVAILABLE
     if not YOLO_AVAILABLE and settings.vision_engine == "yolo":
         settings.vision_engine = "builtin"
@@ -65,40 +47,18 @@ def main():
     signal.signal(signal.SIGTERM, lambda *a: (_ for _ in ()).throw(KeyboardInterrupt()))
 
     try:
-        if args.tk:
-            run_tk(ctl, events, args.fullscreen)
-        else:
-            try:
-                from .web import serve
-            except ImportError as e:
-                raise SystemExit(f"Flask is needed for the web dashboard ({e}).\n"
-                                 "  Laptop:       pip install flask\n"
-                                 "  Raspberry Pi: sudo apt install python3-flask\n"
-                                 "Or run the desktop dashboard with --tk")
-            serve(ctl, host=args.host, port=args.port, open_browser=not args.no_browser,
-                  kiosk=args.kiosk, remote_control=args.remote_control, screen=args.screen)
+        try:
+            from .web import serve
+        except ImportError as e:
+            raise SystemExit(f"Flask is needed for the web dashboard ({e}).\n"
+                             "  Laptop:       pip install flask\n"
+                             "  Raspberry Pi: sudo apt install python3-flask")
+        serve(ctl, host=args.host, port=args.port, open_browser=not args.no_browser,
+              kiosk=args.kiosk, remote_control=args.remote_control, screen=args.screen)
     except KeyboardInterrupt:
         pass
     finally:
         ctl.shutdown()          # fail-safe: valve closed, relays off, settings saved
-
-
-def run_tk(ctl, events, fullscreen):
-    import tkinter as tk
-    from tkinter import messagebox
-    from .ui import Dashboard
-
-    root = tk.Tk()
-    Dashboard(root, ctl, events, fullscreen=fullscreen)
-
-    def on_close():
-        if ctl.running and not messagebox.askyesno("Quit", "The line is running. Stop and quit?"):
-            return
-        ctl.shutdown()
-        root.destroy()
-
-    root.protocol("WM_DELETE_WINDOW", on_close)
-    root.mainloop()
 
 
 if __name__ == "__main__":

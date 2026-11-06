@@ -49,10 +49,14 @@ const S = {
   lastSeqShown: -1,
   liveOn: false,
   logUnseen: false,
-  role: "operator",     // viewer | operator | engineer
+  role: "viewer",       // viewer | operator | engineer (nobody logged in = viewer)
   name: "",
+  username: "",
   idleLeft: null,
-  defaultPin: false,
+  setupNeeded: false,
+  loginPick: null,      // account chosen in the login dialog
+  users: [],            // accounts (engineers only)
+  auditFilter: null,    // null = live list
   defectTypes: [],
   audit: [],
   page: "line",
@@ -90,7 +94,8 @@ function handle(msg) {
       S.canControl = msg.can_control;
       S.role = msg.role;
       S.name = msg.name;
-      S.defaultPin = msg.default_pin;
+      S.username = msg.username || "";
+      S.setupNeeded = !!msg.setup_needed;
       S.defectTypes = msg.defect_types || [];
       S.audit = msg.audit || [];
       renderAudit();
@@ -108,12 +113,13 @@ function handle(msg) {
       drawTrend();
       onStatus(msg.status);
       loadAlarms();
+      if (S.setupNeeded && S.canControl && !$("#setupModal").classList.contains("open")) openSetup();
       break;
     case "status": onStatus(msg.status); break;
     case "result": addResult(msg.result); break;
     case "reject": updateReject(msg.id, msg.status); break;
     case "log": addLog(msg.entry); break;
-    case "audit": S.audit.push(msg.entry); if (S.audit.length > 300) S.audit.shift(); renderAudit(); break;
+    case "audit": S.audit.push(msg.entry); if (S.audit.length > 300) S.audit.shift(); if (!S.auditFilter) renderAudit(); break;
     case "alarms": loadAlarms(); break;
     case "sensor": break;
     case "cleared":
@@ -235,7 +241,7 @@ function onStatus(st) {
   renderProduction(st);
   syncSettings(st);
   renderRecipeDrawer(st);
-  renderConveyor(st.conveyor);
+  renderOutputs(st, can("operator"));
 }
 
 function renderHeader(st) {
@@ -715,8 +721,6 @@ function initSettingWidgets() {
     }
   });
   $("#yoloApply").addEventListener("click", () => setSetting("yolo_model", $("#yoloInput").value.trim()));
-  $("#hailoApply").addEventListener("click", () => setSetting("hailo_model", $("#hailoInput").value.trim()));
-  $("#hailoInput").addEventListener("input", () => (S.editing.hailo_model = Date.now()));
   $("#yoloInput").addEventListener("input", () => (S.editing.yolo_model = Date.now()));
   $("#folderApply").addEventListener("click", () => setSetting("image_folder", $("#folderInput").value.trim()));
   $("#folderInput").addEventListener("input", () => (S.editing.image_folder = Date.now()));
@@ -755,11 +759,7 @@ function syncSettings(st) {
   const eng = s.vision_engine;
   eh.classList.toggle("hidden", eng === "builtin");
   eh.classList.toggle("bad", !!cam.engine_error);
-  $("#yoloFields").classList.toggle("hidden", eng !== "yolo" && eng !== "hailo");
-  $("#hailoFields").classList.toggle("hidden", eng !== "hailo");
-  const hi = $("#hailoInput");
-  if (document.activeElement !== hi && !fresh("hailo_model")) hi.value = s.hailo_model;
-  $("#yoloInput").closest(".field").classList.toggle("hidden", eng === "hailo");
+  $("#yoloFields").classList.toggle("hidden", eng !== "yolo");
   const yb = $('.seg[data-setting="vision_engine"] button[data-v="yolo"]');
   if (yb) yb.classList.toggle("hidden", !st.yolo_available);
   ["vision_sensitivity", "vision_min_area"].forEach((k) =>
@@ -793,9 +793,11 @@ function renderHealth(st) {
 function applyPermissions() {
   const op = can("operator"), eng = can("engineer");
   $("#roBanner").classList.toggle("hidden", S.canControl);
-  $("#pinBanner").classList.toggle("hidden", !(eng && S.defaultPin));
+  $("#setupBanner").classList.toggle("hidden", !(S.canControl && S.setupNeeded));
+  $("#loginBanner").classList.toggle("hidden", !(S.canControl && !S.setupNeeded && S.role === "viewer"));
   $$("#drawer input, #drawer select, #drawer button.radio-card, #drawer .stepper button, #drawer .seg button, " +
-     "#ipApply, #folderApply, #recipeSave, #recipeCreate, #recipeDelete, #pinSave").forEach((el) => (el.disabled = !eng));
+     "#ipApply, #folderApply, #recipeSave, #recipeCreate, #recipeDelete, #nuAdd").forEach((el) => (el.disabled = !eng));
+  if (eng) loadUsers(); else { S.users = []; renderUsers(); }
   $("#drawerLock").classList.toggle("hidden", eng || !S.canControl);
   $$("#viewSeg button, #btnPause, #btnWake").forEach((el) => (el.disabled = !op));
   $$('.camera-card [data-cmd="snapshot"], .camera-card [data-cmd="auto_exposure"], #btnArea, #btnDelay, .ref-box [data-cmd], #btnClear').forEach((el) => (el.disabled = !eng));
@@ -806,37 +808,136 @@ function applyPermissions() {
   $$("#revExport, #revExportPF").forEach((el) => el.classList.toggle("disabled", !eng));
   $("#revRoNote").classList.toggle("hidden", eng);
   renderUser();
-  if (S.status) { renderControls(S.status); renderProduction(S.status); renderConveyor(S.status.conveyor); }
+  if (S.status) { renderControls(S.status); renderProduction(S.status); renderOutputs(S.status, can("operator")); }
   if (S.rev.idx >= 0) renderReviewer();
 }
 
 /* ------------------------------------------------------------ user / login */
+const ROLE_LABEL = { viewer: "View only", operator: "Operator", engineer: "Engineer" };
+
 function renderUser() {
   const b = $("#btnUser");
   b.className = `user-btn ${S.role}`;
-  $("#userRole").textContent = { viewer: "View only", operator: "Operator", engineer: "Engineer" }[S.role];
-  $("#userName").textContent = S.role === "engineer"
-    ? `${S.name}${S.idleLeft != null ? ` · ${Math.max(1, Math.ceil(S.idleLeft / 60))} min` : ""}`
-    : S.role === "operator" ? "log in" : "";
+  const mins = S.idleLeft != null ? ` · ${Math.max(1, Math.ceil(S.idleLeft / 60))} min` : "";
+  $("#userRole").textContent = S.role === "viewer" ? (S.canControl ? "Log in" : "View only") : S.name;
+  $("#userName").textContent = S.role === "viewer" ? "" : `${ROLE_LABEL[S.role]}${mins}`;
+  b.title = S.role === "viewer" ? "Log in" : `${S.name} (${ROLE_LABEL[S.role]})${mins ? ` - logged out after${mins.slice(2)} idle` : ""} - click to switch user`;
 }
 
 async function refreshMe() {
   try {
     const d = await (await fetch("/api/me")).json();
-    const was = S.role;
-    S.role = d.role; S.name = d.name; S.idleLeft = d.idle_left; S.defaultPin = d.default_pin; S.canControl = d.can_control;
-    if (was === "engineer" && d.role !== "engineer") toast("Engineer session ended", "");
+    const was = S.role, wasUser = S.username;
+    S.role = d.role; S.name = d.name; S.username = d.username || ""; S.idleLeft = d.idle_left;
+    S.setupNeeded = !!d.setup_needed; S.canControl = d.can_control;
+    if (was !== "viewer" && d.role === "viewer" && wasUser) toast("Logged out after inactivity", "");
     applyPermissions();
+    if (S.setupNeeded && S.canControl && !$("#setupModal").classList.contains("open")) openSetup();
   } catch { /* offline: the stream banner already says so */ }
 }
 
-function openLogin() {
+async function openLogin() {
   if (!S.canControl) { toast("View-only device", "error"); return; }
+  if (S.setupNeeded) { openSetup(); return; }
   $("#loginErr").textContent = "";
-  $("#loginPin").value = "";
-  try { $("#loginName").value = localStorage.getItem("engName") || ""; } catch {}
+  $("#loginSecret").value = "";
+  const loggedIn = S.role !== "viewer";
+  $("#loginTitle").textContent = loggedIn ? "Switch user" : "Log in";
+  $("#loginCurrent").classList.toggle("hidden", !loggedIn);
+  $("#loginCurName").textContent = S.name;
+  $("#loginCurRole").textContent = ROLE_LABEL[S.role] || "";
+  $("#loginCurRole").className = `role ${S.role}`;
+  $("#loginUsers").innerHTML = `<span class="muted small">Loading…</span>`;
+  pickLoginUser(null);
   openDialog("#loginModal");
-  setTimeout(() => ($("#loginName").value ? $("#loginPin") : $("#loginName")).focus(), 60);
+  try {
+    const d = await (await fetch("/api/login_users")).json();
+    S.loginUsers = d.users || [];
+  } catch { S.loginUsers = []; }
+  const users = S.loginUsers.filter((u) => u.username !== S.username);
+  $("#loginPick").textContent = users.length ? (loggedIn ? "Switch to:" : "Who are you?") : "No other accounts - an engineer adds people in Settings › Accounts.";
+  $("#loginUsers").innerHTML = users.map((u) => `<button type="button" class="login-user ${u.role}" data-user="${esc(u.username)}">
+      <b>${esc(u.name)}</b><span>${ROLE_LABEL[u.role]} · ${esc(u.username)}</span></button>`).join("");
+  let last = null;
+  try { last = localStorage.getItem("lastUser"); } catch {}
+  if (users.length === 1) pickLoginUser(users[0].username);
+  else if (!loggedIn && last && users.some((u) => u.username === last)) pickLoginUser(last);
+}
+
+function pickLoginUser(username) {
+  S.loginPick = username ? (S.loginUsers || []).find((u) => u.username === username) : null;
+  $$("#loginUsers .login-user").forEach((b) => b.classList.toggle("on", b.dataset.user === username));
+  const u = S.loginPick, pin = u && u.role === "operator";
+  $("#loginSecretLbl").classList.toggle("hidden", !u);
+  $("#loginSecretName").textContent = u ? `${pin ? "PIN" : "Password"} for ${u.name}` : "";
+  const inp = $("#loginSecret");
+  inp.setAttribute("inputmode", pin ? "numeric" : "text");
+  inp.maxLength = pin ? 6 : 128;
+  inp.value = "";
+  $("#loginGo").disabled = !u;
+  $("#loginErr").textContent = "";
+  if (u) setTimeout(() => inp.focus(), 40);
+}
+
+function openSetup() {
+  $("#suErr").textContent = "";
+  ["#suName", "#suUser", "#suPass", "#suPass2"].forEach((s) => ($(s).value = ""));
+  openDialog("#setupModal");
+  setTimeout(() => $("#suName").focus(), 60);
+}
+
+/* change own PIN/password, or reset someone else's (engineers) */
+function openSecret(mode, user) {
+  S.secretFor = { mode, user };
+  const role = mode === "own" ? S.role : user.role;
+  const what = role === "operator" ? "PIN" : "password";
+  $("#scTitle").textContent = mode === "own" ? `Change my ${what}` : `Reset ${what} for ${user.name}`;
+  $("#scIntro").textContent = role === "operator" ? "4-6 digits, not all the same digit or a simple sequence."
+                                                  : "At least 8 characters, with a letter and a digit.";
+  $("#scCurLbl").classList.toggle("hidden", mode !== "own");
+  $("#scNewName").textContent = `New ${what}`;
+  ["#scCur", "#scNew", "#scNew2"].forEach((s) => { $(s).value = ""; $(s).setAttribute("inputmode", role === "operator" ? "numeric" : "text"); });
+  $("#scErr").textContent = "";
+  openDialog("#secretModal");
+  setTimeout(() => (mode === "own" ? $("#scCur") : $("#scNew")).focus(), 60);
+}
+
+async function loadUsers() {
+  try {
+    const d = await (await fetch("/api/users")).json();
+    if (d.ok) { S.users = d.users; renderUsers(); fillAuditWho(); }
+  } catch {}
+}
+
+function renderUsers() {
+  const box = $("#userList");
+  if (!box) return;
+  if (!S.users.length) { box.innerHTML = `<div class="muted small">Log in as an engineer to see and manage accounts.</div>`; return; }
+  box.innerHTML = S.users.map((u) => {
+    const me = u.username === S.username;
+    const last = u.last_login ? `last login ${u.last_login.replace("T", " ").slice(0, 16)}` : "never logged in";
+    return `<div class="user-row ${u.active ? "" : "off"}">
+      <div class="ur-main"><b>${esc(u.name)}</b>${me ? ` <span class="muted small">(you)</span>` : ""}
+        <span class="muted small mono">${esc(u.username)}</span>
+        <span class="role ${u.role}">${ROLE_LABEL[u.role]}</span>
+        ${u.active ? "" : `<span class="role off">turned off</span>`}${u.locked ? `<span class="role locked">locked</span>` : ""}
+        <div class="muted small">${last}</div></div>
+      <div class="ur-actions">
+        ${u.active ? `<button class="btn btn-sm btn-quiet" data-ua="secret" data-u="${esc(u.username)}">Reset ${u.role === "operator" ? "PIN" : "password"}</button>` : ""}
+        ${u.active && !me ? `<button class="btn btn-sm btn-quiet" data-ua="role" data-u="${esc(u.username)}">Make ${u.role === "operator" ? "engineer" : "operator"}</button>` : ""}
+        ${!me ? `<button class="btn btn-sm btn-quiet" data-ua="active" data-u="${esc(u.username)}">${u.active ? "Turn off" : "Turn on"}</button>` : ""}
+      </div></div>`;
+  }).join("");
+}
+
+function fillAuditWho() {
+  const sel = $("#afWho"), cur = sel.value;
+  const names = new Map();
+  (S.users.length ? S.users : S.loginUsers || []).forEach((u) => names.set(u.username, u.name));
+  S.audit.forEach((e) => { if (e.user && !names.has(e.user)) names.set(e.user, e.who); });
+  sel.innerHTML = `<option value="">Everyone</option>` + [...names].sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([u, n]) => `<option value="${esc(u)}">${esc(n)} (${esc(u)})</option>`).join("");
+  sel.value = cur;
 }
 
 function openDialog(sel) { $(sel).classList.add("open"); }
@@ -1243,7 +1344,7 @@ function renderDiag() {
       (okG ? "" : " — the burst is longer than the gap: neighbouring cans can be blown off too. Shorten the burst.")]);
   }
   if (b.speed_mm_s && b.spread_pct > 15)
-    checks.push([b.spread_pct > 30 ? "bad" : "warn", "Belt speed varies a lot between cans — the air may miss. Check the conveyor drive / tension."]);
+    checks.push([b.spread_pct > 30 ? "bad" : "warn", "Belt speed varies a lot between cans — the air may miss. Check the KEYENCE conveyor speed setting."]);
   if (b.speed_mm_s) checks.push(["", `How speed is measured: can diameter (${t.can_diameter_mm} mm) ÷ time the can blocks the sensor. Recommended delays put the can centre under the camera and centre the air burst on the can.`]);
   $("#dgChecks").innerHTML = checks.map(([c, x]) => `<li class="${c}"><span class="dot ${c}"></span><span>${esc(x)}</span></li>`).join("");
   // outputs
@@ -1285,10 +1386,40 @@ function renderDiag() {
 
 /* ------------------------------------------------------------------ audit */
 function renderAudit() {
-  const rows = S.audit.slice(-200).reverse().map((e) => `<tr><td>${esc(e.t.slice(11, 19))}<br><span class="muted small">${esc(e.t.slice(0, 10))}</span></td>
-    <td class="who"><b>${esc(e.who)}</b><span class="role ${esc(e.role)}">${esc(e.role)}</span></td>
+  const list = S.auditFilter ? S.auditFilter.slice().reverse() : S.audit.slice(-200).reverse();
+  const rows = list.map((e) => `<tr><td>${esc(e.t.slice(11, 19))}<br><span class="muted small">${esc(e.t.slice(0, 10))}</span></td>
+    <td class="who"><b>${esc(e.who)}</b>${e.user && e.user !== e.who ? `<span class="muted small mono">${esc(e.user)}</span>` : ""}<span class="role ${esc(e.role)}">${esc(e.role === "viewer" ? "not logged in" : e.role)}</span></td>
     <td>${esc(e.action)}</td><td>${esc(e.detail)}</td><td class="muted">${esc(e.source)}</td></tr>`).join("");
-  $("#auditRows").innerHTML = rows || `<tr><td colspan="5" class="muted">No actions recorded yet.</td></tr>`;
+  $("#auditRows").innerHTML = rows || `<tr><td colspan="5" class="muted">${S.auditFilter ? "No actions match the filter." : "No actions recorded yet."}</td></tr>`;
+}
+
+function auditParams() {
+  const p = new URLSearchParams();
+  [["who", "#afWho"], ["role", "#afRole"], ["action", "#afAction"], ["from", "#afFrom"], ["to", "#afTo"]]
+    .forEach(([k, sel]) => { const v = $(sel).value.trim(); if (v) p.set(k, v); });
+  return p;
+}
+
+async function applyAuditFilter() {
+  const p = auditParams();
+  $("#afCsv").href = `/api/audit.csv?${p}`;
+  if (![...p.keys()].length) return auditLive();
+  try {
+    const r = await fetch(`/api/audit?${p}`);
+    const d = await r.json();
+    if (!r.ok || !d.ok) { toast(d.error || "Could not load the audit trail", "error"); if (d.login) openLogin(); return; }
+    S.auditFilter = d.entries;
+    $("#afInfo").textContent = `${d.total} matching action${d.total === 1 ? "" : "s"}${d.total > d.entries.length ? ` (latest ${d.entries.length} shown; the CSV has all)` : ""}`;
+    renderAudit();
+  } catch { toast("Station not reachable", "error"); }
+}
+
+function auditLive() {
+  S.auditFilter = null;
+  ["#afWho", "#afRole", "#afAction", "#afFrom", "#afTo"].forEach((s) => ($(s).value = ""));
+  $("#afCsv").href = "/api/audit.csv";
+  $("#afInfo").textContent = "Live — latest 200 actions";
+  renderAudit();
 }
 
 /* --------------------------------------------------------- inspection area */
@@ -1419,7 +1550,7 @@ function wire() {
   $("#btnCloseDrawer").addEventListener("click", () => drawer(false));
   $("#scrim").addEventListener("click", () => drawer(false));
   $("#btnFullscreen").addEventListener("click", toggleFullscreen);
-  try { wireConveyor(); } catch (e) { console.error("Motors panel:", e); }   // never block the rest (login etc.)
+  try { wireOutputs(); } catch (e) { console.error("Outputs panel:", e); }   // never block the rest (login etc.)
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); cmd("estop"); return; }      // always: safety first
@@ -1434,29 +1565,93 @@ function wire() {
     }
     if (e.key === " " && S.status && S.status.running && S.canControl) { e.preventDefault(); cmd("simulate"); }
     if (e.key === "f" || e.key === "F") toggleFullscreen();
-    if (e.key === "c" || e.key === "C") toggleConveyor();
+    if (e.key === "o" || e.key === "O") toggleOutputs();
   });
 
   // ---- navigation, login
   $$("#nav button").forEach((b) => b.addEventListener("click", () => setPage(b.dataset.page)));
-  $("#btnUser").addEventListener("click", async () => {
-    if (S.role === "engineer") {
-      if (confirm(`Log out ${S.name}?`)) { await post("/api/logout"); refreshMe(); }
-    } else openLogin();
-  });
+  $("#btnUser").addEventListener("click", openLogin);
   $("#drawerLogin").addEventListener("click", openLogin);
+  $("#loginOpen").addEventListener("click", (e) => { e.preventDefault(); openLogin(); });
+  $("#setupOpen").addEventListener("click", (e) => { e.preventDefault(); openSetup(); });
+  $("#loginUsers").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-user]");
+    if (b) pickLoginUser(b.dataset.user);
+  });
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const name = $("#loginName").value.trim(), pin = $("#loginPin").value;
-    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, pin }) });
+    const u = S.loginPick;
+    if (!u) return;
+    const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ username: u.username, secret: $("#loginSecret").value }) });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.ok) { $("#loginErr").textContent = d.error || "Login failed"; $("#loginPin").value = ""; $("#loginPin").focus(); return; }
-    try { localStorage.setItem("engName", name); } catch {}
+    if (!r.ok || !d.ok) { $("#loginErr").textContent = d.error || "Login failed"; $("#loginSecret").value = ""; $("#loginSecret").focus(); return; }
+    try { localStorage.setItem("lastUser", u.username); } catch {}
     $("#loginModal").classList.remove("open");
-    toast(`Logged in as engineer (${name})`, "ok");
+    toast(`Logged in: ${d.name} (${ROLE_LABEL[d.role]})`, "ok");
     await refreshMe();
-    if (d.default_pin) toast("Please change the default engineer PIN (Settings › Security)", "error");
   });
+  $("#loginLogout").addEventListener("click", async () => {
+    await post("/api/logout");
+    $("#loginModal").classList.remove("open");
+    toast(`${S.name} logged out`, "");
+    refreshMe();
+  });
+  $("#loginChange").addEventListener("click", () => { $("#loginModal").classList.remove("open"); openSecret("own"); });
+  $("#setupForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if ($("#suPass").value !== $("#suPass2").value) { $("#suErr").textContent = "The two passwords are different"; return; }
+    const r = await fetch("/api/setup", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: $("#suName").value, username: $("#suUser").value, password: $("#suPass").value }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { $("#suErr").textContent = d.error || "Could not create the account"; return; }
+    $("#setupModal").classList.remove("open");
+    toast(`Account created - logged in as ${d.name}. Add the team in Settings › Accounts.`, "ok");
+    refreshMe();
+  });
+  $("#secretForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if ($("#scNew").value !== $("#scNew2").value) { $("#scErr").textContent = "The two entries are different"; return; }
+    const f = S.secretFor;
+    const url = f.mode === "own" ? "/api/me/secret" : `/api/users/${encodeURIComponent(f.user.username)}`;
+    const body = f.mode === "own" ? { current: $("#scCur").value, new: $("#scNew").value }
+               : { secret: $("#scNew").value, ...(f.role ? { role: f.role } : {}) };
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { $("#scErr").textContent = d.error || "Could not save"; return; }
+    $("#secretModal").classList.remove("open");
+    toast(d.message || "Saved", "ok");
+    loadUsers();
+  });
+  $("#nuRole").addEventListener("change", () => {
+    const pin = $("#nuRole").value === "operator";
+    $("#nuSecret").placeholder = pin ? "PIN, 4-6 digits" : "password, 8+ characters";
+    $("#nuSecret").setAttribute("inputmode", pin ? "numeric" : "text");
+  });
+  $("#nuAdd").addEventListener("click", async () => {
+    const body = { name: $("#nuName").value, username: $("#nuUser").value, role: $("#nuRole").value, secret: $("#nuSecret").value };
+    if (await post("/api/users", body)) { ["#nuName", "#nuUser", "#nuSecret"].forEach((s) => ($(s).value = "")); loadUsers(); }
+  });
+  $("#userList").addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-ua]");
+    if (!b) return;
+    const u = S.users.find((x) => x.username === b.dataset.u);
+    if (!u) return;
+    if (b.dataset.ua === "secret") openSecret("reset", u);
+    else if (b.dataset.ua === "role") {
+      const role = u.role === "operator" ? "engineer" : "operator";
+      openSecret("reset", { ...u, role });
+      S.secretFor.role = role;
+      $("#scTitle").textContent = `Make ${u.name} ${ROLE_LABEL[role].toLowerCase()} - set a new ${role === "operator" ? "PIN" : "password"}`;
+    } else if (b.dataset.ua === "active") {
+      if (u.active && !confirm(`Turn off ${u.name}'s account? They are logged out and can no longer log in. Their audit records stay.`)) return;
+      if (await post(`/api/users/${encodeURIComponent(u.username)}`, { active: !u.active })) loadUsers();
+    }
+  });
+  $("#afApply").addEventListener("click", applyAuditFilter);
+  $("#afAction").addEventListener("keydown", (e) => { if (e.key === "Enter") applyAuditFilter(); });
+  $("#afLive").addEventListener("click", auditLive);
+  $$('[data-tab="audit"]').forEach((t) => t.addEventListener("click", () => { if (!S.users.length) fetch("/api/login_users").then((r) => r.json()).then((d) => { S.loginUsers = d.users || []; fillAuditWho(); }).catch(() => {}); }));
   $$("[data-close]").forEach((b) => b.addEventListener("click", () => closeDialog(b)));
   $$(".modal").forEach((m) => m.addEventListener("click", (e) => { if (e.target === m && m.id !== "modal") closeDialog(m.firstElementChild); }));
 
@@ -1476,9 +1671,6 @@ function wire() {
     const name = $("#recipeDelSel").value;
     if (name && confirm(`Delete recipe "${name}"? This cannot be undone.`)) post("/api/recipes/delete", { name });
   });
-  $("#pinSave").addEventListener("click", async () => {
-    if (await post("/api/pin", { pin: $("#pinNew").value.trim() })) { $("#pinNew").value = ""; refreshMe(); }
-  });
 
   // ---- batches & reports
   $("#batchBox").addEventListener("click", async (e) => {
@@ -1487,7 +1679,7 @@ function wire() {
     if (b.dataset.batch === "start") {
       $("#batchErr").textContent = "";
       $("#batchLot").value = ""; $("#batchNote").value = "";
-      try { $("#batchOp").value = localStorage.getItem("batchOp") || ""; } catch {}
+      $("#batchOp").value = S.name;
       $("#batchRecipe").textContent = S.status ? S.status.recipe.active : "—";
       openDialog("#batchModal");
       setTimeout(() => $("#batchLot").focus(), 60);
@@ -1503,7 +1695,6 @@ function wire() {
     const r = await fetch("/api/batch/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) { $("#batchErr").textContent = d.error || "Could not start the batch"; return; }
-    try { localStorage.setItem("batchOp", body.operator); } catch {}
     $("#batchModal").classList.remove("open");
     toast(`Batch ${body.lot.trim()} started`, "ok");
   });
@@ -1584,25 +1775,21 @@ wire();
 connect();
 
 
-/* ------------------------------------------------------------ motors page */
-const CONV = { editing: {} };
-const convPost = (action, body) => post(`/api/conveyor/${action}`, body);
-const cSpeed = (pct) => 53 + Math.floor(pct * 30 / 100 + 0.5);              // same as main.c
-
-function toggleConveyor(open) {
-  const p = $("#pageMotors");
+/* ------------------------------------------------------------ outputs panel */
+function toggleOutputs(open) {
+  const p = $("#pageOutputs");
   const show = open ?? p.classList.contains("hidden");
   p.classList.toggle("hidden", !show);
-  try { localStorage.setItem("motorsOpen", show ? "1" : ""); } catch {}
-  if (show && S.status) renderConveyor(S.status.conveyor);
+  try { localStorage.setItem("outputsOpen", show ? "1" : ""); } catch {}
+  if (show && S.status) renderOutputs(S.status, can("operator"));
 }
 
-function wireConveyor() {
-  $("#btnConveyor").addEventListener("click", () => toggleConveyor());
-  $("#mcClose").addEventListener("click", () => toggleConveyor(false));
-  try { if (localStorage.getItem("motorsOpen")) toggleConveyor(true); } catch {}
+function wireOutputs() {
+  $("#btnOutputs").addEventListener("click", () => toggleOutputs());
+  $("#mcClose").addEventListener("click", () => toggleOutputs(false));
+  try { if (localStorage.getItem("outputsOpen")) toggleOutputs(true); } catch {}
   // drag the panel by its header
-  const panel = $("#pageMotors"), head = $("#mcHead");
+  const panel = $("#pageOutputs"), head = $("#mcHead");
   head.addEventListener("pointerdown", (e) => {
     if (e.target.closest("button")) return;
     const r = panel.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top, z = zoomOf(panel);
@@ -1616,136 +1803,14 @@ function wireConveyor() {
     head.addEventListener("pointermove", move);
     head.addEventListener("pointerup", up);
   });
-  // slider + number box: drag, or type an exact value and press Enter
-  const slider = (id, key, label) => {
-    const el = $(id), num = $(label);
-    let t = null;
-    el.addEventListener("input", () => {
-      num.value = el.value;
-      CONV.editing[key] = Date.now();
-      clearTimeout(t);
-      t = setTimeout(() => setSetting(key, +el.value), 150);
-    });
-    num.addEventListener("input", () => (CONV.editing[key] = Date.now()));
-    num.addEventListener("change", () => {
-      const lo = +num.min, hi = +num.max, st = +num.step || 1;
-      let v = Math.round((+num.value || lo) / st) * st;
-      v = Math.max(lo, Math.min(hi, v));
-      num.value = el.value = v;
-      CONV.editing[key] = Date.now();
-      setSetting(key, v);
-    });
-    num.addEventListener("keydown", (e) => { if (e.key === "Enter") num.blur(); });
-  };
-  slider("#convSpeed", "conveyor_speed_pct", "#convSpeedVal");
-  slider("#convSteps", "conveyor_move_steps", "#convStepsVal");
-  slider("#mountSteps", "mount_move_steps", "#mountStepsVal");
-
-  // pressing the active button again stops it - like the motor program
-  $$("[data-belt]").forEach((b) => b.addEventListener("click", () => {
-    if (b.classList.contains("active")) { convPost("stop"); return; }
-    const k = b.dataset.belt, steps = +$("#convSteps").value;
-    if (k === "auto") convPost("auto", { steps });
-    else convPost("move", { dir: k === "fwd" ? 1 : -1, steps });
-  }));
-  $("#convRun").addEventListener("click", () => convPost($("#convRun").classList.contains("active") ? "stop" : "run", { dir: 1 }));
-  $("#convStopAll").addEventListener("click", () => convPost("stop_all"));
-  $$("[data-mount]").forEach((b) => b.addEventListener("click", () => {
-    if (b.classList.contains("active")) { convPost("mount_stop"); return; }
-    convPost("mount_move", { dir: +b.dataset.mount, steps: +$("#mountSteps").value });
-  }));
-  $("#mountRef").addEventListener("click", () => convPost("mount_reference"));
-  $("#convWithLine").addEventListener("change", (e) => setSetting("conveyor_with_line", e.target.checked));
-  $("#mountFitted").addEventListener("change", (e) => setSetting("mount_motor", e.target.checked));
-  $("#motorPrecise").addEventListener("change", (e) => setSetting("motor_timing", e.target.checked ? "precise" : "team"));
   $$("[data-lamp]").forEach((b) => b.addEventListener("click", () => cmd("lamp", { key: b.dataset.lamp })));
   $("#mcValve").addEventListener("click", () => cmd("test_burst"));
   $("#mcBuzzer").addEventListener("click", () => cmd("lamp", { key: "buzzer" }));
   $("#mcLightsAuto").addEventListener("click", () => cmd("lights_auto"));
 }
 
-function renderConveyor(c) {
-  if (!c) return;
-  const st = S.status || {}, op = can("operator"), off = !op || st.estop;
-  const ext = !!c.external;                       // KEYENCE conveyor: panel = sensor, lights, buzzer only
-  $("#convDot").classList.toggle("on", !ext && (c.running || c.mount_running));
-  $("#btnConveyor").title = ext ? "Outputs: sensor, lights, buzzer (C)" : "Motors: conveyor + camera height (C)";
-  $("#btnConveyor").setAttribute("aria-label", ext ? "Outputs" : "Motors");
-  $("#mcTitle").textContent = ext ? "Outputs" : "Motors";
-  $("#mcMain").classList.toggle("hidden", ext);
-  $("#mcExt").classList.toggle("hidden", !ext);
-  $("#pageMotors").classList.toggle("mc-compact", ext);
-  if (ext) {
-    if (!$("#pageMotors").classList.contains("hidden")) { $("#mcHeadState").textContent = ""; renderOutputs(st, op); }
-    return;
-  }
-  if ($("#pageMotors").classList.contains("hidden")) return;   // nothing else to draw while closed
-  $("#mcHeadState").textContent = c.running ? (c.mode === "auto" ? "Auto" : c.mode === "continuous" ? "Running" : "Moving") : "Stopped";
-
-  const err = $("#convErr");
-  err.classList.toggle("hidden", !c.error);
-  if (c.error) err.textContent = `Motors not available - simulated. ${c.error}`;
-  $("#convDriver").textContent = `Driver: ${c.driver_name}`;
-  const sync = (id, key, label, val) => {
-    const el = $(id), num = $(label);
-    if (Date.now() - (CONV.editing[key] || 0) > 1500 && document.activeElement !== num) el.value = num.value = val;
-    el.disabled = num.disabled = !op;
-  };
-  sync("#convSpeed", "conveyor_speed_pct", "#convSpeedVal", c.speed_pct);
-  sync("#convSteps", "conveyor_move_steps", "#convStepsVal", c.move_steps);
-  sync("#mountSteps", "mount_move_steps", "#mountStepsVal", c.mount_move_steps);
-  $("#convRO").classList.toggle("hidden", op);
-
-  const steps = +$("#convSteps").value;
-  const act = { fwd: c.running && c.mode === "move" && c.dir > 0, rev: c.running && c.mode === "move" && c.dir < 0,
-                auto: c.running && c.mode === "auto" };
-  $$("[data-belt]").forEach((b) => { const a = act[b.dataset.belt]; b.classList.toggle("active", a); b.disabled = a ? !S.canControl : off; });
-  const prog = (a) => `Steps ${a ? c.steps_done : 0} / ${a ? c.steps_requested : steps}`;
-  $("#convFwdSteps").textContent = prog(act.fwd);
-  $("#convRevSteps").textContent = prog(act.rev);
-  $("#convAutoSteps").textContent = prog(act.auto);
-  const runOn = c.running && c.mode === "continuous";
-  $("#convRun").classList.toggle("active", runOn);
-  $("#convRun").disabled = runOn ? !S.canControl : off;
-  $("#convStopAll").disabled = !S.canControl;
-  $("#convState").textContent = "Conveyor: " + (st.estop ? "E-stop" : !c.running ? "Stopped" :
-    c.mode === "auto" ? (c.dir > 0 ? "Auto forward →" : "Auto reverse ←") :
-    c.mode === "continuous" ? "Running →" : (c.dir > 0 ? "Forward →" : "Reverse ←"));
-
-  // camera height (only when fitted)
-  $$(".mount-only").forEach((el) => el.classList.toggle("hidden", !c.mount_fitted));
-  const mf = $("#mountFitted"); mf.checked = c.mount_fitted; mf.disabled = !can("engineer");
-  const wl = $("#convWithLine"); wl.checked = c.with_line; wl.disabled = !can("engineer");
-  const mp = $("#motorPrecise"); mp.checked = (st.settings || {}).motor_timing !== "team";
-  mp.disabled = !can("operator") || c.running;
-  if (c.mount_fitted) {
-    const msteps = +$("#mountSteps").value;
-    $$("[data-mount]").forEach((b) => {
-      const a = c.mount_running && +b.dataset.mount === c.mount_dir;
-      b.classList.toggle("active", a); b.disabled = a ? !S.canControl : off;
-    });
-    const up = c.mount_running && c.mount_dir > 0, dn = c.mount_running && c.mount_dir < 0;
-    $("#mUpTxt").textContent = `Steps ${up ? c.mount_steps_done : 0} / ${up ? c.mount_requested : msteps}`;
-    $("#mDownTxt").textContent = `Steps ${dn ? c.mount_steps_done : 0} / ${dn ? c.mount_requested : msteps}`;
-    const pre = $("#mountPresets");
-    if (!pre.children.length) Object.entries(c.presets).forEach(([name, pos]) => {
-      const b = document.createElement("button");
-      b.className = "mc-flat"; b.textContent = name.replace(" ", ""); b.dataset.pos = pos;
-      b.addEventListener("click", () => convPost("mount_goto", { position: pos }));
-      pre.appendChild(b);
-    });
-    const ref = c.mount_position !== null && c.mount_position !== undefined;
-    $$("#mountPresets button").forEach((b) => { b.disabled = off || !ref; b.classList.toggle("on", ref && !c.mount_running && c.mount_position === +b.dataset.pos); });
-    $("#mountPos").textContent = ref ? `12oz reference saved · Camera at ${c.mount_position} steps` : "Calibrate 12oz height before using presets";
-    $("#mountRef").disabled = off || c.mount_running;
-    $("#mountState").textContent = "Camera: " + (!c.mount_running ? "Stopped" : c.mount_dir > 0 ? "Up ↑" : "Down ↓");
-  }
-
-  renderOutputs(st, op);
-}
-
 function renderOutputs(st, op) {
-  // sensor + lights (same column as the motor program)
+  if (!st || $("#pageOutputs").classList.contains("hidden")) return;   // nothing to draw while closed
   const sen = $("#mcSensor");
   sen.textContent = st.sensor ? "● Can detected" : "○ No can";
   sen.classList.toggle("on", !!st.sensor);
@@ -1761,7 +1826,7 @@ function renderOutputs(st, op) {
   mb.querySelector("small").textContent = st.buzzer ? "ON" : "OFF";
   mb.disabled = !op || st.running || st.estop;
   $("#mcValve").classList.toggle("hidden", !st.rejector_connected);
-  $("#mcValve").disabled = !op || st.running || st.estop;
+  $("#mcValve").disabled = !can("engineer") || st.running || st.estop;
   $("#mcLightsAuto").disabled = !op || !st.manual;
   $("#mcLightsAuto").textContent = st.manual ? "Lights: back to automatic" : "Lights: automatic";
 }

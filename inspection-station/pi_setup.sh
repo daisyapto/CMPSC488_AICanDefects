@@ -25,7 +25,7 @@ say() { printf '\n\033[1m%s\033[0m\n' "$1"; }
 
 # ----------------------------------------------------------------------------- 1
 say "1. Software"
-PKGS="python3-flask python3-numpy python3-opencv python3-gi gir1.2-aravis-0.8 aravis-tools python3-gpiozero python3-lgpio python3-serial build-essential libglib2.0-dev liblgpio-dev"
+PKGS="python3-flask python3-numpy python3-opencv python3-gi gir1.2-aravis-0.8 aravis-tools python3-gpiozero python3-lgpio"
 MISSING=""
 for p in $PKGS; do dpkg -s "$p" >/dev/null 2>&1 || MISSING="$MISSING $p"; done
 if [ -z "$MISSING" ]; then echo "  all installed"
@@ -36,12 +36,6 @@ fi
 say "2. Relay pins safe during boot"
 CFG=/boot/firmware/config.txt; [ -f "$CFG" ] || CFG=/boot/config.txt
 LINE="gpio=5,6,23,26=op,dh"
-if grep -q "^gpio=17,22,23,27=op,dh" "$CFG"; then          # old wiring - those pins now drive the motors
-  cp "$CFG" "$CFG.bak.$(date +%Y%m%d%H%M%S)"
-  sed -i '/^gpio=17,22,23,27=op,dh/d; /relay pins high (= relays off) from boot/d' "$CFG"
-  echo "  removed the old relay line (gpio=17,22,23,27) - GPIO 17/22/27 are motor pins now"
-  REBOOT=1
-fi
 if grep -q "^gpio=5,6,23,26=op,dh" "$CFG"; then echo "  already in $CFG"
 else
   echo "  The relay board is active-low: until the station starts, a floating GPIO can switch a relay"
@@ -51,22 +45,6 @@ else
     printf '\n[all]\n# can inspection station: relay pins high (= relays off) from boot\n%s\n' "$LINE" >> "$CFG"
     REBOOT=1; echo "  added (backup next to it)"
   fi
-fi
-MLINE="gpio=4,12=op,dl"
-if grep -q "^$MLINE" "$CFG"; then echo "  motor HAT drivers off at boot: already in $CFG"
-elif ask "  keep the Motor HAT drivers OFF while the Pi boots ('$MLINE')?" y; then
-  cp "$CFG" "$CFG.bak.$(date +%Y%m%d%H%M%S)"
-  printf '# can inspection station: motor HAT drivers off (EN low) from boot\n%s\n' "$MLINE" >> "$CFG"
-  REBOOT=1; echo "  added"
-fi
-
-# ----------------------------------------------------------------------------- 2b
-say "2b. Motor program (team C code in motor_c/)"
-if make -C "$DIR/motor_c" >/dev/null 2>&1; then
-  chown -R "$USER_NAME" "$DIR/motor_c" 2>/dev/null; echo "  built motor_c/motord"
-  setcap cap_sys_nice+ep "$DIR/motor_c/motord" && echo "  real-time priority allowed for the motor program (smooth steps)"
-else
-  echo "  ! could not build motor_c - run: make -C $DIR/motor_c  to see why"
 fi
 
 # ----------------------------------------------------------------------------- 3

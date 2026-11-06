@@ -5,19 +5,14 @@ inspection line (CMPSC 488). It reads the trigger sensor, inspects each can,
 fires the reject air at the right moment, drives the stack light, and logs
 every result.
 
-## Editions
+This is the **demo branch** (`yards-can-inspection`): only the code the station
+runs. The KEYENCE conveyor runs on its own controller; the Pi reads the trigger
+sensor and drives the camera, stack light, buzzer and (when fitted) the rejector.
 
-| | **inspection-station-yolo.zip** (full) | **inspection-station-lite.zip** |
-|---|---|---|
-| Detection engines | Built-in, Team, **YOLO** | Built-in, Team |
-| Extra install | `pip install ultralytics` (+ `ncnn` on the Pi) | nothing |
-| Pi cooling | active cooler recommended for YOLO | fine without |
-
-Both come from the same source: edit the normal code, then
-`python tools/build_editions.py` builds both zips. The edition is shown in
-Settings → Heat & power. Without the active cooler, leave *Active cooler fitted*
-off in the YOLO settings: YOLO then runs only on inspected cans, and the live
-view shows the plain camera image.
+YOLO needs `pip install ultralytics` (+ `ncnn` on the Pi); without it the Team
+and Built-in engines still work. Without the Pi 5 Active Cooler, leave *Active
+cooler fitted* off in the YOLO settings: YOLO then runs only on inspected cans,
+and the live view shows the plain camera image.
 
 ## Run
 
@@ -26,7 +21,6 @@ python3 run.py                    # web dashboard: http://localhost:8080 (opens 
 python3 run.py --sim              # simulation - no GPIO is touched (safe demo on the Pi)
 python3 run.py --kiosk            # Pi: fullscreen Chromium on the station screen
 python3 run.py --remote-control   # let other devices on the network control the line
-python3 run.py --tk               # the older desktop (Tkinter) dashboard (no recipes/review/reports)
 ```
 
 On a laptop without the Pi hardware it starts in simulation automatically.
@@ -156,7 +150,7 @@ What is different from the laptop, and what handles it:
 | No firewall problem | Raspberry Pi OS has no firewall, so the Windows bridge / firewall steps are not needed | - |
 | Camera power | the Pi's Ethernet gives no power either | same PoE injector as on the laptop |
 | Pi power | weak supply = under-voltage, resets, corrupted SD card | official 27 W supply; `pi_check.py` reads the supply and throttling |
-| Heat | no Active Cooler yet | use the **lite** edition; `pi_check.py` shows temperature / fan |
+| Heat | no Active Cooler yet | leave *Active cooler fitted* off (or use the Team engine); `pi_check.py` shows temperature / fan |
 | Clock | without internet (and without the RTC battery) the Pi's time can be wrong -> wrong timestamps in logs and reports | connect Wi-Fi once after power-up |
 | Starts by itself, restarts after a crash | | step 6: `can-inspection` service (+ optional kiosk screen) |
 
@@ -191,24 +185,37 @@ engineer saves it (Settings › Recipe › Save) or creates a new recipe from th
 current settings. Recipes can't be switched while the line runs or a batch is
 open. Stored in `recipes.json` and `data/recipes/`.
 
-### Operator / engineer access
-| | Viewer (other devices) | Operator (station, no login) | Engineer (name + PIN) |
-|---|---|---|---|
-| E-stop, Stop | ✓ | ✓ | ✓ |
-| Start, Reset, Acknowledge, simulate, wake camera | | ✓ | ✓ |
-| Choose recipe, start / end batch, live view mode | | ✓ | ✓ |
-| Settings, teach reference, manual override, test burst, recipes, label images, export dataset, clear session | | | ✓ |
+### Accounts and access
+One account per person, so the audit trail names who did what.
 
-* Log in with the lock button in the top bar. Default PIN **1234** - change it
-  in Settings › Security (a banner reminds you). The PIN is stored hashed.
-* Engineers are logged out after **15 minutes** without activity. Five wrong
-  PINs lock the login for 60 s.
-* Permissions are enforced by the station, not just hidden in the page.
+| | Not logged in / other devices | Operator (PIN) | Engineer (password) |
+|---|---|---|---|
+| See the dashboard, E-stop | ✓ | ✓ | ✓ |
+| Start, Stop, Reset, Acknowledge, simulate, wake camera | | ✓ | ✓ |
+| Choose recipe, start / end batch, live view mode, audit trail | | ✓ | ✓ |
+| Settings, accounts, teach reference, manual override, rejector test, recipes, label images, export dataset | | | ✓ |
+
+* **First start:** the station asks for the first engineer account - there is
+  no default password.
+* **Operators** log in with a 4-6 digit PIN, **engineers** with a password
+  (8+ characters, a letter and a digit). Engineers add, change and turn off
+  accounts in Settings › Accounts. Accounts are never deleted, only turned off,
+  so old audit entries keep pointing to a real person.
+* **Switch user** (button in the top bar): pick a name, enter the PIN /
+  password. Each user can change their own PIN / password there.
+* Idle logout: operators after **30 min**, engineers after **15 min**. Five
+  wrong attempts lock that account for 5 minutes.
+* PINs and passwords are stored only as salted PBKDF2 hashes in
+  `data/accounts.json`.
+* Other devices on the network are view-only unless the station is started with
+  `--remote-control`. Permissions are enforced by the station, not just hidden
+  in the page.
 
 ### Audit trail
-Every command, setting change (old → new value), login, recipe and batch
-action is recorded with who, role, time and device - **Audit** tab on the Line
-page, and `data/audit.jsonl`.
+Every command, setting change (old → new value), login, switch user, account
+change, recipe and batch action is recorded with the account, role, time and
+device - **Audit** tab on the Line page (filter by person, role, action and
+date; **CSV** export), and `data/audit.jsonl`.
 
 ### Review page (human check + AI dataset)
 Every saved image (Settings › Detection › Save images: *Fails* or *All*) can be
@@ -243,6 +250,7 @@ plus a CSV of every can. Stored in `data/batches/`.
 | `inspection_station/batches.py` | Batch / shift tracking | rarely |
 | `inspection_station/report.py` | Printable batch report | report layout |
 | `inspection_station/review.py` | Image review labels, dataset export | rarely |
+| `inspection_station/accounts.py` | Operator / engineer accounts, logins, lockout | rarely |
 | `inspection_station/audit.py` | Audit trail | rarely |
 | `inspection_station/alarms.py` | Alarm history + "what to check" steps | troubleshooting text |
 | `inspection_station/history.py` | Per-day totals for the History page | rarely |
@@ -259,10 +267,9 @@ plus a CSV of every can. Stored in `data/batches/`.
 | `inspection_station/controller.py` | Line logic: queue, reject timing, alarms, logging | rarely |
 | `inspection_station/web.py` | Web server: live updates, commands, camera stream | rarely |
 | `inspection_station/static/` | Dashboard (`index.html`, `app.*`) and line display (`display.*`) - no build step | UI changes |
-| `inspection_station/ui.py` | Older Tkinter dashboard (`--tk`) | - |
-| `config.json` | Saved settings + hashed engineer PIN (created automatically) | the app |
+| `config.json` | Saved settings (created automatically) | the app |
 | `recipes.json` | Recipes | the app |
-| `data/` | daily CSV + event log, `images/`, `snapshots/`, `batches/`, `recipes/`, `audit.jsonl`, `review_labels.jsonl`, `exports/` | the app |
+| `data/` | `accounts.json`, daily CSV + event log, `images/`, `snapshots/`, `batches/`, `recipes/`, `audit.jsonl`, `review_labels.jsonl`, `exports/` | the app |
 
 ## Wiring
 
@@ -272,97 +279,33 @@ plus a CSV of every can. Stored in `data/batches/`.
 | 4 | 5V | Relay board VCC |
 | 6 | GND | Sensor GND |
 | 9 | GND | Relay board GND |
-| 16 | GPIO23 | Relay 4 - reject solenoid |
+| 16 | GPIO23 | Relay 4 - buzzer |
 | 22 | GPIO25 | Sensor signal (5V through a resistor divider to 3.3V) |
 | 29 | GPIO5 | Relay 1 - green lamp |
 | 31 | GPIO6 | Relay 2 - yellow lamp |
 | 37 | GPIO26 | Relay 3 - red lamp |
 
-Motor HAT pins: see **Motors: conveyor belt and camera height**.
+The rejector is not wired yet (`REJECT_PIN = None` in `config.py`): cans are
+marked PASS / FAIL only. When it is fitted, give it its own free GPIO there and
+turn on Settings › Rejector.
 
-The relay board is **active-low**: a LOW pin turns the relay ON. That includes
-the reject solenoid on relay 4. Do not use the old `AirTest.py` with this
-wiring; it treats LOW as "air off".
+The relay board is **active-low**: a LOW pin turns the relay ON.
 
 The Genie Nano camera connects to the Pi's Ethernet port - see **Camera
 (Teledyne DALSA Genie Nano)** below for the network setup.
 
-## AI HAT (Hailo-8, 26 TOPS)
+## Conveyor (KEYENCE)
 
-Settings › Detection engine › **AI HAT** runs your trained YOLO detection model on
-the AI HAT instead of the Pi's CPU (the CPU stays free for the camera, dashboard
-and motors). The AI HAT only runs neural networks - the Team engine
-(`team_vision.py`, OpenCV) can't use it.
+The KEYENCE conveyor runs on its own controller - start, stop and set its speed
+there. The Pi only reads the trigger sensor and drives the camera, stack light,
+buzzer and rejector output, so Start / Stop / E-stop on the dashboard stop the
+inspection, not the belt (use the KEYENCE controller's own stop).
 
-1. HAT software: Raspberry Pi OS `sudo apt install hailo-all`; Ubuntu: HailoRT
-   driver + runtime + Python wheel from the Hailo developer zone. Check with
-   `hailortcli fw-control identify` and `python3 pi_check.py` (section 3b).
-2. Train YOLOv8 on your can images, export ONNX, compile to **.hef** with the Hailo
-   Dataflow Compiler / Model Zoo **with the NMS post-process** (on an x86 Ubuntu PC).
-3. Copy it to `models/can_defects.hef` and the class names, one per line in
-   training order, to `models/can_defects.txt` (a class named good / ok / pass = pass).
-4. Settings › Detection engine › **AI HAT**. Min confidence and "crop to the can"
-   apply. The engine is in `inspection_station/hailo.py`.
+The **Outputs** button in the top bar (or press **O**) opens a small panel with
+the sensor state, the lamps, the buzzer and the rejector test.
 
-## Conveyor: KEYENCE (default) or the Pi Motor HAT
-
-**Settings › Conveyor** chooses who drives the belt:
-
-* **KEYENCE** (default) - the KEYENCE conveyor runs on its own controller. The station
-  only reads the trigger sensor and drives the stack light, buzzer and camera. The belt
-  button in the top bar opens **Outputs** (sensor, lamps, buzzer, rejector test); there are no
-  motor controls, Start / Stop / E-stop on the dashboard do not stop the belt (use the
-  KEYENCE controller's own stop), and the motor program is not started.
-  Capture and reject delays assume a constant belt speed - after changing the speed on the
-  KEYENCE controller, run **Find with a can…** again.
-* **Pi Motor HAT** - the older setup below, where the Pi drives the belt itself.
-
-## Motors: conveyor belt and camera height (Pi Motor HAT only)
-
-The **Motors** page (Motors tab, belt button in the top bar, or press **C**) looks and works like the
-team's GTK motor program does, from the dashboard (also from a phone):
-
-* **Conveyor** - speed 0-100 %, Move distance (steps), **◀ Reverse / Forward ▶**
-  (move that many steps), **⇄ Auto** (back and forth), **Run continuous**, Stop.
-  Pressing the active button again stops it. **Run with the line**: Start / Stop
-  on the Line card also run / stop the belt.
-* **Camera height** (only if the motor is fitted - Setup › Camera height motor) - ▲ Up / ▼ Down by the Move steps, presets **12 / 16 / 19.2 oz**
-  (0 / 3300 / 6600 steps) after **Set 12 oz reference** (lower the camera to the
-  12 oz height by hand first). The reference is lost when the station restarts.
-* **Stop all** and **E-stop** stop both motors at once.
-
-Hardware: Waveshare **Stepper Motor HAT (B)** (two HR8825 drivers).
-
-The motors are driven by **the team's own C motor code** - `motor_c/` holds
-`motor_control.c`, `HR8825.c`, `DEV_Config.c` and headers from the GTK motor
-program, unchanged (only the step limit can be raised from the Makefile), plus
-`motord.c`, a small command interface used instead of the GTK window. So speeds,
-steps, timing and pins are exactly those of `./motor`. `pi_setup.sh` builds it
-(`make -C motor_c`, needs `build-essential libglib2.0-dev liblgpio-dev`); the
-station also builds it on first start. Setup › Motors can switch to the Python
-port or to Simulated.
-
-| Motor | EN | DIR | STEP | M0 / M1 / M2 |
-|---|---|---|---|---|
-| 1 - conveyor | 12 | 13 | 19 | 16 / 17 / 20 |
-| 2 - camera height | 4 | 24 | 18 | 21 / 22 / 27 |
-
-Step limit per command: `MAX_STEPS` in `motor_c/Makefile` (50000; the GTK program
-used 9000), `MAX_STEPS` in `conveyor.py`, `conveyor_move_steps` in `web.py` and the
-Move slider `max` in `static/index.html`.
-
-**Precise step timing** (Motors page checkbox, on by default): `motor_c/smooth.c`
-generates the conveyor steps instead of the sleep loop in `motor_control.c` - every
-edge is placed on an absolute schedule with a short busy-wait, a late edge never
-causes a short pulse or a catch-up burst, the speed ramps up and down, and the
-driver stays enabled for the whole move (not switched off every 4 steps). Same
-pins, speed scale and commands. Untick it to use the team code's own timing. For
-the best result also reserve core 3 for it (`isolcpus=3 nohz_full=3 rcu_nocbs=3
-irqaffinity=0-2` in `/boot/firmware/cmdline.txt`) and run
-`sudo setcap cap_sys_nice+ep motor_c/motord` after every build.
-
-**Close the GTK motor program before starting the station** - only one program
-can drive the pins. **Never plug or unplug a motor while the HAT has power.**
+Capture and reject delays assume a constant belt speed - after changing the speed
+on the KEYENCE controller, run **Find with a can…** again.
 
 ## How a can is handled
 
@@ -720,13 +663,13 @@ Replace it with your model and return either a `vision.VisionResult` or an
    Synthetic source, Start, press Simulate can (or Space). Check live detection, results, KPIs,
    saved images and the log. Try E-stop / Reset / Ack alarm.
 2. **Pi, air supply OFF:**
-   - At idle only yellow is on and the relay 4 LED is **off**.
-   - Manual override: click each lamp in the stack-light drawing; check that
-     the right relay and lamp switch.
-   - Test reject burst: relay 4 clicks 3 times.
+   - At idle only green flashes and the relay 4 (buzzer) LED is **off**.
+   - Outputs panel (**O**): click each lamp and the buzzer; check that the
+     right relay and lamp switch.
+   - Rejector fitted: Rejector test fires 3 pulses.
    - Wave a can at the sensor: the trigger sensor indicator shows CAN PRESENT.
    - Camera panel shows Online.
-3. **Air ON:** turn on the single-shot latch, then run *Always reject* with real
+3. **Air ON (rejector fitted):** turn on the single-shot latch, then run *Always reject* with real
    cans and tune **Reject delay** until the air hits the can.
 4. **Safety:** during a run press E-stop (valve locked, solid red); close the
    app (all relays off).
