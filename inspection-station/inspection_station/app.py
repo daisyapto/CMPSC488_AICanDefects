@@ -5,6 +5,7 @@ Entry point.
     python3 run.py --kiosk            Pi: fullscreen Chromium on the station screen
     python3 run.py --sim              simulation - no GPIO is touched (safe demo on the Pi)
     python3 run.py --remote-control   let other devices on the network control the line
+    python3 run.py --tailscale        let devices on your Tailscale network log in and control
 """
 from __future__ import annotations
 
@@ -29,6 +30,8 @@ def main():
     ap.add_argument("--no-browser", action="store_true", help="do not open a browser")
     ap.add_argument("--remote-control", action="store_true",
                     help="allow other devices to control the line (default: view-only + E-stop/Stop)")
+    ap.add_argument("--tailscale", action="store_true",
+                    help="let devices on your Tailscale network log in and control (LAN stays view-only)")
     args = ap.parse_args()
 
     check_pin_conflicts()
@@ -54,7 +57,8 @@ def main():
                              "  Laptop:       pip install flask\n"
                              "  Raspberry Pi: sudo apt install python3-flask")
         serve(ctl, host=args.host, port=args.port, open_browser=not args.no_browser,
-              kiosk=args.kiosk, remote_control=args.remote_control, screen=args.screen)
+              kiosk=args.kiosk, remote_control=args.remote_control, screen=args.screen,
+              tailscale=args.tailscale)
     except KeyboardInterrupt:
         pass
     finally:

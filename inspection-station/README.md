@@ -208,8 +208,27 @@ One account per person, so the audit trail names who did what.
 * PINs and passwords are stored only as salted PBKDF2 hashes in
   `data/accounts.json`.
 * Other devices on the network are view-only unless the station is started with
-  `--remote-control`. Permissions are enforced by the station, not just hidden
-  in the page.
+  `--tailscale` (see below) or `--remote-control`. Permissions are enforced by
+  the station, not just hidden in the page.
+
+### Remote access (Tailscale, free)
+Tailscale puts the Pi and your team's phones / laptops on a private network
+that works from anywhere (school Wi-Fi, mobile data) - nothing is opened to the
+internet and only devices logged in to your Tailscale account can connect.
+
+1. Make a free account at tailscale.com (free Personal plan: up to 6 users).
+2. On the Pi (needs internet once): `sudo bash pi_setup.sh` → step 7. It
+   installs Tailscale, names the Pi `yards-station`, shows a login link, and
+   adds `--tailscale` to the autostart service.
+3. On each phone / laptop: install the Tailscale app, log in to the same
+   account (or accept an invite), switch it on.
+4. Open `http://yards-station:8080` (or the Pi's `100.x.y.z` address,
+   printed when the station starts and by `pi_check.py`).
+
+With `--tailscale`, devices on the Tailscale network can log in and control by
+role (operator PIN / engineer password, same rules as the station screen);
+devices on the local network stay view-only. The audit trail shows them as
+`tailscale 100.x.y.z`. E-stop and Stop work from any device.
 
 ### Audit trail
 Every command, setting change (old → new value), login, switch user, account

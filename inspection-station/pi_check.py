@@ -479,6 +479,17 @@ def check_storage_app():
         warn("does not start automatically at boot", "sudo bash pi_setup.sh  (optional autostart step)")
     if run(["sh", "-c", "grep -l connected /sys/class/drm/*HDMI*/status"])[0] == 0:
         ok("a screen is connected (HDMI)")
+    # remote access (optional)
+    if shutil.which("tailscale"):
+        rc, out = run(["tailscale", "ip", "-4"])
+        if rc == 0 and out.strip():
+            ip = out.split()[0]
+            flag = unit.exists() and "--tailscale" in unit.read_text()
+            ok(f"Tailscale up: http://{ip}:8080" + ("  (logged-in users can control)" if flag else "  (view-only)"))
+        else:
+            warn("Tailscale installed but not logged in", "sudo tailscale up --hostname=yards-station")
+    else:
+        ok("Tailscale not installed (optional remote access - sudo bash pi_setup.sh, step 7)")
 
 
 def main():

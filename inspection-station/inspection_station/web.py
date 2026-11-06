@@ -4,6 +4,7 @@ Web dashboard server (Flask).
     python3 run.py                    # serve on port 8080 and open the browser
     python3 run.py --kiosk            # Pi: fullscreen Chromium on the station screen
     python3 run.py --remote-control   # allow other devices to control the line
+    python3 run.py --tailscale        # allow devices on your Tailscale network to log in and control
 
 Endpoints
   GET  /                    dashboard (static/index.html)
@@ -25,7 +26,9 @@ with a PIN, engineers with a password - so the audit trail names who did what.
 Nobody logged in = view only (plus E-stop and Stop).
 
 Safety: devices other than the Pi itself are view-only (plus E-stop and Stop)
-unless the server is started with --remote-control.
+unless the server is started with --remote-control. With --tailscale, devices on
+the station's Tailscale network (100.64.0.0/10, or `tailscale serve` on this Pi)
+can log in and control by role; other devices on the local network stay view-only.
 """
 from __future__ import annotations
 
@@ -388,7 +391,11 @@ NOT_AUDITED = {"simulate", "pause", "check_camera", "lamp", "clear_last"}
 # =============================================================================
 # Flask app
 # =============================================================================
-def create_app(ctl, remote_control: bool = False) -> Flask:
+TAILNET = (ipaddress.ip_network("100.64.0.0/10"), ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+LOOPBACK = ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+
+
+def create_app(ctl, remote_control: bool = False, tailscale: bool = False) -> Flask:
     app = Flask(__name__, static_folder=str(STATIC_DIR), static_url_path="/static")
     session = Session()
     hub = Hub(ctl, session)
@@ -398,11 +405,25 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
     app.config["hub"] = hub
     app.config["accounts"] = accounts
 
+    def proxied() -> bool:
+        """Request forwarded by `tailscale serve` (or another proxy) on this Pi - not the station screen."""
+        return bool(request.headers.get("Tailscale-User-Login") or request.headers.get("X-Forwarded-For"))
+
     def is_local() -> bool:
-        return request.remote_addr in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
+        return request.remote_addr in LOOPBACK and not proxied()
+
+    def is_tailnet() -> bool:
+        if request.remote_addr in LOOPBACK:
+            return proxied()                       # via `tailscale serve`
+        try:
+            ip = ipaddress.ip_address(request.remote_addr)
+        except ValueError:
+            return False
+        ip = getattr(ip, "ipv4_mapped", None) or ip
+        return any(ip in n for n in TAILNET)
 
     def can_control() -> bool:
-        return remote_control or is_local()
+        return remote_control or is_local() or (tailscale and is_tailnet())
 
     def current(touch=True):
         """The logged-in account of this browser, or None."""
@@ -418,7 +439,12 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
         return (u["role"], u["name"]) if u else ("viewer", "not logged in")
 
     def source():
-        return "station" if is_local() else request.remote_addr
+        if is_local():
+            return "station"
+        if is_tailnet():
+            who = request.headers.get("Tailscale-User-Login")
+            return f"tailscale {who or request.remote_addr}"
+        return request.remote_addr
 
     def need(min_role):
         """None if allowed, else an error response."""
@@ -426,7 +452,7 @@ def create_app(ctl, remote_control: bool = False) -> Flask:
         if ROLE_RANK[role] >= ROLE_RANK[min_role]:
             return None
         if not can_control():
-            return jsonify(ok=False, error="View-only device - use the station screen, "
+            return jsonify(ok=False, error="View-only device - use the station screen or Tailscale, "
                                            "or start the server with --remote-control"), 403
         if role == "viewer":
             return jsonify(ok=False, error="Log in to do this", login=True), 403
@@ -1162,8 +1188,25 @@ def lan_address():
         return None
 
 
+def tailscale_address():
+    """This Pi's Tailscale IPv4 and DNS name, or (None, None) if Tailscale is not running."""
+    import shutil
+    import subprocess
+    exe = shutil.which("tailscale")
+    if not exe:
+        return None, None
+    try:
+        st = json.loads(subprocess.run([exe, "status", "--json"], capture_output=True, text=True,
+                                       timeout=3).stdout or "{}")
+        me = st.get("Self") or {}
+        ip = next((a for a in me.get("TailscaleIPs") or [] if "." in a), None)
+        return ip, (me.get("DNSName") or "").rstrip(".") or None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None, None
+
+
 def serve(ctl, host="0.0.0.0", port=8080, open_browser=True, kiosk=False, remote_control=False,
-          screen="dashboard"):
+          screen="dashboard", tailscale=False):
     import shutil
     import subprocess
     import webbrowser
@@ -1171,7 +1214,7 @@ def serve(ctl, host="0.0.0.0", port=8080, open_browser=True, kiosk=False, remote
 
     import logging
     logging.getLogger("werkzeug").setLevel(logging.WARNING)     # no per-request log lines
-    app = create_app(ctl, remote_control)
+    app = create_app(ctl, remote_control, tailscale)
     server = make_server(host, port, app, threaded=True)
     url = f"http://localhost:{port}"
     print(f"\n  Dashboard:  {url}")
@@ -1180,6 +1223,13 @@ def serve(ctl, host="0.0.0.0", port=8080, open_browser=True, kiosk=False, remote
     if ip and host in ("0.0.0.0", "::"):
         mode = "full control" if remote_control else "view-only + E-stop/Stop"
         print(f"  Network:    http://{ip}:{port}   ({mode})   ·   http://{ip}:{port}/display")
+    if tailscale and host in ("0.0.0.0", "::"):
+        ts_ip, ts_name = tailscale_address()
+        if ts_ip:
+            print(f"  Tailscale:  http://{ts_ip}:{port}" + (f"   ·   http://{ts_name}:{port}" if ts_name else "")
+                  + "   (log in to control)")
+        else:
+            print("  Tailscale:  not running on this computer (sudo tailscale up)")
     if screen == "display":
         url += "/display"
     print("  Stop with Ctrl+C\n")

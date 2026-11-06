@@ -10,6 +10,7 @@
 #    4. Ethernet port for the camera: fixed 169.254.100.1/16, no internet route
 #    5. user in the gpio group
 #    6. start automatically at boot (+ optional screen in kiosk mode)
+#    7. optional: Tailscale - reach the dashboard from your phone / laptop anywhere (free)
 #  Afterwards: python3 pi_check.py
 # =============================================================================
 set -u
@@ -138,6 +139,33 @@ EOF
   chown -R "$USER_NAME":"$USER_NAME" "$USER_HOME/.config/autostart" "$USER_HOME/.config/labwc"
   command -v raspi-config >/dev/null && raspi-config nonint do_blanking 1 && echo "  screen blanking off"
   echo "  the screen opens at the next login"
+fi
+
+# ----------------------------------------------------------------------------- 7
+say "7. Remote access with Tailscale (optional, free plan)"
+echo "  Lets your team's phones and laptops reach the dashboard from anywhere, without opening"
+echo "  the network to the internet. Only devices you add to your Tailscale account can connect."
+if ask "  set up Tailscale?" n; then
+  if ! command -v tailscale >/dev/null; then
+    echo "  installing Tailscale (needs internet - connect the Pi's Wi-Fi first)"
+    curl -fsSL https://tailscale.com/install.sh | sh || echo "  install failed - check the internet connection and run this step again"
+  fi
+  if command -v tailscale >/dev/null; then
+    systemctl enable --now tailscaled >/dev/null 2>&1
+    if tailscale status >/dev/null 2>&1; then
+      echo "  already logged in: $(tailscale ip -4 2>/dev/null | head -1)"
+    else
+      echo "  open the link that appears below on any device and log in to your Tailscale account"
+      tailscale up --hostname=yards-station
+    fi
+    if [ -f "$UNIT" ] && ! grep -q -- "--tailscale" "$UNIT"; then
+      if ask "  let logged-in operators / engineers on Tailscale control the line? (LAN stays view-only)" y; then
+        sed -i 's|run.py --no-browser|run.py --no-browser --tailscale|' "$UNIT"
+        systemctl daemon-reload && echo "  done - restart the station: sudo systemctl restart can-inspection"
+      fi
+    fi
+    echo "  dashboard: http://yards-station:8080   (or http://$(tailscale ip -4 2>/dev/null | head -1):8080)"
+  fi
 fi
 
 say "Done."
