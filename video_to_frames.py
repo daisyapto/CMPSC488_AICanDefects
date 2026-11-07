@@ -8,6 +8,10 @@ Usage:
 Requires: pip install opencv-python
 """
 
+"""
+To run, use terminal with: python video_to_frames.py my_video.mp4 -o my_frames --every 5 --format png
+"""
+
 import argparse
 import sys
 from pathlib import Path
