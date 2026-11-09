@@ -91,7 +91,7 @@ class Relay:
 class StackLight:
     def __init__(self, io):
         self.lamps = {key: Relay(io, pin) for key, pin in LIGHT_PINS.items()}
-        self.buzzer = Relay(io, BUZZER_PIN)        # relay 4 - buzzer, switched by hand
+        self.buzzer = Relay(io, BUZZER_PIN)        # buzzer relay, switched by hand
 
     def set(self, key: str, on: bool, force: bool = False):
         self.lamps[key].set(on, force)

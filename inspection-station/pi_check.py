@@ -210,16 +210,22 @@ def check_gpio():
     cfg = boot_config()
     text = cfg.read_text() if cfg else ""
     want = f"gpio={','.join(map(str, outs))}=op,dh"
-    if re.search(r"^\s*gpio=([\d,\-]+)=op,dh", text, re.M) and all(
-            str(p) in ",".join(re.findall(r"^\s*gpio=([\d,\-]+)=op,dh", text, re.M)) for p in outs):
+    held = set()
+    for spec in re.findall(r"^\s*gpio=([\d,\-]+)=op,dh", text, re.M):
+        for part in spec.split(","):
+            a, _, b = part.partition("-")
+            if a.isdigit():
+                held.update(range(int(a), int(b or a) + 1))
+    if all(p in held for p in outs):
         ok("relay pins are driven HIGH (= relays off) from the first second of boot")
     else:
         fail("relay pins float during boot - an active-low relay board can click ON (air valve!) "
              "until the station starts", f"add '{want}' to {cfg or '/boot/firmware/config.txt'} "
                                          "(or run: sudo bash pi_setup.sh), then reboot")
+    pins_re = "|".join(map(str, outs + [SENSOR_PIN]))
     risky = [l.strip() for l in text.splitlines()
-             if l.strip().startswith("dtoverlay=") and re.search(r"w1-gpio.*gpiopin=(5|6|23|25|26)\b|"
-                                                                 r"gpio-fan|pwm.*pin=(5|6|23|25|26)\b", l)]
+             if l.strip().startswith("dtoverlay=") and re.search(rf"w1-gpio.*gpiopin=({pins_re})\b|"
+                                                                 rf"gpio-fan|pwm.*pin=({pins_re})\b|uart0", l)]
     if risky:
         fail(f"config.txt enables something on the station's pins: {risky}", "remove those lines and reboot")
     else:
@@ -233,7 +239,10 @@ def check_gpio():
     for p in outs:
         o = levels[p]
         off, on = ("relay off", "relay ON")
-        if "op" in o and "hi" in o:
+        if re.search(r"= *(TXD|RXD|CTS|RTS)", o):
+            fail(f"GPIO {p} is set up as the serial port (UART) - its relay can click while the Pi boots",
+                 "sudo bash pi_setup.sh (step 2 turns the serial port on GPIO 14/15 off), then reboot")
+        elif "op" in o and "hi" in o:
             ok(f"GPIO {p}: output HIGH ({off})")
         elif "op" in o and "lo" in o:
             warn(f"GPIO {p}: output LOW = {on} right now (station running?)")
@@ -287,7 +296,7 @@ def check_outputs():
         time.sleep(1)
         run(["pinctrl", "set", str(pin), "op", "dh"])
         time.sleep(0.3)
-    print(f"    buzzer ON for 0.5 s (relay 4 on GPIO {BUZZER_PIN})")
+    print(f"    buzzer ON for 0.5 s (GPIO {BUZZER_PIN})")
     run(["pinctrl", "set", str(BUZZER_PIN), "op", "dl"])
     time.sleep(0.5)
     run(["pinctrl", "set", str(BUZZER_PIN), "op", "dh"])

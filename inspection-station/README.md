@@ -145,7 +145,7 @@ What is different from the laptop, and what handles it:
 | On the Pi | Why it matters | Handled by |
 |---|---|---|
 | Software comes from apt, not pip | pip OpenCV is slow/huge on the Pi; Aravis (camera) is apt-only | `sudo bash pi_setup.sh` step 1 |
-| Relay pins at power-up | the relay board is active-low: a floating pin while the Pi boots can switch a relay - or the **air valve** - ON until the station starts | step 2: `gpio=5,6,23,26=op,dh` in config.txt (check after a reboot: relays stay off) |
+| Relay pins at power-up | the relay board is active-low: a floating pin while the Pi boots can switch a relay - or the **air valve** - ON until the station starts | step 2: `gpio=14,15,18,23=op,dh` in config.txt and the serial port on GPIO 14/15 off (check after a reboot: relays stay off) |
 | Camera network | with no DHCP server NetworkManager gives eth0 **no address** - the camera is invisible | step 3/4: eth0 = 169.254.100.1/16, bigger network buffers. Internet / dashboard access stays on Wi-Fi |
 | No firewall problem | Raspberry Pi OS has no firewall, so the Windows bridge / firewall steps are not needed | - |
 | Camera power | the Pi's Ethernet gives no power either | same PoE injector as on the laptop |
@@ -297,12 +297,12 @@ plus a CSV of every can. Stored in `data/batches/`.
 | 2 | 5V | Sensor power |
 | 4 | 5V | Relay board VCC |
 | 6 | GND | Sensor GND |
-| 9 | GND | Relay board GND |
-| 16 | GPIO23 | Relay 4 - buzzer |
-| 22 | GPIO25 | Sensor signal (5V through a resistor divider to 3.3V) |
-| 29 | GPIO5 | Relay 1 - green lamp |
-| 31 | GPIO6 | Relay 2 - yellow lamp |
-| 37 | GPIO26 | Relay 3 - red lamp |
+| 8 | GPIO14 | Relay - red lamp |
+| 10 | GPIO15 | Relay - yellow lamp |
+| 12 | GPIO18 | Relay - green lamp |
+| 14 | GND | Relay board GND |
+| 16 | GPIO23 | Relay - buzzer |
+| 22 | GPIO25 | Sensor signal (through divider) |
 
 The rejector is not wired yet (`REJECT_PIN = None` in `config.py`): cans are
 marked PASS / FAIL only. When it is fitted, give it its own free GPIO there and
@@ -682,7 +682,7 @@ Replace it with your model and return either a `vision.VisionResult` or an
    Synthetic source, Start, press Simulate can (or Space). Check live detection, results, KPIs,
    saved images and the log. Try E-stop / Reset / Ack alarm.
 2. **Pi, air supply OFF:**
-   - At idle only green flashes and the relay 4 (buzzer) LED is **off**.
+   - At idle only green flashes and the buzzer relay LED is **off**.
    - Outputs panel (**O**): click each lamp and the buzzer; check that the
      right relay and lamp switch.
    - Rejector fitted: Rejector test fires 3 pulses.

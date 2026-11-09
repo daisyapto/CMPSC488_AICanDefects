@@ -357,7 +357,7 @@ function renderTower(st) {
   $("#valveState").textContent = st.valve ? "Air on" : st.locked ? "Locked out" : "Closed";
   if (S.pins) $("#valvePins").textContent = !st.rejector_connected ? "Not connected yet - cans are only marked PASS / FAIL"
     : st.rejector ? `GPIO ${S.pins.reject}` : `GPIO ${S.pins.reject} · off in Settings - cans are only marked PASS / FAIL`;
-  if (S.pins) $("#buzzerPins").textContent = `GPIO ${S.pins.buzzer} · relay 4`;
+  if (S.pins) $("#buzzerPins").textContent = `GPIO ${S.pins.buzzer}`;
   const bz = $("#btnBuzzer");
   $("#buzzerRow").classList.toggle("open", !!st.buzzer);
   bz.textContent = st.buzzer ? "Turn off" : "Test";

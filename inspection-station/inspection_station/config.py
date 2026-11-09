@@ -28,27 +28,27 @@ SENSOR_PULL = "pn"         # no internal pull - the divider defines the level
 
 RELAY_ACTIVE_LOW = True    # 4-channel relay board: input LOW = relay ON
 
-LIGHT_PINS = {
-    "green": 5,            # header pin 29 -> relay 1
-    "yellow": 6,           # header pin 31 -> relay 2
-    "red": 26,             # header pin 37 -> relay 3
+LIGHT_PINS = {             # junction-box wiring (Nov 2026)
+    "red": 14,             # header pin 8  -> relay -> red lamp
+    "yellow": 15,          # header pin 10 -> relay -> yellow lamp
+    "green": 18,           # header pin 12 -> relay -> green lamp
 }
-BUZZER_PIN = 23            # header pin 16 -> relay 4 -> buzzer
+BUZZER_PIN = 23            # header pin 16 -> relay -> buzzer
 # Rejector output - its own GPIO, separate from the buzzer. Not connected yet:
 # None = no rejector, cans are only marked PASS / FAIL. When it is wired, put its
-# GPIO number here (a free pin, e.g. 7 = header pin 26) and turn "Rejector" on in Settings.
+# GPIO number here (a free pin, e.g. 24 = header pin 18) and turn "Rejector" on in Settings.
 REJECT_PIN = None
 
 WIRING = [  # (physical pin, signal, connected to)
     (2, "5V", "Sensor power"),
     (4, "5V", "Relay board VCC"),
     (6, "GND", "Sensor GND"),
-    (9, "GND", "Relay board GND"),
-    (16, "GPIO23", "Relay 4 - buzzer"),
+    (8, "GPIO14", "Relay - red lamp"),
+    (10, "GPIO15", "Relay - yellow lamp"),
+    (12, "GPIO18", "Relay - green lamp"),
+    (14, "GND", "Relay board GND"),
+    (16, "GPIO23", "Relay - buzzer"),
     (22, "GPIO25", "Sensor signal (through divider)"),
-    (29, "GPIO5", "Relay 1 - green lamp"),
-    (31, "GPIO6", "Relay 2 - yellow lamp"),
-    (37, "GPIO26", "Relay 3 - red lamp"),
 ]
 
 # =============================================================================
@@ -111,6 +111,7 @@ class Settings:
     yolo_model: str = "models/can_classifier.pt"   # .pt / .onnx / *_ncnn_model folder (relative to the project)
     yolo_conf: int = 60                # % - detection: boxes below this are ignored · classifier: fail score that fails the can
     yolo_imgsz: int = 640              # model input size (smaller = faster, misses small defects)
+    yolo_empty_fails: bool = True      # detection model with a "good" class finds no box -> FAIL ("No can found")
     yolo_crop: bool = False            # crop to the can before YOLO - only for models trained on crops (can_classifier.pt is trained on full frames)
     active_cooler: bool = False        # Pi 5 active cooler fitted? Without it, YOLO runs only on inspected cans
     inspect_area: list = None          # [x0, y0, x1, y1] fractions of the image; None = whole view

@@ -496,7 +496,7 @@ class Controller:
             self.lights.set(key, not self.lights.state[key])
 
     def beep(self, seconds: float = 0.6):
-        """Buzzer test: one short beep (relay 4)."""
+        """Buzzer test: one short beep."""
         def run():
             self.lights.buzzer.set(True)
             time.sleep(seconds)

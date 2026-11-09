@@ -52,6 +52,7 @@ class VisionParams:
     yolo_conf: float = 0.5
     yolo_imgsz: int = 640
     yolo_crop: bool = True
+    yolo_empty_fails: bool = True   # detection model with a "good" class finds nothing -> FAIL (not PASS)
     area: tuple = (0.0, 0.0, 1.0, 1.0)   # inspection area (x0, y0, x1, y1) as fractions of the image
 
     @property
@@ -440,6 +441,12 @@ class Busy(Exception):
 GOOD_NAMES = {"good", "ok", "pass", "no_defect", "normal"}
 
 
+def is_good_name(name) -> bool:
+    """'good', 'good can', 'Good_Can', 'ok' ... count as good; 'not good' does not."""
+    n = str(name).lower().replace("_", " ").replace("-", " ").strip()
+    return n in GOOD_NAMES or (n.startswith("good") or n.endswith(" good")) and not n.startswith("not ")
+
+
 class YoloDetector:
     """Runs an Ultralytics YOLO model (pip install ultralytics).
 
@@ -551,7 +558,7 @@ class YoloDetector:
         defects, confs, measures = [], [], {}
         if getattr(r, "probs", None) is not None:                 # classification model
             probs = [float(v) for v in r.probs.data.cpu().tolist()]
-            good = [i for i in range(len(probs)) if str(names.get(i, i)).lower() in GOOD_NAMES]
+            good = [i for i in range(len(probs)) if is_good_name(names.get(i, i))]
             fail_score = 1.0 - sum(probs[i] for i in good) if good else max(probs)
             bad = [i for i in range(len(probs)) if i not in good]
             worst = max(bad, key=lambda i: probs[i]) if bad else int(r.probs.top1)
@@ -568,15 +575,25 @@ class YoloDetector:
             cls = boxes.cls.cpu().numpy().astype(int) if len(xyxy) else []
             cf = boxes.conf.cpu().numpy() if len(xyxy) else []
             h, w = work.shape[:2]
+            good_boxes = []
             for (x1, y1, x2, y2), c, k in zip(xyxy, cf, cls):
                 label = str(names.get(int(k), k))
-                if label.lower() in GOOD_NAMES:
+                if is_good_name(label):
+                    good_boxes.append(float(c))
                     continue
                 x, y = int(np.clip((x1 + ox) * scale, 0, w - 1)), int(np.clip((y1 + oy) * scale, 0, h - 1))
                 bw, bh = int((x2 - x1) * scale), int((y2 - y1) * scale)
                 defects.append(Defect(label.replace("_", " ").capitalize(), x, y, bw, bh, bw * bh, float(c)))
                 confs.append(float(c))
-            pass_conf = None
+            pass_conf = max(good_boxes) if good_boxes and not defects else None
+            has_good_class = any(is_good_name(n) for n in names.values())
+            if not len(xyxy) and has_good_class and p.yolo_empty_fails:
+                # the model also labels good cans, so "nothing found" means it did not
+                # recognise the can (empty frame, wrong position, glare) - don't pass it
+                defects.append(Defect("No can found", 0, 0, 0, 0, 0, 0.0))
+                confs.append(0.0)
+            measures["Boxes"] = (", ".join(f"{names.get(int(k), k)} {c * 100:.0f}%" for c, k in zip(cf, cls))
+                                 or f"none above {p.yolo_conf * 100:.0f}%")
         defects.sort(key=lambda d: d.strength, reverse=True)
         conf = max(confs) if confs else (pass_conf or 0.95)
 

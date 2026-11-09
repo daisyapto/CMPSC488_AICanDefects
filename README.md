@@ -15,7 +15,7 @@ scripts stay on the other branches.
 | Raspberry Pi 5 | official 27 W USB-C supply (Active Cooler recommended for YOLO) |
 | Teledyne DALSA Genie Nano G3-GC10-C1280 (GigE Vision) | own Ethernet cable to the Pi; PoE injector (802.3af) or 10-36 V on its 10-pin connector |
 | Trigger sensor (5 V) | signal through a resistor divider (5 V -> 3.3 V) to GPIO25 (header pin 22) |
-| 4-channel relay board (active-low) | relay 1 green (GPIO5, pin 29), relay 2 yellow (GPIO6, pin 31), relay 3 red (GPIO26, pin 37), relay 4 buzzer (GPIO23, pin 16) |
+| 4-channel relay board (active-low) | red GPIO14 (pin 8), yellow GPIO15 (pin 10), green GPIO18 (pin 12), buzzer GPIO23 (pin 16); 5 V pin 4, GND pin 14 |
 | Rejector | not wired yet - gets its own free GPIO when fitted |
 | Conveyor | KEYENCE conveyor on its own controller (not driven by the Pi) |
 

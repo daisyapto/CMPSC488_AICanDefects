@@ -36,8 +36,14 @@ fi
 # ----------------------------------------------------------------------------- 2
 say "2. Relay pins safe during boot"
 CFG=/boot/firmware/config.txt; [ -f "$CFG" ] || CFG=/boot/config.txt
-LINE="gpio=5,6,23,26=op,dh"
-if grep -q "^gpio=5,6,23,26=op,dh" "$CFG"; then echo "  already in $CFG"
+LINE="gpio=14,15,18,23=op,dh"
+if grep -q "^gpio=5,6,23,26=op,dh" "$CFG"; then         # wiring before the junction box
+  cp "$CFG" "$CFG.bak.$(date +%Y%m%d%H%M%S)"
+  sed -i '/^gpio=5,6,23,26=op,dh/d' "$CFG"
+  echo "  removed the old relay line (gpio=5,6,23,26) - the lamps moved to GPIO 14/15/18"
+  REBOOT=1
+fi
+if grep -q "^$LINE" "$CFG"; then echo "  already in $CFG"
 else
   echo "  The relay board is active-low: until the station starts, a floating GPIO can switch a relay"
   echo "  (or the air valve) ON while the Pi boots. This line in $CFG holds them HIGH = OFF."
@@ -45,6 +51,23 @@ else
     cp "$CFG" "$CFG.bak.$(date +%Y%m%d%H%M%S)"
     printf '\n[all]\n# can inspection station: relay pins high (= relays off) from boot\n%s\n' "$LINE" >> "$CFG"
     REBOOT=1; echo "  added (backup next to it)"
+  fi
+fi
+
+# GPIO 14/15 are also the serial port (UART0): if it is on, the red / yellow relays can click at boot
+UART_LINES=$(grep -nE "^\s*(enable_uart=1|dtparam=uart0(=on)?|dtoverlay=uart0)" "$CFG" || true)
+CMDLINE=/boot/firmware/cmdline.txt; [ -f "$CMDLINE" ] || CMDLINE=/boot/cmdline.txt
+if [ -n "$UART_LINES" ] || grep -qE "console=(serial0|ttyAMA0|ttyS0)" "$CMDLINE" 2>/dev/null; then
+  echo "  The serial port (UART) is turned on - it uses GPIO 14/15, the red and yellow lamps."
+  if ask "  turn the serial port and serial console off?" y; then
+    cp "$CFG" "$CFG.bak.$(date +%Y%m%d%H%M%S)"
+    sed -i -E 's/^(\s*)(enable_uart=1|dtparam=uart0(=on)?|dtoverlay=uart0.*)$/\1# \2   # off: GPIO 14\/15 drive relays/' "$CFG"
+    if [ -f "$CMDLINE" ]; then
+      cp "$CMDLINE" "$CMDLINE.bak.$(date +%Y%m%d%H%M%S)"
+      sed -i -E 's/ ?console=(serial0|ttyAMA0|ttyS0),[0-9]+//g; s/^ +//' "$CMDLINE"
+    fi
+    systemctl disable --now serial-getty@ttyAMA0.service serial-getty@ttyS0.service >/dev/null 2>&1
+    REBOOT=1; echo "  serial port off (backups next to the files)"
   fi
 fi
 

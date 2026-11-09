@@ -298,6 +298,7 @@ SETTING_RULES = {
     "vision_engine": _choice("builtin", "team", *(["yolo"] if YOLO_AVAILABLE else [])),
     "active_cooler": _bool,
     "yolo_conf": _int_range(5, 95), "yolo_imgsz": _int_range(160, 1280), "yolo_crop": _bool,
+    "yolo_empty_fails": _bool,
     "camera_fps": _int_range(5, 30), "standby_after_min": _int_range(0, 120),
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),

@@ -850,7 +850,7 @@ class CameraManager:
                             area=tuple(self.s.inspect_area or (0, 0, 1, 1)),
                             engine=self.s.vision_engine, yolo_model=self.s.yolo_model,
                             yolo_conf=self.s.yolo_conf / 100, yolo_imgsz=self.s.yolo_imgsz,
-                            yolo_crop=self.s.yolo_crop)
+                            yolo_crop=self.s.yolo_crop, yolo_empty_fails=self.s.yolo_empty_fails)
 
     # ---------------------------------------------------------------- control
     def switch_source(self, name: str):

@@ -124,7 +124,7 @@
         </div>
         <div class="valve buzzer-row" id="buzzerRow">
           <span class="valve-icon"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg></span>
-          <div><div class="valve-title">Buzzer</div><div class="muted small" id="buzzerPins">relay 4</div></div>
+          <div><div class="valve-title">Buzzer</div><div class="muted small" id="buzzerPins">GPIO 23</div></div>
           <button class="btn btn-sm btn-quiet" id="btnBuzzer">Test</button>
         </div>
         <div class="setting-row">
@@ -345,10 +345,10 @@
         <div class="setting-row"><div><div class="label">Manual lamp control</div><div class="muted small">switch each relay by hand</div></div>
           <label class="switch"><input type="checkbox" id="dgOverride"><span></span></label></div>
         <div class="lamp-btns" id="dgLamps">
-          <button class="lamp-btn" data-key="green">Green<small>relay 1 · GPIO 5</small></button>
-          <button class="lamp-btn" data-key="yellow">Yellow<small>relay 2 · GPIO 6</small></button>
-          <button class="lamp-btn" data-key="red">Red<small>relay 3 · GPIO 26</small></button>
-          <button class="lamp-btn" data-key="buzzer">Buzzer<small>relay 4 · GPIO 23</small></button>
+          <button class="lamp-btn" data-key="green">Green<small>GPIO 18 · pin 12</small></button>
+          <button class="lamp-btn" data-key="yellow">Yellow<small>GPIO 15 · pin 10</small></button>
+          <button class="lamp-btn" data-key="red">Red<small>GPIO 14 · pin 8</small></button>
+          <button class="lamp-btn" data-key="buzzer">Buzzer<small>GPIO 23 · pin 16</small></button>
         </div>
         <button class="btn btn-quiet btn-block danger-text" data-cmd="test_burst">Test rejector<span class="muted small" id="dgRejPin">&nbsp;· not connected</span></button>
       </section>
@@ -438,9 +438,10 @@
         <div id="yoloFields" class="hidden">
           <div class="field col"><label>YOLO model file (on the station)</label>
             <div class="input-row"><input id="yoloInput" class="input mono" spellcheck="false" placeholder="models/can_defects.pt"><button class="btn btn-sm btn-primary" id="yoloApply">Apply</button></div></div>
-          <div class="field"><div><label>Min confidence</label><div class="hint">pass / fail classifier: the fail score that fails a can (60 % = the team's threshold)</div></div><div class="stepper" data-setting="yolo_conf" data-min="5" data-max="95" data-step="5" data-unit="%"></div></div>
+          <div class="field"><div><label>Min confidence</label><div class="hint">detection model: boxes below this are ignored (try 25-40 %) · pass / fail classifier: the fail score that fails a can (60 %)</div></div><div class="stepper" data-setting="yolo_conf" data-min="5" data-max="95" data-step="5" data-unit="%"></div></div>
           <div class="field"><div><label>Model image size</label><div class="hint">detection models (smaller = faster, misses small defects) · classifiers run at the size they were trained at</div></div><div class="stepper" data-setting="yolo_imgsz" data-min="160" data-max="1280" data-step="32" data-unit="px"></div></div>
           <div class="field"><div><label>Active cooler fitted</label><div class="hint">Off: the model runs only on inspected cans, not the live view.</div></div><label class="switch"><input type="checkbox" data-setting="active_cooler"><span></span></label></div>
+          <div class="field"><div><label>No box found = FAIL</label><div class="hint">detection models with a "good" class: if the model finds nothing, the can fails as "No can found" instead of passing</div></div><label class="switch"><input type="checkbox" data-setting="yolo_empty_fails"><span></span></label></div>
           <div class="field"><div><label>Crop to the can first</label><div class="hint">only for models trained on cropped cans - leave off for can_classifier.pt (trained on full frames)</div></div><label class="switch"><input type="checkbox" data-setting="yolo_crop"><span></span></label></div>
         </div>
         <div class="field"><div><label>Sensitivity</label><div class="hint">Built-in engine: higher finds smaller marks.</div></div><div class="stepper" data-setting="vision_sensitivity" data-min="1" data-max="100" data-step="5" data-unit=""></div></div>
