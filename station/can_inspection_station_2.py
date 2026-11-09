@@ -19,15 +19,19 @@ Trigger
   * Continuous mode ignores the sensor (bench testing).
 
 Usage:
-    python can_inspection_station.py --model best.pt --conf 0.25
-    python can_inspection_station.py --model best.pt --continuous      # no sensor needed
+    python station/can_inspection_station_2.py --model yolo/models/best.pt --conf 0.25
+    python station/can_inspection_station_2.py --model yolo/models/best.pt --continuous      # no sensor needed
 """
 
 import sys
 import argparse
+from pathlib import Path
+import html
 import shutil
 import subprocess
+import threading
 import time
+from datetime import datetime
 
 import numpy as np
 import cv2
@@ -40,10 +44,11 @@ except ImportError:
 from ultralytics import YOLO
 
 from PyQt6.QtCore import QThread, QTimer, pyqtSignal, Qt
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QFontDatabase, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout,
     QHBoxLayout, QSlider, QGroupBox, QTextEdit, QComboBox, QGridLayout,
+    QStackedWidget, QPlainTextEdit, QButtonGroup, QFileDialog,
 )
 
 # ----------------------------------------------------------------------------
@@ -65,6 +70,8 @@ CHASE_STEP_MS = 250                # manual test chase step length
 
 GOOD_KEYWORD = "good"              # any class whose name contains this counts as "good"
 
+PRED_LOG_MAX_LINES = 5000          # prediction log keeps the most recent N lines
+
 # (key, label, BCM GPIO, active colour) - outputs are ACTIVE-LOW (dl = on, dh = off)
 OUTPUTS = [
     ("green",  "GREEN - ACTIVE",       18, "#2ecc71"),
@@ -85,6 +92,11 @@ BAYER_TO_CV = [
 BTN_STYLE = "color: white; font-weight: bold; padding: 10px; border-radius: 4px;"
 RED_BTN = f"background-color: #d9534f; {BTN_STYLE}"
 GREEN_BTN = f"background-color: #5cb85c; {BTN_STYLE}"
+VIEW_BTN = (
+    "QPushButton { background-color: #2a3242; color: #8e9aaf; font-weight: bold;"
+    " padding: 8px 18px; border: none; border-radius: 4px; }"
+    "QPushButton:checked { background-color: #2980b9; color: white; }"
+)
 
 
 # ----------------------------------------------------------------------------
@@ -93,12 +105,19 @@ GREEN_BTN = f"background-color: #5cb85c; {BTN_STYLE}"
 class GPIO:
     def __init__(self):
         self.available = shutil.which("pinctrl") is not None
+        # Only one pinctrl process at a time: launching it from the sensor thread and the GUI
+        # thread simultaneously can fail with "OSError: [Errno 9] Bad file descriptor".
+        self._lock = threading.Lock()
 
     def _run(self, *args):
         if not self.available:
             return None
-        return subprocess.run(["pinctrl", *map(str, args)],
-                              capture_output=True, text=True, check=False)
+        with self._lock:
+            try:
+                return subprocess.run(["pinctrl", *map(str, args)], capture_output=True,
+                                      text=True, check=False, timeout=2)
+            except Exception:
+                return None      # treated as UNKNOWN / skipped write, never crashes the app
 
     def setup_input(self, pin):
         self._run("set", pin, "ip", "pn")
@@ -130,14 +149,18 @@ class SensorMonitor(QThread):
     def run(self):
         last_emitted, candidate, count = None, None, 0
         while self._running:
-            s = self.gpio.read(self.pin)
-            if s == candidate:
-                count += 1
-            else:
-                candidate, count = s, 1
-            if count >= SENSOR_DEBOUNCE_READS and s != last_emitted:
-                last_emitted = s
-                self.state_changed.emit(s)
+            # An uncaught exception in a QThread aborts the whole program in PyQt6
+            try:
+                s = self.gpio.read(self.pin)
+                if s == candidate:
+                    count += 1
+                else:
+                    candidate, count = s, 1
+                if count >= SENSOR_DEBOUNCE_READS and s != last_emitted:
+                    last_emitted = s
+                    self.state_changed.emit(s)
+            except Exception:
+                pass
             time.sleep(SENSOR_POLL_S)
 
     def stop(self):
@@ -328,6 +351,7 @@ class CameraInferenceWorker(QThread):
                 annotated, metrics = self.process_detections(
                     frame, r, model, good_classes, self._idx, hold_remaining)
                 metrics["counted"] = counted
+                metrics["time"] = time.time()
                 self.frame_ready.emit(annotated, metrics)
                 self._idx += 1
             except Exception as e:
@@ -477,13 +501,59 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
 
-        # Left: live view
+        # Left: view switcher (Live View <-> Prediction Log)
+        left = QVBoxLayout()
+        view_bar = QHBoxLayout()
+        self.btn_view_live = QPushButton("Live View")
+        self.btn_view_log = QPushButton("Prediction Log")
+        self.view_group = QButtonGroup(self)
+        self.view_group.setExclusive(True)
+        for i, b in enumerate((self.btn_view_live, self.btn_view_log)):
+            b.setCheckable(True)
+            b.setStyleSheet(VIEW_BTN)
+            self.view_group.addButton(b, i)
+            view_bar.addWidget(b)
+        self.btn_view_live.setChecked(True)
+        self.view_group.idClicked.connect(self.set_view)
+        view_bar.addStretch()
+
+        view_bar.addWidget(QLabel("Log:"))
+        self.cmb_log_filter = QComboBox()
+        self.cmb_log_filter.addItems(["All frames", "Detections only", "Defects only", "Can verdicts only"])
+        view_bar.addWidget(self.cmb_log_filter)
+        self.btn_log_clear = QPushButton("Clear Log")
+        self.btn_log_clear.clicked.connect(self.clear_prediction_log)
+        self.btn_log_save = QPushButton("Save Log...")
+        self.btn_log_save.clicked.connect(self.save_prediction_log)
+        view_bar.addWidget(self.btn_log_clear)
+        view_bar.addWidget(self.btn_log_save)
+        left.addLayout(view_bar)
+
         self.video_label = QLabel("Waiting for camera / sensor trigger...")
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setStyleSheet(
             "background-color: #111; color: #fff; font-size: 16px; border-radius: 4px;")
         self.video_label.setMinimumSize(850, 650)
-        main_layout.addWidget(self.video_label, stretch=3)
+
+        self.pred_log = QPlainTextEdit(readOnly=True)
+        self.pred_log.setMaximumBlockCount(PRED_LOG_MAX_LINES)
+        mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        mono.setPointSize(11)
+        self.pred_log.setFont(mono)
+        self.pred_log.setStyleSheet(
+            "background-color: #111; color: #e0e0e0; border-radius: 4px; padding: 6px;")
+        self.pred_log.setMinimumSize(850, 650)
+
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.video_label)   # index 0
+        self.view_stack.addWidget(self.pred_log)      # index 1
+        left.addWidget(self.view_stack, stretch=1)
+        main_layout.addLayout(left, stretch=3)
+
+        # Ctrl+Tab flips between the two views
+        QShortcut(QKeySequence("Ctrl+Tab"), self, activated=lambda: self.set_view(
+            1 - self.view_stack.currentIndex()))
+        self._last_frame = None
 
         right = QVBoxLayout()
 
@@ -624,6 +694,7 @@ class MainWindow(QMainWindow):
     def on_camera_ok(self):
         if self.camera_faulted:
             self.log_message("Camera recovered.")
+            self._log_event("CAMERA RECOVERED", "#27ae60")
         self.camera_ready = True
         self.camera_faulted = False
         self.buzzer_timer.stop()
@@ -636,6 +707,8 @@ class MainWindow(QMainWindow):
         self.lbl_camera.setText("CAMERA: FAULT")
         self._badge(self.lbl_camera, "#c0392b")
         first = not self.camera_faulted
+        if first:
+            self._log_event(f"CAMERA FAULT: {msg}", "#e74c3c")
         self.camera_ready = False
         self.camera_faulted = True
         self.defect_in_view = False
@@ -716,6 +789,7 @@ class MainWindow(QMainWindow):
         self.lbl_verdict.setText(f"Last can: {verdict}  ({self.part_frames} frames)")
         self.lbl_verdict.setStyleSheet(f"color: {color}; font-size: 15px; font-weight: bold;")
         self.log_message(f"Can #{self.cans_total}: {verdict} ({self.part_frames} frames)")
+        self._log_event(f"CAN #{self.cans_total}: {verdict} ({self.part_frames} frames)", color)
         self._refresh_counters()
 
     # -- frames --------------------------------------------------------------
@@ -750,7 +824,70 @@ class MainWindow(QMainWindow):
             self.lbl_live.setStyleSheet("color: #aaa; font-size: 15px; font-weight: bold;")
 
         self._refresh_counters()
-        self._show_frame(frame)
+        self._log_prediction(metrics)
+
+        # Only render video while the live view is visible (saves CPU on the Pi)
+        self._last_frame = frame
+        if self.view_stack.currentIndex() == 0:
+            self._show_frame(frame)
+
+    # -- view switching / prediction log ---------------------------------------
+    def set_view(self, index):
+        self.view_stack.setCurrentIndex(index)
+        (self.btn_view_live if index == 0 else self.btn_view_log).setChecked(True)
+        if index == 0 and self._last_frame is not None and self.lbl_feed.text() == "FEED: LIVE":
+            self._show_frame(self._last_frame)
+
+    def _pred_line(self, html_text):
+        self.pred_log.appendHtml(html_text)
+
+    def _log_prediction(self, metrics):
+        mode = self.cmb_log_filter.currentIndex()   # 0 all, 1 detections, 2 defects, 3 verdicts only
+        dets = metrics["detections"]
+        is_defect = metrics["is_defect"]
+        if mode == 3 or (mode == 1 and not dets) or (mode == 2 and not is_defect):
+            return
+
+        ts = datetime.fromtimestamp(metrics.get("time", time.time())).strftime("%H:%M:%S.%f")[:-3]
+        if is_defect:
+            status, color = "DEFECT", "#f0ad4e"
+        elif dets:
+            status, color = "GOOD", "#5cb85c"
+        else:
+            status, color = "NONE", "#777777"
+
+        parts = []
+        for name, conf, is_good in dets:
+            c = "#5cb85c" if is_good else "#f0ad4e"
+            parts.append(f'<span style="color:{c}">{html.escape(str(name))}</span> {conf:.2f}')
+        det_txt = ", ".join(parts) if parts else '<span style="color:#777">no detections</span>'
+        nb = lambda s: s.replace(" ", "&nbsp;")    # keep column alignment in HTML
+        frame_cell = nb(f"frame {metrics['frame_idx']:>6}")
+        status_cell = nb(status.ljust(6))
+
+        self._pred_line(
+            f'<span style="color:#8e9aaf">[{ts}]&nbsp;{frame_cell}</span>'
+            f'&nbsp;&nbsp;<b style="color:{color}">{status_cell}</b>&nbsp;&nbsp;{det_txt}'
+        )
+
+    def _log_event(self, text, color):
+        ts = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        self._pred_line(f'<b style="color:{color}">[{ts}] ==== {html.escape(text)} ====</b>')
+
+    def clear_prediction_log(self):
+        self.pred_log.clear()
+
+    def save_prediction_log(self):
+        default = f"predictions_{datetime.now():%Y%m%d_%H%M%S}.txt"
+        path, _ = QFileDialog.getSaveFileName(self, "Save prediction log", default, "Text files (*.txt)")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self.pred_log.toPlainText())
+            self.log_message(f"Prediction log saved to {path}")
+        except Exception as e:
+            self.log_message(f"Could not save prediction log: {e}")
 
     def _set_defect_in_view(self, value):
         if value != self.defect_in_view:
@@ -867,7 +1004,7 @@ class MainWindow(QMainWindow):
 
 def main():
     parser = argparse.ArgumentParser(description="Can inspection station: YOLO + sensor + stack light")
-    parser.add_argument("--model", default="best.pt", help="Path to trained YOLO .pt model")
+    parser.add_argument("--model", default=str(Path(__file__).resolve().parent.parent / "yolo" / "models" / "best.pt"), help="Path to trained YOLO .pt model")
     parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence threshold")
     parser.add_argument("--continuous", action="store_true",
                         help="Start in continuous mode (ignore the sensor) for bench testing")

@@ -1,0 +1,10 @@
+# pip install -r requirements.txt
+numpy
+opencv-python
+ultralytics        # YOLO (installs torch)
+PyQt6              # station/ apps
+
+# Not on pip - install separately:
+#   PySpin  - Teledyne/FLIR Spinnaker SDK Python wheel (camera)
+#   gpiod   - on the Raspberry Pi: sudo apt install python3-libgpiod
+#   tkinter - comes with Python (sudo apt install python3-tk on the Pi)

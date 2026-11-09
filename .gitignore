@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Training output and large datasets (download datasets from the Teams channel)
+runs/
+dataset/
+Dataset_annotated/
+*_frames/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

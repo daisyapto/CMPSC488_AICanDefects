@@ -28,11 +28,32 @@ The budget station runs on a **Raspberry Pi 5** with a **Teledyne DALSA Genie Na
 
 ---
 
+## Folder Layout
+
+```
+index.html            hosted prototype (GitHub Pages - keep at the root)
+station/              integrated inspection station apps (PyQt + YOLO + sensor + stack light)
+hardware_tests/       stack light, GPIO sensor, air reject and camera bring-up scripts
+vision_opencv/        OpenCV edge/flange defect detection
+yolo/                 YOLO training and testing
+  models/best.pt      current trained model
+  results/val/        validation plots (confusion matrix, PR/F1 curves)
+  classification/     pass/fail classification scripts
+data_tools/           frame capture and video-to-frames tools
+data/captures/        sample Good / Defect can images
+simulators/           browser prototypes of the inspection line
+archive/              superseded first versions, kept for reference
+```
+
+Install the Python packages with `pip install -r requirements.txt` (see the file for PySpin and gpiod).
+
+---
+
 ## Repository Structure
 
 ### `inspection-station/` (branch `inspection-station`)
 
-The integrated line controller and operator dashboard. It combines the hardware test scripts (`StackLight.py`, `GPIOTest.py`, `AirTest.py`) with the camera and image processing into one application:
+The integrated line controller and operator dashboard. It combines the hardware test scripts (`hardware_tests/StackLight.py`, `hardware_tests/GPIOTest.py`, `hardware_tests/AirTest.py`) with the camera and image processing into one application:
 
 - trigger sensor -> camera capture -> inspection -> timed air reject (with fail-safe: a can that can't be inspected is rejected)
 - stack light: green = running, yellow = defect (flashing = unusual defect rate), red = fault until fixed
@@ -52,25 +73,25 @@ python run.py --sim        # on a laptop: simulation, opens the dashboard at htt
 
 ### Hardware test scripts
 
-#### `StackLight.py`
+#### `hardware_tests/StackLight.py`
 Tkinter control panel to switch the stack light relays (green / yellow / red) by hand through `pinctrl`.
 
-#### `GPIOTest.py`
+#### `hardware_tests/GPIOTest.py`
 Monitors a GPIO input with `pinctrl get` and prints its state changes - used to test the trigger sensor wiring.
 
-#### `AirTest.py`
+#### `hardware_tests/AirTest.py`
 Watches the trigger sensor and fires a short pneumatic burst (3 x 40 ms) on the reject solenoid.
 **Note:** the reject valve is now on relay 4 of the active-low relay board, where LOW = valve open - this script's "LOW = safe" assumption no longer holds. Use `inspection-station` (or invert the levels) for air tests.
 
-#### `InspectionLine.py`
+#### `archive/InspectionLine.py`
 First single-file version of the integrated controller (Tkinter dashboard). Superseded by `inspection-station/`.
 
-#### `SensorToCam.py`
+#### `hardware_tests/SensorToCam.py`
 Waits for the trigger sensor (via `gpiod`) and captures a frame from the camera with PySpin.
 
 ---
 
-### `yoloClassification/`
+### `yolo/classification/`
 
 This directory contains the scripts and resources required for training and evaluating an initial **YOLO-based classification model**.
 
@@ -101,7 +122,7 @@ A trained model can be run on the line by the inspection station's **YOLO** engi
 
 ---
 
-### `edgeDetection.py`
+### `vision_opencv/edgeDetection.py`
 
 One of the most successful early prototype solutions for defect detection.
 
@@ -114,7 +135,7 @@ This script demonstrates the complete OpenCV image-processing pipeline by displa
 
 ---
 
-### `edgeFaultDetection.py`
+### `vision_opencv/edgeFaultDetection.py`
 
 Builds upon the edge detection approach by adding inspection-related functionality, including:
 
@@ -127,7 +148,7 @@ This script represents an evolution toward a complete real-time inspection appli
 
 ---
 
-### `framesCR.py`
+### `data_tools/framesCR.py`
 
 Captures and saves image frames from the camera over a period of approximately **7 seconds**.
 
@@ -139,17 +160,17 @@ The collected images are primarily used for:
 
 ---
 
-### `testScript1.py`
+### `archive/testScript1.py`
 
 The first proof-of-concept script developed for the project.
 
 Its primary purpose was to establish communication with the **ELS camera system**, open a live camera feed, and verify camera operation.
 
-Some early OpenCV tools and experiments were initially tested here before being migrated into `edgeDetection.py` as the project evolved.
+Some early OpenCV tools and experiments were initially tested here before being migrated into `vision_opencv/edgeDetection.py` as the project evolved.
 
 ---
 
-### `module1.py`
+### `vision_opencv/module1.py`
 
 The edgeDetection.py adapted to work with PySpin/Spinnaker library to connect to Teledyne GigE Nano Genie (budget solution) camera.
 
@@ -161,7 +182,7 @@ The inspection station connects to the Genie Nano through Aravis instead (tested
 
 ---
 
-### `module2.py`
+### `hardware_tests/module2.py`
 
 The sample test script(s) to connect to Teledyne GigE Nano Genie (budget solution) camera with a live camera feed.
 
