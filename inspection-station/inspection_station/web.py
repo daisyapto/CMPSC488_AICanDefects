@@ -470,10 +470,36 @@ def create_app(ctl, remote_control: bool = False, tailscale: bool = False) -> Fl
     def fail(msg, code=409):
         return jsonify(ok=False, error=msg), code
 
+    COMPRESS = ("text/html", "text/css", "text/plain", "text/csv", "application/javascript",
+                "text/javascript", "application/json", "image/svg+xml")
+
     @app.after_request
     def no_cache(resp):
-        if request.path.startswith("/api/") or request.path.startswith("/static/"):
+        if request.path.startswith("/api/"):
             resp.headers["Cache-Control"] = "no-store"
+        elif request.path.startswith("/static/"):
+            # revalidate every time (ETag -> "304 not modified"): a git pull is picked up at once,
+            # but an unchanged file is not downloaded again - matters on a phone over Tailscale
+            resp.headers["Cache-Control"] = "no-cache"
+        return gzip_response(resp)
+
+    def gzip_response(resp):
+        """Compress text answers (page, scripts, styles, JSON) - about 4x less to send to a phone."""
+        if (resp.status_code != 200 or resp.mimetype not in COMPRESS
+                or "gzip" not in request.headers.get("Accept-Encoding", "")
+                or "Content-Encoding" in resp.headers):
+            return resp
+        if resp.direct_passthrough:                     # send_file / static files
+            resp.direct_passthrough = False
+        elif resp.is_streamed:                          # event streams, CSV generators: leave as they are
+            return resp
+        data = resp.get_data()
+        if len(data) < 1024:
+            return resp
+        import gzip as _gzip
+        resp.set_data(_gzip.compress(data, 5))
+        resp.headers["Content-Encoding"] = "gzip"
+        resp.headers["Vary"] = "Accept-Encoding"
         return resp
 
     @app.get("/")
@@ -1099,6 +1125,13 @@ def create_app(ctl, remote_control: bool = False, tailscale: bool = False) -> Fl
             abort(404)
         import cv2
 
+        # The station screen gets the full picture. Other devices (phones over Tailscale / mobile data)
+        # get a smaller, slower stream - otherwise the video fills the Pi's upload and the page lags.
+        # ?q=full or ?q=low overrides.
+        q = request.args.get("q", "")
+        full = q == "full" or (q != "low" and is_local())
+        width, quality, period = (None, 70, 1 / 10) if full else (640, 60, 1 / 4)
+
         def gen():
             hub.viewers += 1
             m.live_visible = True
@@ -1108,12 +1141,16 @@ def create_app(ctl, remote_control: bool = False, tailscale: bool = False) -> Fl
                     lf = m.live_frame()
                     if lf is not None and lf[2] != shown and m.ok:
                         shown = lf[2]
-                        ok_, jpg = cv2.imencode(".jpg", lf[0], [cv2.IMWRITE_JPEG_QUALITY, 70])
+                        img = lf[0]
+                        if width and img.shape[1] > width:
+                            img = cv2.resize(img, (width, round(img.shape[0] * width / img.shape[1])),
+                                             interpolation=cv2.INTER_AREA)
+                        ok_, jpg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
                         if ok_:
                             b = jpg.tobytes()
                             yield (b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
                                    + str(len(b)).encode() + b"\r\n\r\n" + b + b"\r\n")
-                    time.sleep(1 / 10)
+                    time.sleep(period)
             finally:
                 hub.viewers -= 1
                 m.live_visible = hub.viewers > 0
