@@ -1199,7 +1199,8 @@ class CameraManager:
             t0 = time.monotonic()
             try:
                 view = "raw" if mode == "raw" else self.live_view     # hot: no live detection
-                if self.s.vision_engine == "yolo" and not self.s.active_cooler and view != "raw":
+                if (self.s.vision_engine == "yolo" and not self.s.active_cooler and view != "raw"
+                        and not self.vision.yolo.hailo):       # on the AI HAT the live view costs the CPU nothing
                     view = "raw"         # no cooler: YOLO only on inspected cans (Last can panel)
                 img, res = render(self.vision, frame, view, self.params)
                 failed = False

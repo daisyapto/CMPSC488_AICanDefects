@@ -455,8 +455,10 @@ class YoloDetector:
       fail score = 1 - (probability of the good / ok / pass / normal classes);
       the can FAILS when the fail score reaches "Min confidence" (60 % = the
       FAIL_THRESHOLD of the team's inspect_can.py). Runs at the size it was trained at.
-    * Formats: .pt, .onnx, or an NCNN export folder (*_ncnn_model) - NCNN is the
-      fastest on a Raspberry Pi.
+    * Formats: .pt, .onnx, an NCNN export folder (*_ncnn_model), or a Hailo export
+      folder (*_hailo_model with the .hef + metadata.yaml) / a .hef inside one - runs on
+      the AI HAT+ (Hailo-8), much faster than the CPU. The Hailo model always runs at
+      the size it was exported at.
     * Inspections always get the model; the live view only uses it when it is
       free, so the live view can never delay a reject.
     """
@@ -467,7 +469,8 @@ class YoloDetector:
         self.ms = None
         self._model = None
         self._key = None
-        self._imgsz = None                         # classification: the size the model was trained at
+        self._imgsz = None                         # classification / Hailo: the size the model needs
+        self.hailo = False                         # model runs on the AI HAT+
         self._lock = threading.Lock()
 
     def _load(self, p: VisionParams):
@@ -477,11 +480,18 @@ class YoloDetector:
         if not path.exists():
             self.error = f"model not found: {path}"
             raise RuntimeError(self.error)
-        key = (str(path), path.stat().st_mtime, p.yolo_imgsz)
+        if path.suffix == ".hef":                  # Ultralytics loads the export folder, not the .hef
+            path = path.parent
+        hailo = is_hailo_model(path)
+        key = (str(path), path.stat().st_mtime, None if hailo else p.yolo_imgsz)
         if key == self._key and self._model is not None:
             return self._model
         if key == self._key:                      # failed before and nothing changed
             raise RuntimeError(self.error)
+        if self._model is not None:               # the Hailo-8 can be opened by one model at a time:
+            self._model = None                     # release the old one before loading the new one
+            import gc
+            gc.collect()
         self._key, self._model = key, None
         try:
             from ultralytics import YOLO
@@ -490,7 +500,10 @@ class YoloDetector:
             raise RuntimeError(self.error) from e
         try:
             model = YOLO(str(path), task=None)
-            self._imgsz = _trained_imgsz(model) if getattr(model, "task", "") == "classify" else None
+            if hailo:
+                self._imgsz = _export_imgsz(path) or _trained_imgsz(model) or 640
+            else:
+                self._imgsz = _trained_imgsz(model) if getattr(model, "task", "") == "classify" else None
             size = self._imgsz or p.yolo_imgsz
             dummy = np.zeros((size, size, 3), np.uint8)
             model.predict(dummy, imgsz=size, verbose=False)    # warm-up: 1st run is slow
@@ -498,9 +511,9 @@ class YoloDetector:
             self.error = f"could not load {path.name}: {e}"
             raise RuntimeError(self.error) from e
         names = getattr(model, "names", {}) or {}
-        self._model, self.error = model, ""
-        self.info = f"{path.name} · {getattr(model, 'task', '?')} · {len(names)} classes: " + \
-                    ", ".join(str(n) for n in list(names.values())[:8]) + \
+        self._model, self.error, self.hailo = model, "", hailo
+        self.info = f"{path.name} · {'AI HAT (Hailo-8) · ' if hailo else ''}{getattr(model, 'task', '?')} · " \
+                    f"{len(names)} classes: " + ", ".join(str(n) for n in list(names.values())[:8]) + \
                     (f" · {self._imgsz} px" if self._imgsz else "")
         return model
 
@@ -603,6 +616,28 @@ class YoloDetector:
                 cv2.rectangle(mask, (d.x, d.y), (d.x + d.w, d.y + d.h), 255, -1)
         return VisionResult(not defects, defects, circle, float(conf), ms, "yolo",
                             work, blur, np.zeros_like(blur), mask, measures=measures)
+
+
+def is_hailo_model(path) -> bool:
+    """A Hailo export: a .hef file, or a folder that holds one."""
+    p = Path(path)
+    if p.suffix == ".hef":
+        return True
+    try:
+        return p.is_dir() and any(f.suffix == ".hef" for f in p.iterdir())
+    except OSError:
+        return False
+
+
+def _export_imgsz(folder):
+    """Input size from an Ultralytics export's metadata.yaml (imgsz: [640, 640])."""
+    try:
+        import yaml
+        meta = yaml.safe_load((Path(folder) / "metadata.yaml").read_text()) or {}
+        v = meta.get("imgsz")
+        return int(v[0] if isinstance(v, (list, tuple)) else v) if v else None
+    except Exception:
+        return None
 
 
 def _trained_imgsz(model):

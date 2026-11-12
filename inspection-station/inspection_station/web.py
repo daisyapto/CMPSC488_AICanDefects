@@ -218,7 +218,7 @@ class Hub:
                 "engine": ctl.settings.vision_engine,
                 "engine_error": {"team": v.team.error, "yolo": v.yolo.error}.get(ctl.settings.vision_engine, ""),
                 "yolo_info": v.yolo.info,
-                "yolo_ms": v.yolo.ms,
+                "yolo_ms": v.yolo.ms, "yolo_hailo": v.yolo.hailo,
                 "last_seq": m.last_seq,
                 "brightness": m.measure() if m.ok else None,
                 "auto_exposure": getattr(m, "_ae_running", False),

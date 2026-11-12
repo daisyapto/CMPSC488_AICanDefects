@@ -813,7 +813,7 @@ function syncSettings(st) {
   eh.textContent = cam.engine_error ? `⚠ ${cam.engine_error} — cans are being rejected until it is fixed.`
     : eng === "team" ? "Using detect() from team_vision.py. Sensitivity and min size don't apply; edits to the file load automatically."
     : cam.yolo_info ? `Loaded ${cam.yolo_info}` + (cam.yolo_ms != null ? ` · last inference ${Math.round(cam.yolo_ms)} ms` : "") +
-        (s.active_cooler ? "" : " · no cooler: live view shows the raw camera, boxes appear on inspected cans")
+        (s.active_cooler || cam.yolo_hailo ? "" : " · no cooler: live view shows the raw camera, boxes appear on inspected cans")
     : "Model loads on the first can (or open the live view). Sensitivity and min size don't apply.";
   renderHealth(st);
 }

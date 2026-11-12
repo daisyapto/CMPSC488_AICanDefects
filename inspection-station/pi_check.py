@@ -154,6 +154,18 @@ def check_packages():
             except Exception:
                 warn("YOLO edition, but ultralytics is not installed - fine unless you select the YOLO engine",
                      "pip install ultralytics ncnn  (in a venv made with --system-site-packages)")
+            # AI HAT+ (Hailo-8): optional, runs a Hailo export of the model much faster than the CPU
+            if shutil.which("hailortcli"):
+                rc, out = run(["hailortcli", "fw-control", "identify"])
+                if rc == 0 and "Firmware Version" in out:
+                    arch = next((l.split(":", 1)[1].strip() for l in out.splitlines() if "Architecture" in l), "Hailo")
+                    fw = next((l.split(":", 1)[1].strip() for l in out.splitlines() if "Firmware Version" in l), "?")
+                    ok(f"AI HAT: {arch}, firmware {fw} - use a Hailo export folder as the YOLO model")
+                else:
+                    warn("hailortcli found but the AI HAT did not answer",
+                         "close other programs using it (only one at a time), then: hailortcli fw-control identify")
+            else:
+                ok("AI HAT software not installed (optional - YOLO runs on the CPU)")
     except Exception as e:
         fail(f"cannot import the station code ({e}) - run this from the inspection-station folder")
 

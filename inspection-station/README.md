@@ -668,6 +668,13 @@ Put the model in `models/` and enter its path (default `models/can_defects.pt`).
 * **Classification model** (`*-cls`): the top class decides; `good` etc. = PASS.
 * **Formats:** `.pt`, `.onnx`, or an NCNN folder. On the Pi use NCNN - it is the
   fastest there: `yolo export model=best.pt format=ncnn` → enter `models/best_ncnn_model`.
+* **AI HAT+ (Hailo-8):** enter the Hailo export folder (the one with the `.hef` and
+  `metadata.yaml`, e.g. `/home/team3/best/best_hailo_model`). The model then runs on the
+  HAT instead of the CPU, always at the size it was exported at, and the live view can show
+  boxes without the Active Cooler setting. Only one program can use the HAT at a time - close
+  the bench app first. `pi_check.py` shows whether the HAT answers.
+  Export: `yolo export model=best.pt format=hailo name=hailo8 data=<dataset.yaml>` on an x86
+  Linux PC with Hailo's Dataflow Compiler (calibrate with our own can images).
 * **Crop to the can first** (on by default) cuts the image down to the can before
   YOLO resizes it to the model size, so small dents and scratches don't vanish.
 * **Timing:** the model is loaded and warmed up when it's selected / at start-up,
