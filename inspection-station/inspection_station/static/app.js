@@ -240,8 +240,51 @@ function onStatus(st) {
   renderCamera(st);
   renderProduction(st);
   syncSettings(st);
+  renderZone(st);
   renderRecipeDrawer(st);
   renderOutputs(st, can("operator"));
+}
+
+/* camera-zone capture mode: settings readout + Diagnostics card */
+function renderZone(st) {
+  const tr = st.track, s = st.settings || S.settings || {};
+  const zone = (s.capture_mode || st.capture_mode) === "zone";
+  $("#zoneFields")?.classList.toggle("hidden", !zone);
+  $("#delayField")?.classList.toggle("hidden", zone);
+  if (!tr) return;
+  const box = tr.zone || [0.47, 0.2, 0.53, 0.8];
+  const c = Math.round((box[0] + box[2]) * 50), w = Math.round((box[2] - box[0]) * 100);
+  const ce = $("#zoneCentre"), we = $("#zoneWidth");
+  if (ce && document.activeElement !== ce && !fresh("zone_box")) { ce.value = c; $("#zoneCentreV").textContent = c + "%"; }
+  if (we && document.activeElement !== we && !fresh("zone_box")) { we.value = w; $("#zoneWidthV").textContent = w + "%"; }
+  const h = $("#zoneHint");
+  if (h && zone) h.innerHTML = `Now: <b>${tr.present ? "can in zone" : "clear"}</b> · image change <b>${tr.score}</b> (trigger ${tr.level}). Set the level between the values with and without a can.`;
+  const card = $("#dgZoneCard");
+  if (!card) return;
+  card.classList.toggle("hidden", !zone);
+  if (!zone) return;
+  $("#dgZoneState").textContent = !st.zone_mode ? "needs Camera inspector" : tr.present ? "can in zone" : "clear";
+  const tt = tr.travel_ms == null ? "learning…" : tr.travel_ms + " ms";
+  $("#dgZoneFacts").innerHTML = `<dt>Sensor counted</dt><dd>${tr.sensor}</dd><dt>Camera saw</dt><dd>${tr.camera}</dd>
+    <dt>Matched</dt><dd>${tr.matched}</dd><dt>Missed</dt><dd class="${tr.missed ? "bad" : ""}">${tr.missed}</dd>
+    <dt>Camera only</dt><dd class="${tr.camera_only ? "warn" : ""}">${tr.camera_only}</dd><dt>On the way</dt><dd>${tr.waiting}</dd>
+    <dt>Sensor → camera</dt><dd>${tt}</dd><dt>Image change</dt><dd>${tr.score} / ${tr.level}</dd>`;
+}
+
+function wireZone() {
+  const send = () => {
+    const c = +$("#zoneCentre").value / 100, w = +$("#zoneWidth").value / 100;
+    const tr = S.status && S.status.track, box = (tr && tr.zone) || [0.47, 0.2, 0.53, 0.8];
+    const x0 = Math.max(0, c - w / 2), x1 = Math.min(1, c + w / 2);
+    S.editing.zone_box = Date.now();
+    setSetting("zone_box", [+x0.toFixed(4), box[1], +x1.toFixed(4), box[3]]);
+  };
+  [["#zoneCentre", "#zoneCentreV"], ["#zoneWidth", "#zoneWidthV"]].forEach(([id, out]) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("input", () => { $(out).textContent = el.value + "%"; S.editing.zone_box = Date.now(); });
+    el.addEventListener("change", send);
+  });
 }
 
 function renderHeader(st) {
@@ -500,6 +543,7 @@ function rowHtml(r) {
   const img = r.img ? `<svg class="img-ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>` : "";
   return `<td class="id">#${r.id}</td><td>${esc(r.t)}</td><td>${tag}</td><td>${esc(r.defect || "—")}</td>
     <td class="num">${Math.round(r.conf * 100)}%</td><td class="num">${Math.round(r.ms)} ms</td>
+    <td class="num">${r.travel == null ? "—" : r.travel + " ms"}</td>
     <td><span class="reject-lbl ${rcls}">${esc(rl)}</span></td><td>${img}</td>`;
 }
 
@@ -1550,7 +1594,8 @@ function wire() {
   $("#btnCloseDrawer").addEventListener("click", () => drawer(false));
   $("#scrim").addEventListener("click", () => drawer(false));
   $("#btnFullscreen").addEventListener("click", toggleFullscreen);
-  try { wireOutputs(); } catch (e) { console.error("Outputs panel:", e); }   // never block the rest (login etc.)
+  try { wireOutputs(); } catch (e) { console.error("Outputs panel:", e); }
+  try { wireZone(); } catch (e) { console.error("Camera zone:", e); }   // never block the rest (login etc.)
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); cmd("estop"); return; }      // always: safety first

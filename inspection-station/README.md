@@ -313,6 +313,26 @@ The relay board is **active-low**: a LOW pin turns the relay ON.
 The Genie Nano camera connects to the Pi's Ethernet port - see **Camera
 (Teledyne DALSA Genie Nano)** below for the network setup.
 
+## Capture: fixed delay or camera zone
+
+Settings › Camera › **Capture** chooses how the picture of each can is taken:
+
+* **Fixed delay** (default) - one picture at the capture delay after the sensor.
+* **Camera zone** - a narrow strip of the camera image (drawn on the live view) works as a
+  second sensor. Every can gets its Can ID at the sensor, the zone confirms the same can under
+  the camera, and the frame where it is in the middle of the zone is inspected. The station
+  learns the sensor -> camera travel time by itself. Needs the **Camera** inspector.
+  * **Missed** - the sensor counted a can the camera never saw: it is recorded as FAIL
+    ("Not seen by camera") and rejected like any other failed can.
+  * **Camera only** - the camera saw a can the sensor did not count: logged as a warning.
+  * Setup: keep the zone narrower than a can, press **Capture empty belt** with no can in the
+    zone (again after the lighting changes), and set the **Zone trigger level** between the
+    image-change values with and without a can (shown under the setting).
+  * Diagnostics › **Camera zone tracking** shows the counts and the travel time; the
+    Inspections table shows each can's travel time.
+
+The zone tracking is ported from Andrew Herman's bench app (`tracking.py`).
+
 ## Conveyor (KEYENCE)
 
 The KEYENCE conveyor runs on its own controller - start, stop and set its speed

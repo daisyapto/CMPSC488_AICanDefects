@@ -39,9 +39,10 @@ from .inspectors import Outcome, SimulatedInspector, build_inspectors
 
 try:                                    # camera support needs numpy + OpenCV
     from .camera import SOURCES, CameraManager
+    from .tracking import DEFAULT_ZONE, CanTracker
     CAMERA_IMPORT_ERROR = ""
 except Exception as _e:                 # app still runs without them
-    CameraManager, SOURCES = None, {}
+    CameraManager, SOURCES, CanTracker, DEFAULT_ZONE = None, {}, None, None
     CAMERA_IMPORT_ERROR = f"{_e.__class__.__name__}: {_e}"
 
 # reject status of a can
@@ -62,6 +63,8 @@ class InspectionResult:
     reject: str = PASS
     image: str = ""          # saved image path (camera inspector)
     batch: str = ""          # batch id the can belongs to
+    travel_ms: float | None = None   # camera-zone mode: sensor -> camera travel time
+    capture: str = ""        # "delay" | "zone" | "missed" (camera zone never saw the can)
 
     @property
     def escaped(self) -> bool:
@@ -69,13 +72,14 @@ class InspectionResult:
 
 
 CSV_HEADER = ["can_id", "timestamp", "result", "defect", "confidence",
-              "inspect_ms", "inspector", "reject", "image", "batch"]
+              "inspect_ms", "inspector", "reject", "image", "batch", "travel_ms", "capture"]
 
 
 def result_row(r: InspectionResult) -> list:
     return [r.can_id, r.timestamp.isoformat(timespec="milliseconds"),
             "PASS" if r.passed else "FAIL", r.defect, f"{r.confidence:.3f}",
-            f"{r.inspect_ms:.1f}", r.inspector, r.reject, r.image, r.batch]
+            f"{r.inspect_ms:.1f}", r.inspector, r.reject, r.image, r.batch,
+            "" if r.travel_ms is None else f"{r.travel_ms:.0f}", r.capture]
 
 
 # =============================================================================
@@ -197,6 +201,13 @@ class Controller:
         if self.cammgr:
             self.cammgr.on_ip_change = self._camera_ip_found
             self.recipes.load_reference(self.cammgr.vision)       # good-can reference of the recipe
+        # camera-zone capture mode (tracking.py, from Andrew Herman's bench app)
+        self.tracker = CanTracker(settings.zone_box or DEFAULT_ZONE, settings.zone_level) if CanTracker else None
+        self._camera_only_logged = 0.0
+        if self.cammgr and self.tracker:
+            self.cammgr.on_frame = self._on_camera_frame
+            self.cammgr.zone_overlay = lambda: ((self.tracker.zone, self.tracker.detector.present)
+                                                if self.zone_mode else None)
         self.inspectors = build_inspectors(self.cammgr, settings, CAMERA_IMPORT_ERROR)
         self.inspectors[SimulatedInspector.name].defect_rate = settings.sim_defect_rate / 100
         if settings.inspector not in self.inspectors:
@@ -297,6 +308,8 @@ class Controller:
             "cam_status": self.cammgr.status if self.cammgr else "not installed",
             "cam_fps": self.cammgr.fps if self.cammgr else 0.0,
             "queue": self._can_queue.qsize(), "sim": self.io.sim,
+            "capture_mode": self.settings.capture_mode, "zone_mode": self.zone_mode,
+            "track": self.tracker.stats() if self.tracker else None,
             "uptime": time.time() - self.started_at,
             "cpu_temp": self.cpu_temp, "cam_temp": self.cam_temp, "thermal": self.thermal,
             "standby": self.standby, "power": self.power, "is_pi": self.health.is_pi,
@@ -322,6 +335,8 @@ class Controller:
             self.lights.buzzer.set(False, force=True)
         self.manual_override = False
         self.running = True
+        if self.tracker:
+            self.tracker.matcher.drop_waiting()
         self.wake_camera(quiet=True)
         self._ignored_logged = False
         self.log("INFO", f"Line STARTED - inspector: {self.settings.inspector}")
@@ -331,6 +346,13 @@ class Controller:
             self.running = False
             self._idle_since = time.monotonic()
             self.log("INFO", "Line STOPPED")
+            self._drop_tracked("line stopped")
+
+    def _drop_tracked(self, why: str):
+        if self.tracker and self.zone_mode:
+            n = self.tracker.matcher.drop_waiting()
+            if n:
+                self.log("INFO", f"{n} can(s) between the sensor and the camera not inspected ({why})")
 
     def emergency_stop(self):
         if self.estop:
@@ -344,6 +366,7 @@ class Controller:
         self.rejector.safe()
         for can_id in self.scheduler.cancel_all():
             self._on_reject_done(can_id, LOCKED, 0.0)
+        self._drop_tracked("E-stop")
         self.log("ALARM", "E-STOP - inspection halted, reject valve locked out. "
                           "The conveyor is not stopped by the Pi - use its own stop")
 
@@ -373,6 +396,48 @@ class Controller:
             self.log("INFO", "Defect warning acknowledged")
 
     ack_alarm = acknowledge
+
+    # ------------------------------------------------------- camera-zone mode
+    @property
+    def zone_mode(self) -> bool:
+        """Camera-zone capture: needs the camera inspector and the tracking module."""
+        return (self.settings.capture_mode == "zone" and self.tracker is not None
+                and self.cammgr is not None and self.settings.inspector == "Camera")
+
+    def set_capture_mode(self, mode: str):
+        self.settings.capture_mode = mode
+        if self.tracker:
+            self.tracker.reset()
+            self.tracker.capture_background()
+        self.log("INFO", "Capture: camera zone - each can is confirmed by a strip of the camera image"
+                 if mode == "zone" else "Capture: fixed delay after the sensor")
+        if mode == "zone" and self.settings.inspector != "Camera":
+            self.log("WARN", "Camera-zone capture works with the Camera inspector - select it in Settings")
+
+    def set_zone(self, box):
+        self.settings.zone_box = box
+        if self.tracker:
+            self.tracker.set_zone(box)
+
+    def _on_camera_frame(self, frame, t: float):
+        """Camera thread, every frame: zone check + Can ID matching (cheap)."""
+        if not self.zone_mode:
+            return
+        events = self.tracker.on_frame(frame, t, self.running and not self.estop)
+        self._handle_track_events(events)
+
+    def _handle_track_events(self, events):
+        for kind, can_id, info in events:
+            if kind == "seen":
+                info["capture"] = "zone"
+                self._can_queue.put((can_id, info["sensor_t"], info))
+            elif kind == "missed":
+                self.log("WARN", f"Can #{can_id}: passed the sensor but the camera zone never saw it")
+                self._can_queue.put((can_id, info, {"missed": True, "capture": "missed"}))
+            elif kind == "camera_only" and time.monotonic() - self._camera_only_logged > 10:
+                self._camera_only_logged = time.monotonic()
+                self.log("WARN", "Camera zone saw a can the sensor did not count (camera only) - "
+                                 "check the sensor, or raise the zone trigger level")
 
     def set_inspector(self, name: str):
         if name in self.inspectors and name != self.settings.inspector:
@@ -547,7 +612,10 @@ class Controller:
             can_id = self._can_counter
         if self.cammgr:
             self.cammgr.on_trigger()              # synthetic / folder sources show the next can
-        self._can_queue.put((can_id, t))
+        if self.zone_mode:
+            self.tracker.on_sensor(can_id, t)     # inspected when the camera zone sees it
+        else:
+            self._can_queue.put((can_id, t))
 
     def _time_sensor(self, active: bool, t: float):
         """Beam blocked time per can -> belt speed (Diagnostics > Timing)."""
@@ -625,28 +693,36 @@ class Controller:
     def _inspection_worker(self):
         while not self._shutdown.is_set():
             try:
-                can_id, t_detect = self._can_queue.get(timeout=0.2)
+                item = self._can_queue.get(timeout=0.2)
             except queue.Empty:
                 continue
+            can_id, t_detect = item[0], item[1]
+            extra = item[2] if len(item) > 2 else None
             try:
-                self._inspect(can_id, t_detect)
+                self._inspect(can_id, t_detect, extra)
             except Exception as e:                   # never let the worker die
                 self.log("ERROR", f"Can #{can_id}: internal error {e!r}")
 
-    def _inspect(self, can_id: int, t_detect: float):
+    def _inspect(self, can_id: int, t_detect: float, extra: dict | None = None):
         s = self.settings
         name = s.inspector
+        extra = extra or {}
         t0 = time.monotonic()
-        try:
-            outcome = self.inspectors[name].inspect(can_id, t_detect)
-        except Exception as e:
-            outcome = Outcome(False, "Inspection error", 0.0)
-            self._log_inspector_error(can_id, e)
+        if extra.get("missed"):                       # camera zone never saw it: fail-safe
+            outcome = Outcome(False, "Not seen by camera", 0.0)
+        else:
+            try:
+                outcome = self.inspectors[name].inspect(can_id, t_detect, frame=extra.get("frame"))
+            except Exception as e:
+                outcome = Outcome(False, "Inspection error", 0.0)
+                self._log_inspector_error(can_id, e)
         inspect_ms = (time.monotonic() - t0) * 1000
 
         result = InspectionResult(can_id, datetime.now(), outcome.passed,
                                   outcome.defect or "", outcome.confidence, inspect_ms, name,
-                                  image=outcome.image, batch=self.batches.active_id)
+                                  image=outcome.image, batch=self.batches.active_id,
+                                  travel_ms=extra.get("travel_ms"),
+                                  capture=extra.get("capture", "delay" if name == "Camera" else ""))
         if outcome.passed:
             self._streak = 0
         else:
@@ -794,6 +870,8 @@ class Controller:
                     self.log("INFO", f"Fault cleared: {msg}")
                     self.alarms.cleared(k, "Reset" if time.monotonic() - self._reset_at < 1 else "cleared itself")
             self._fault_keys = now_faults
+            if self.zone_mode and self.running:      # camera silent: cans still time out as missed
+                self._handle_track_events(self.tracker.check_timeouts(time.monotonic()))
             if not self.manual_override and not self.selftest_running:
                 self.lights.apply(self._desired_lights(faults))
             time.sleep(0.05)

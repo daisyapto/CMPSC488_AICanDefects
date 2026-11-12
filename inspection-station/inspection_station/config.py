@@ -105,6 +105,10 @@ class Settings:
     webcam_index: int = 0
     image_folder: str = ""
     camera_delay_ms: int = 30          # sensor -> can centred under the camera
+    capture_mode: str = "delay"        # "delay": frame at camera_delay_ms after the sensor
+                                       # "zone": a strip of the image confirms each can (tracking.py)
+    zone_box: list = None              # [x0, y0, x1, y1] fractions; None = tracking.DEFAULT_ZONE
+    zone_level: int = 25               # image change (0-255) that means "can in the zone"
     exposure_us: int = 2000
     gain_db: int = 0
     vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo"
@@ -156,7 +160,9 @@ class Settings:
             default, value = getattr(s, f.name), data[f.name]
             if f.name == "vision_engine" and value not in ("team", "builtin", "yolo"):
                 continue                             # old "hailo" (AI HAT) setting -> default
-            if f.name == "inspect_area":
+            if f.name == "capture_mode" and value not in ("delay", "zone"):
+                continue
+            if f.name in ("inspect_area", "zone_box"):
                 if value is None or (isinstance(value, list) and len(value) == 4 and
                                      all(isinstance(v, (int, float)) and 0 <= v <= 1 for v in value)):
                     setattr(s, f.name, value)

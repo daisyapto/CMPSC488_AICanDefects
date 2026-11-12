@@ -115,3 +115,12 @@ def render_can(kind: str | None = None, W: int = 1024, H: int = 768, seed: int |
     img = img + np.where(rho < 0.99, layer, 0)
     img = cv2.GaussianBlur(np.clip(img, 0, 255).astype(np.float32), (3, 3), 0.8)   # optics
     return np.clip(img, 0, 255).astype(np.uint8), truth
+
+
+def render_belt(W: int = 1024, H: int = 768, grid=None):
+    """Empty conveyor (belt texture + guide rails) - background for cans moving through the view."""
+    xx, yy = grid if grid is not None else _grid(W, H)
+    img = 58 + 8 * np.sin(xx / 7.0) * 0.4 + 6 * (yy / H)
+    for y0 in (0.06, 0.94):
+        img = np.where(np.abs(yy - H * y0) < H * 0.025, 190 + 25 * np.cos((yy - H * y0) / 6), img)
+    return np.clip(img, 0, 255).astype(np.uint8)

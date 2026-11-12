@@ -36,7 +36,7 @@ class Inspector:
     name = "Base"
     description = ""
 
-    def inspect(self, can_id: int, t_detect: float) -> Outcome:
+    def inspect(self, can_id: int, t_detect: float, frame=None) -> Outcome:
         raise NotImplementedError
 
 
@@ -47,7 +47,7 @@ class SimulatedInspector(Inspector):
     def __init__(self, defect_rate: float = 0.10):
         self.defect_rate = defect_rate
 
-    def inspect(self, can_id, t_detect):
+    def inspect(self, can_id, t_detect, frame=None):
         time.sleep(random.uniform(0.010, 0.040))       # fake capture + inference time
         if random.random() < self.defect_rate:
             return Outcome(False, random.choice(DEFECT_TYPES), random.uniform(0.75, 0.99))
@@ -58,7 +58,7 @@ class AlwaysPassInspector(Inspector):
     name = "Always pass"
     description = "Sensor / counting test"
 
-    def inspect(self, can_id, t_detect):
+    def inspect(self, can_id, t_detect, frame=None):
         return Outcome(True, "", 1.0)
 
 
@@ -66,7 +66,7 @@ class AlwaysRejectInspector(Inspector):
     name = "Always reject"
     description = "Air timing test - blows every can"
 
-    def inspect(self, can_id, t_detect):
+    def inspect(self, can_id, t_detect, frame=None):
         return Outcome(False, "Forced reject", 1.0)
 
 
@@ -79,7 +79,7 @@ class CameraInspector(Inspector):
         self.s = settings
         self.import_error = import_error
 
-    def inspect(self, can_id, t_detect):
+    def inspect(self, can_id, t_detect, frame=None):
         m, s = self.m, self.s
         if m is None:
             raise RuntimeError(f"camera support not installed ({self.import_error})")
@@ -87,7 +87,8 @@ class CameraInspector(Inspector):
             raise RuntimeError(f"camera not ready - {m.status}")
         from .vision import annotate
 
-        frame, _ = m.wait_frame_after(t_detect + s.camera_delay_ms / 1000, timeout=0.5)
+        if frame is None:                          # fixed-delay capture; camera-zone mode passes the frame
+            frame, _ = m.wait_frame_after(t_detect + s.camera_delay_ms / 1000, timeout=0.5)
 
         # ---- decision. To use a trained model, replace this line with code that
         # ---- returns a vision.VisionResult (or build an Outcome directly).

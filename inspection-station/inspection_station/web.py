@@ -77,7 +77,8 @@ def result_dict(r) -> dict:
     return {"id": r.can_id, "t": r.timestamp.strftime("%H:%M:%S"), "ts": r.timestamp.timestamp(),
             "pass": r.passed, "defect": r.defect, "conf": round(r.confidence, 3),
             "ms": round(r.inspect_ms, 1), "insp": r.inspector, "reject": r.reject, "img": img,
-            "batch": r.batch}
+            "batch": r.batch, "travel": None if r.travel_ms is None else round(r.travel_ms),
+            "capture": r.capture}
 
 
 class Session:
@@ -299,6 +300,7 @@ SETTING_RULES = {
     "active_cooler": _bool,
     "yolo_conf": _int_range(5, 95), "yolo_imgsz": _int_range(160, 1280), "yolo_crop": _bool,
     "yolo_empty_fails": _bool,
+    "capture_mode": _choice("delay", "zone"), "zone_level": _int_range(3, 150),
     "camera_fps": _int_range(5, 30), "standby_after_min": _int_range(0, 120),
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
@@ -346,6 +348,15 @@ def apply_setting(ctl, key, value):
             value = None if (x0 <= 0.001 and y0 <= 0.001 and x1 >= 0.999 and y1 >= 0.999) else \
                 [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]
         ctl.settings.inspect_area = value
+    elif key == "zone_box":
+        if not (isinstance(value, list) and len(value) == 4 and
+                all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value)):
+            raise ValueError("expected [x0, y0, x1, y1] between 0 and 1")
+        x0, y0, x1, y1 = (min(1.0, max(0.0, float(v))) for v in value)
+        x0, x1, y0, y1 = min(x0, x1), max(x0, x1), min(y0, y1), max(y0, y1)
+        if x1 - x0 < 0.01 or y1 - y0 < 0.1:
+            raise ValueError("the zone is too small")
+        ctl.set_zone([round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)])
     elif key == "live_view":
         if m is None or value not in ("detect", "raw", "mask", "edges", "focus"):
             raise ValueError("unknown view")
@@ -355,6 +366,12 @@ def apply_setting(ctl, key, value):
         value = SETTING_RULES[key](value)
         if key == "sim_defect_rate":
             ctl.set_defect_rate(value)
+        elif key == "capture_mode":
+            ctl.set_capture_mode(value)
+        elif key == "zone_level":
+            ctl.settings.zone_level = value
+            if ctl.tracker:
+                ctl.tracker.set_level(value)
         else:
             ctl.set_setting(key, value)
         if key in ("exposure_us", "gain_db") and m is not None:
@@ -384,6 +401,7 @@ CMD_ROLE = {                      # minimum role per command
     "snapshot": "engineer", "teach": "engineer", "clear_ref": "engineer", "test_burst": "engineer",
     "clear_last": "operator", "beep": "operator", "override": "engineer", "lamp": "operator", "lights_auto": "operator", "clear_session": "engineer",
     "selftest": "engineer", "cleanup": "engineer", "auto_exposure": "engineer",
+    "zone_background": "engineer",
 }
 OPERATOR_SETTINGS = {"live_view"}
 NOT_AUDITED = {"simulate", "pause", "check_camera", "lamp", "clear_last"}
@@ -771,6 +789,13 @@ def create_app(ctl, remote_control: bool = False, tailscale: bool = False) -> Fl
             ctl.manual_toggle(body["key"])
         elif name == "lights_auto":
             ctl.set_manual_override(False)
+        elif name == "zone_background":
+            if ctl.tracker is None:
+                return fail("Camera support not available")
+            if ctl.tracker.detector.present and ctl.running:
+                return fail("A can is in the zone - capture the empty belt while the zone is clear")
+            ctl.tracker.capture_background()
+            msg = "Empty belt captured for the camera zone"
         elif name == "check_camera":
             ctl.check_camera()
         elif name == "wake":

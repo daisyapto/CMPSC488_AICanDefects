@@ -1048,3 +1048,11 @@ html.branded .brand > div { padding-left: 10px; }
 .audit-filter .input { height: 32px; font-size: 12.5px; width: auto; min-width: 0; }
 .audit-filter #afAction { width: 200px; }
 .tab-panel[data-panel="audit"] .table-wrap { position: relative; inset: auto; flex: 1; min-height: 0; }
+
+/* camera-zone capture */
+.zone-sliders { display: flex; flex-direction: column; gap: 6px; min-width: 220px; }
+.zone-sliders label { display: grid; grid-template-columns: 52px 1fr 40px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.zone-sliders input[type=range] { width: 100%; accent-color: var(--accent, #3b82f6); }
+.zone-sliders b { color: var(--text); font-size: 12px; text-align: right; }
+.facts dd.bad { color: var(--bad, #ef4444); font-weight: 700; }
+.facts dd.warn { color: var(--warn, #f59e0b); font-weight: 700; }

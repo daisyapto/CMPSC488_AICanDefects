@@ -219,7 +219,7 @@
           <div class="tab-panel active" data-panel="table">
             <div class="table-wrap">
               <table class="results">
-                <thead><tr><th>Can</th><th>Time</th><th>Result</th><th>Defect</th><th class="num">Conf.</th><th class="num">Inspect</th><th>Reject</th><th></th></tr></thead>
+                <thead><tr><th>Can</th><th>Time</th><th>Result</th><th>Defect</th><th class="num">Conf.</th><th class="num">Inspect</th><th class="num">Travel</th><th>Reject</th><th></th></tr></thead>
                 <tbody id="rows"></tbody>
               </table>
               <div class="empty" id="tableEmpty">No cans inspected yet this session.</div>
@@ -320,6 +320,12 @@
         <div class="sensor-big" id="dgSensor"><span class="sdot"></span><b id="dgSensorText">—</b></div>
         <dl class="facts" id="dgSensorFacts"></dl>
         <div class="hint block">Block the beam by hand (or pass a can) and watch it change. Works while the line is stopped.</div>
+      </section>
+
+      <section class="card diag-zone hidden" id="dgZoneCard">
+        <div class="card-head"><h2>Camera zone tracking</h2><span class="badge" id="dgZoneState">—</span></div>
+        <dl class="facts" id="dgZoneFacts"></dl>
+        <div class="hint block">Every can gets its Can ID at the sensor; the zone in the camera image confirms the same can. <b>Missed</b>: the camera never saw it (inspected as FAIL). <b>Camera only</b>: the camera saw a can the sensor did not count.</div>
       </section>
 
       <section class="card diag-timing">
@@ -427,7 +433,15 @@
         <div class="field"><label>Gain</label><div class="stepper" data-setting="gain_db" data-min="0" data-max="48" data-step="1" data-unit=""></div></div>
         <div class="field"><div><label>Image brightness</label><div class="hint" id="brightHint">—</div></div>
           <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" id="btnAutoExp">Auto-set exposure</button></div>
-        <div class="field"><div><label>Capture delay</label><div class="hint">Time from the sensor to the can being centred under the camera.</div></div><div class="delay-set"><div class="stepper" data-setting="camera_delay_ms" data-min="0" data-max="1000" data-step="5" data-unit="ms"></div><button class="btn btn-sm btn-quiet" id="btnDelay" title="Pass one can, then pick the frame where it is centred">Find with a can…</button></div></div>
+        <div class="field"><div><label>Capture</label><div class="hint">Fixed delay: one picture at the capture delay after the sensor. Camera zone: a strip of the image confirms each can and follows it by Can ID (Camera inspector).</div></div><div class="seg" data-setting="capture_mode" data-options="delay:Fixed delay,zone:Camera zone"></div></div>
+        <div id="zoneFields" class="hidden">
+          <div class="field"><div><label>Zone position</label><div class="hint">Centre of the zone across the image. Keep it narrower than a can.</div></div>
+            <div class="zone-sliders"><label>Centre <input type="range" id="zoneCentre" min="5" max="95" step="1"><b id="zoneCentreV">50%</b></label>
+            <label>Width <input type="range" id="zoneWidth" min="2" max="30" step="1"><b id="zoneWidthV">6%</b></label></div></div>
+          <div class="field"><div><label>Zone trigger level</label><div class="hint" id="zoneHint">Image change that means "can in the zone". Set it between the values with and without a can.</div></div><div class="stepper" data-setting="zone_level" data-min="3" data-max="150" data-step="1" data-unit=""></div></div>
+          <div class="field"><div><label>Empty belt</label><div class="hint">With no can in the zone. Again after the lighting changes.</div></div><button class="btn btn-sm btn-quiet" data-cmd="zone_background">Capture empty belt</button></div>
+        </div>
+        <div class="field" id="delayField"><div><label>Capture delay</label><div class="hint">Time from the sensor to the can being centred under the camera.</div></div><div class="delay-set"><div class="stepper" data-setting="camera_delay_ms" data-min="0" data-max="1000" data-step="5" data-unit="ms"></div><button class="btn btn-sm btn-quiet" id="btnDelay" title="Pass one can, then pick the frame where it is centred">Find with a can…</button></div></div>
       </section>
 
       <section class="group" data-set="detection" data-title="Detection">

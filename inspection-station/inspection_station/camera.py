@@ -393,9 +393,17 @@ class SyntheticCamera:
     """Top view of an empty can on a conveyor, with random defects."""
     W, H, FPS = 1024, 768, 30
 
+    BELT_PX_S = 1800          # moving-belt mode: can speed in the image
+    TRAVEL_S = 0.35           # moving-belt mode: sensor -> centre of the view
+
     def __init__(self):
         self.info = f"Synthetic {self.W}x{self.H} mono"
         self.defect_rate = 0.1
+        self.belt = False             # True in camera-zone capture mode: cans move through the view
+        self.sim_miss_rate = 0.0      # tests: share of cans the camera never sees
+        self.sim_extra_rate = 0.0     # tests: extra cans per second the sensor never counted
+        self._moving = []
+        self._mv_lock = threading.Lock()
         self.brightness = 1.0
         self.base = None
         self.truth = ""                # label of the defect drawn on the current can
@@ -405,7 +413,11 @@ class SyntheticCamera:
         self.yy, self.xx = np.mgrid[0:self.H, 0:self.W].astype(np.float32)
         self.noise = [rng.normal(0, 3, (self.H, self.W)).astype(np.int16) for _ in range(6)]
         self.apply(s)
+        from .syncan import render_belt
+        self.belt_img = render_belt(self.W, self.H, grid=(self.xx, self.yy))
+        was, self.belt = self.belt, False
         self._new_can(defective=False)
+        self.belt = was
         self._k = 0
         self._next = time.monotonic()
 
@@ -432,15 +444,65 @@ class SyntheticCamera:
                 for i in range(40):
                     kind = None if i % 2 == 0 else KINDS[(i // 2) % len(KINDS)]
                     img, truth = render_can(kind, self.W, self.H, seed=random.randint(0, 10**9), grid=grid)
-                    self._pool["bad" if kind else "good"].append((img.astype(np.int16), truth["kind"]))
+                    self._pool["bad" if kind else "good"].append((img.astype(np.int16), truth["kind"], truth))
             threading.Thread(target=fill, daemon=True, name="synthetic-cans").start()
         pool = self._pool["bad" if defective else "good"]
         if pool:
-            self.base, self.truth = random.choice(pool)
-            return
-        kind = random.choice(KINDS) if defective else None           # pool not ready yet: draw one now
-        img, truth = render_can(kind, self.W, self.H, seed=random.randint(0, 10**9), grid=(self.xx, self.yy))
-        self.base, self.truth = img.astype(np.int16), truth["kind"]
+            self.base, self.truth, geo = random.choice(pool)
+        else:
+            kind = random.choice(KINDS) if defective else None           # pool not ready yet: draw one now
+            img, geo = render_can(kind, self.W, self.H, seed=random.randint(0, 10**9), grid=(self.xx, self.yy))
+            self.base, self.truth = img.astype(np.int16), geo["kind"]
+        if self.belt:
+            self._launch(self.base, geo)
+
+    # ---- moving belt (camera-zone capture mode): cans travel left -> right through the view
+    def _launch(self, img, geo, delay=None):
+        if random.random() < self.sim_miss_rate:
+            return                                        # test: the camera never sees this can
+        cx, cy, R = geo["cx"], geo["cy"], geo["R"]
+        pad = 8                                            # keep the soft (blurred) edge of the can
+        x0, x1 = int(max(0, cx - R - pad)), int(min(self.W, cx + R + pad + 1))
+        y0, y1 = int(max(0, cy - R - pad)), int(min(self.H, cy + R + pad + 1))
+        sub_y, sub_x = np.mgrid[y0:y1, x0:x1]
+        mask = (sub_x - cx) ** 2 + (sub_y - cy) ** 2 < (R + pad) ** 2
+        speed = self.BELT_PX_S
+        t_center = time.monotonic() + (self.TRAVEL_S if delay is None else delay)
+        with self._mv_lock:
+            if delay is not None and any(abs(c["t_center"] - t_center) < 2.2 * R / speed for c in self._moving):
+                return                                    # test can would overlap a real one
+            self._moving.append({"sprite": img[y0:y1, x0:x1].copy(), "mask": mask, "x0": x0, "y0": y0,
+                                 "cx": cx, "t_center": t_center, "speed": speed, "R": R})
+
+    def _belt_frame(self):
+        now = time.monotonic()
+        if self.sim_extra_rate and random.random() < self.sim_extra_rate / self.FPS:
+            pool = self._pool.get("good") if getattr(self, "_pool", None) else None
+            if pool:                                      # test: a can the sensor never counted
+                img, _, geo = random.choice(pool)
+                self._launch(img, geo, delay=0.05)
+        frame = self.belt_img.astype(np.int16).copy()
+        keep = []
+        with self._mv_lock:
+            moving = list(self._moving)
+        for c in moving:
+            dx = int(round((now - c["t_center"]) * c["speed"] + self.W / 2 - c["cx"]))
+            x0 = c["x0"] + dx
+            if x0 > self.W:
+                continue                                  # gone past the view
+            keep.append(c)
+            sh, sw = c["sprite"].shape
+            a0, a1 = max(0, x0), min(self.W, x0 + sw)
+            if a1 <= a0:
+                continue
+            sl = slice(a0 - x0, a1 - x0)
+            region = frame[c["y0"]:c["y0"] + sh, a0:a1]
+            m = c["mask"][:, sl]
+            region[m] = c["sprite"][:, sl][m]
+        with self._mv_lock:                               # keep cans launched meanwhile
+            seen = {id(c) for c in moving}
+            self._moving = keep + [c for c in self._moving if id(c) not in seen]
+        return frame
 
     def read(self):
         now = time.monotonic()
@@ -448,7 +510,8 @@ class SyntheticCamera:
             time.sleep(self._next - now)
         self._next = max(self._next + 1 / self.FPS, time.monotonic())
         self._k = (self._k + 1) % len(self.noise)
-        frame = np.clip(self.base + self.noise[self._k], 0, 255).astype(np.uint8)
+        base = self._belt_frame() if self.belt else self.base
+        frame = np.clip(base + self.noise[self._k], 0, 255).astype(np.uint8)
         if abs(self.brightness - 1) > 0.01:
             frame = cv2.convertScaleAbs(frame, alpha=self.brightness)
         return frame
@@ -781,6 +844,18 @@ class ImageStore:
 # =============================================================================
 # Camera manager
 # =============================================================================
+def draw_zone(img, box, present, label="ZONE"):
+    """Camera-zone box on the live view: amber while a can is in it, cyan when clear."""
+    out = img.copy() if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    h, w = out.shape[:2]
+    x0, y0, x1, y1 = int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h)
+    col = (0, 190, 255) if present else (255, 210, 0)
+    cv2.rectangle(out, (x0, y0), (x1, y1), col, max(2, w // 400), cv2.LINE_AA)
+    cv2.putText(out, label, (x0, max(14, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, max(0.45, w / 1600), col,
+                max(1, w // 800), cv2.LINE_AA)
+    return out
+
+
 class CameraManager:
     def __init__(self, settings, log):
         self.s = settings
@@ -805,6 +880,9 @@ class CameraManager:
         self._apply = False
         self._last_error = ""
         self.on_ip_change = None             # set by the controller
+        self.on_frame = None                 # camera-zone tracking: called with every frame
+        self.zone_overlay = None             # -> (box, present) to draw the zone on the live view
+        self._frame_hook_failed = False
 
         # live view (Camera tab)
         self.live_visible = False
@@ -1054,6 +1132,8 @@ class CameraManager:
                 except Exception:
                     pass
             src = self.source
+            if hasattr(src, "belt"):
+                src.belt = self.s.capture_mode == "zone"
             if self.fps_limit != self._applied_fps:
                 self._applied_fps = self.fps_limit
                 if hasattr(src, "set_fps"):
@@ -1079,6 +1159,14 @@ class CameraManager:
                 self._frame, self._ts = frame, now
                 self._seq += 1
                 self._cond.notify_all()
+            if self.on_frame is not None:
+                try:
+                    self.on_frame(frame, now)
+                    self._frame_hook_failed = False
+                except Exception as e:                       # never stop the camera
+                    if not self._frame_hook_failed:
+                        self.log("ERROR", f"Camera zone check failed: {e!r}")
+                    self._frame_hook_failed = True
             if now < self.tune_until:                       # delay tuner open: keep a small copy
                 h, w = frame.shape[:2]
                 self._ring.append((now, cv2.resize(frame, (480, max(1, round(h * 480 / w))),
@@ -1123,6 +1211,13 @@ class CameraManager:
                     self.log("ERROR", f"Live processing failed: {e}")
                 failed = True
                 continue
+            if self.zone_overlay is not None:
+                try:
+                    z = self.zone_overlay()
+                    if z:
+                        img = draw_zone(img, *z)
+                except Exception:
+                    pass
             with self._live_lock:
                 self._live = (img, res, seq)
             cap = {"normal": 8, "reduced": 4, "raw": 2}.get(mode, 8)     # live view fps by heat level
