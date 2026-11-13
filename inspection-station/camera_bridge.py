@@ -162,6 +162,8 @@ class Bridge:
 
     def apply(self, s):
         cam, Ar = self.cam, self.Ar
+        if cam is None:                                    # reconnecting
+            return
         if "fps" in s:
             self.set_fps(float(s["fps"]))
         for key, avail, auto, bounds, setter in (
@@ -192,7 +194,14 @@ class Bridge:
         ok, bad = 0, {}
         t0 = start = time.monotonic()
         ever_ok = small_tried = False
+        empty = 0                                          # 5 s windows in a row without a frame
         while not self.stop.is_set():
+            if self.stream is None:                        # reopening failed: try again shortly
+                time.sleep(1)
+                if time.monotonic() - t0 >= 5:
+                    self.reopen()
+                    t0 = time.monotonic()
+                continue
             buf = self.stream.timeout_pop_buffer(1_000_000)
             if buf is not None:
                 try:
@@ -226,10 +235,16 @@ class Bridge:
             if now - t0 < 5:
                 continue
             secs = now - t0
+            empty = 0 if ok else empty + 1
             if ok:
                 self.problem = ""
                 extra = f", {sum(bad.values())} incomplete" if bad else ""
                 print(f"  {ok / secs:.1f} fps from the camera{extra}")
+            elif sys.platform.startswith("linux") and small_tried and empty % 3 == 0:
+                # still nothing: the camera was power-cycled or another program took it over -
+                # connect to it again from scratch (a restart of the station did the same)
+                self.report_no_video(bad)
+                self.reopen()
             elif not small_tried and not sys.platform.startswith("linux"):
                 small_tried = True
                 why = ", ".join(f"{n} {k}" for k, n in bad.items()) or "nothing at all"
@@ -248,6 +263,26 @@ class Bridge:
             else:
                 self.report_no_video(bad)
             ok, bad, t0 = 0, {}, time.monotonic()
+
+    def reopen(self):
+        """Drop the camera connection and open the camera again (rediscovers its IP)."""
+        print("  Reconnecting to the camera...")
+        try:
+            self.cam.stop_acquisition()
+        except Exception:
+            pass
+        self.stream = None
+        self.cam = None
+        import gc
+        gc.collect()
+        time.sleep(1.0)
+        try:
+            self.open_camera()
+            print("  Camera reconnected")
+        except Exception as e:
+            self.stream = None
+            self.problem = f"camera not reachable ({e}) - check its power (PoE) and cable"
+            print(f"  ! {self.problem}")
 
     def packet_size(self):
         try:
