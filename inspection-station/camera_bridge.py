@@ -236,6 +236,15 @@ class Bridge:
                 print(f"  No complete frames in {secs:.0f} s (received: {why}).")
                 print("  Trying smaller network packets (1440 bytes)...")
                 self.small_packets()
+            elif not small_tried:                       # Pi: restart the stream once
+                small_tried = True
+                print(f"  No frames in {secs:.0f} s - restarting the camera stream...")
+                try:
+                    self.cam.stop_acquisition()
+                    time.sleep(0.5)
+                    self.cam.start_acquisition()
+                except Exception as e:
+                    print(f"  (could not restart the stream: {e})")
             else:
                 self.report_no_video(bad)
             ok, bad, t0 = 0, {}, time.monotonic()
@@ -261,6 +270,15 @@ class Bridge:
             self.problem = (f"frames arrive incomplete ({why}) - packets are being lost: use a direct cable, "
                             "plug the laptop into power, lower the frame rate")
             print(f"  ! {self.problem}")
+            return
+        if sys.platform.startswith("linux"):
+            self.problem = ("camera connected, but no video arrives - another program is probably using the "
+                            "camera (the PySpin bench app or SpinView): close it, power the camera off and on, "
+                            "then restart the station (sudo systemctl restart can-inspection)")
+            if not getattr(self, "_told", False):
+                self._told = True
+                print(f"  ! {self.problem}")
+                print("    Check: ps aux | grep -i -E 'can_inspection|spin'")
             return
         self.problem = ("the camera is sending, but no video packets reach this computer - Windows Firewall "
                         "is blocking them. Allow MSYS2's python.exe on Public networks (see the bridge window)")
