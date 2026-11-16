@@ -119,6 +119,9 @@ class Settings:
     zone_level: int = 25               # image change (0-255) that means "can in the zone"
     rim_min_px: int = 150              # can rim radius range for "hough" mode, px at 640 px image width
     rim_max_px: int = 180
+    rim_ids: str = "sensor"            # "hough" mode: Can IDs from the "sensor" or the "camera" line (no sensor)
+    vote_frames: int = 1               # Frames per can (zone / hough): >1 = inspect this many frames per can
+    vote_min: int = 2                  # ... and FAIL the can when at least this many show a defect
     exposure_us: int = 2000
     gain_db: int = 0
     vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo"
@@ -173,6 +176,8 @@ class Settings:
             if f.name == "capture_mode" and value not in ("delay", "zone", "hough"):
                 continue
             if f.name == "reject_output" and value not in ("gpio", "network"):
+                continue
+            if f.name == "rim_ids" and value not in ("sensor", "camera"):
                 continue
             if f.name in ("inspect_area", "zone_box"):
                 if value is None or (isinstance(value, list) and len(value) == 4 and

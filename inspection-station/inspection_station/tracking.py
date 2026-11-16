@@ -240,6 +240,7 @@ class RimTracker:
 
     def __init__(self, line_frac: float = 0.5, r_min: int = 150, r_max: int = 180):
         self.line_frac, self.r_min, self.r_max = line_frac, r_min, r_max
+        self.keep = 1                   # frames kept per can for the inspection (Frames per can)
         self.tracks = {}
         self.next_id = 1
         self.fno = 0
@@ -290,6 +291,10 @@ class RimTracker:
             d = abs(x - line_x)
             if tr["best"] is None or d < tr["best"][0]:
                 tr["best"] = (d, t, frame)
+            if self.keep > 1:                                # the frames closest to the line
+                tr["near"].append((d, t, frame))
+                if len(tr["near"]) > self.keep:
+                    tr["near"].remove(max(tr["near"], key=lambda e: e[0]))
             if not tr["crossed"] and self._crossed(x_prev, x, line_x) and tr["frames"] >= RIM_MIN_FRAMES:
                 tr["crossed"] = True
                 events.append(("cross", tid, t))
@@ -307,14 +312,18 @@ class RimTracker:
                         events.append(("cross", tid, t))
                 if tr["crossed"]:
                     _, bt, bf = tr["best"]
-                    events.append(("done", tid, {"camera_t": bt, "frame": bf, "frames": tr["frames"]}))
+                    info = {"camera_t": bt, "frame": bf, "frames": tr["frames"]}
+                    if self.keep > 1 and len(tr["near"]) > 1:
+                        info["vote_frames"] = [f for _, _, f in sorted(tr["near"], key=lambda e: e[1])]
+                    events.append(("done", tid, info))
                 del self.tracks[tid]
 
         for i, (x, y, r) in enumerate(circles):
             if i in used_c:
                 continue
             self.tracks[self.next_id] = dict(x=x, y=y, r=r, vx=0.0, vy=0.0, fno=fno, missed=0, frames=1,
-                                             crossed=False, best=(abs(x - line_x), t, frame))
+                                             crossed=False, best=(abs(x - line_x), t, frame),
+                                             near=[(abs(x - line_x), t, frame)] if self.keep > 1 else [])
             self.next_id += 1
         return events
 
@@ -353,6 +362,9 @@ class CanTracker:
         self.rims = RimTracker(self._line_frac(), rim_min, rim_max)
         self._rim_ids = {}                   # rim track id -> (can_id, sensor_t)
         self.claim_id = None                 # controller hook: touching can -> new Can ID or None
+        self.vote_frames = 1                 # Frames per can: >1 = several frames per can are inspected
+        self.camera_ids = False              # Can rims: the camera line gives Can IDs (no sensor)
+        self.new_id = None                   # controller hook for camera_ids: next Can ID
 
     def _line_frac(self):
         return (self.zone[0] + self.zone[2]) / 2         # rims mode: the line is the zone's centre
@@ -363,6 +375,10 @@ class CanTracker:
 
     def set_rim_size(self, r_min: int, r_max: int):
         self.rims.r_min, self.rims.r_max = r_min, r_max
+
+    def set_vote_frames(self, n: int):
+        self.vote_frames = max(1, int(n))
+        self.rims.keep = self.vote_frames
 
     # ---- settings
     def set_zone(self, zone):
@@ -416,9 +432,13 @@ class CanTracker:
                 if cur["frames"]:
                     mid = (cur["enter_t"] + t) / 2          # can centred in the zone
                     ft, frm = min(cur["frames"], key=lambda f: abs(f[0] - mid))
-                    events.append(("seen", cur["id"], {"sensor_t": cur["sensor_t"], "camera_t": ft,
-                                                       "frame": frm, "frames": len(cur["frames"]),
-                                                       "travel_ms": (ft - cur["sensor_t"]) * 1000}))
+                    info = {"sensor_t": cur["sensor_t"], "camera_t": ft, "frame": frm,
+                            "frames": len(cur["frames"]), "travel_ms": (ft - cur["sensor_t"]) * 1000}
+                    n = min(self.vote_frames, len(cur["frames"]))
+                    if n > 1:                               # Frames per can: closest to the middle
+                        near = sorted(cur["frames"], key=lambda f: abs(f[0] - mid))[:n]
+                        info["vote_frames"] = [f for _, f in sorted(near, key=lambda f: f[0])]
+                    events.append(("seen", cur["id"], info))
         if running:
             events += [("missed", sid, sts) for sid, sts in self.matcher.check_timeouts(t)]
         return events
@@ -427,7 +447,12 @@ class CanTracker:
         events = []
         with self._lock:
             for kind, tid, info in self.rims.update(to_gray(frame), frame, t):
-                if kind == "cross" and running:
+                if kind == "cross" and running and self.camera_ids and self.new_id:
+                    with self.matcher._lock:                 # no sensor: the line crossing is the count
+                        self.matcher.camera_count += 1
+                        self.matcher.matched += 1
+                    self._rim_ids[tid] = (self.new_id(), info)
+                elif kind == "cross" and running:
                     ev = self.matcher.camera_can(info)
                     events += [("missed", sid, sts) for sid, sts in ev["skipped"]]
                     if ev["id"] is None:
@@ -447,10 +472,13 @@ class CanTracker:
                     m = self._rim_ids.pop(tid, None)
                     if m is not None:
                         can_id, sensor_t = m
-                        events.append(("seen", can_id, {"sensor_t": sensor_t, "camera_t": info["camera_t"],
-                                                        "frame": info["frame"], "frames": info["frames"],
-                                                        "travel_ms": (info["camera_t"] - sensor_t) * 1000}))
-        if running:
+                        seen = {"sensor_t": sensor_t, "camera_t": info["camera_t"], "frame": info["frame"],
+                                "frames": info["frames"],
+                                "travel_ms": None if self.camera_ids else (info["camera_t"] - sensor_t) * 1000}
+                        if "vote_frames" in info:
+                            seen["vote_frames"] = info["vote_frames"]
+                        events.append(("seen", can_id, seen))
+        if running and not self.camera_ids:
             events += [("missed", sid, sts) for sid, sts in self.matcher.check_timeouts(t)]
         return events
 

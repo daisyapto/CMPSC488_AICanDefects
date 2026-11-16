@@ -348,6 +348,23 @@ Settings › Camera › **Capture** chooses how the picture of each can is taken
   * Setup: set **Smallest / Largest can rim** (radius in px at 640 px image width) tightly
     around your can - the team measured about 160 px on the line.
 
+### Frames per can (vote)
+
+In Camera zone and Can rims modes, Settings › Camera › **Frames per can** inspects several
+pictures of the same can as it passes (the frames closest to the zone's middle / the line) and
+**FAILs** it only when at least **Defect frames to fail** of them show a defect - the team's
+bench-app rule, so one bad frame (glare, a reflection) does not reject a good can. The saved and
+shown picture is the most confident defect frame; the Inspections table says e.g.
+`Rim dent (3/5 frames)`. About 30 ms per frame on the AI HAT: 5 frames is about 150 ms per can.
+1 = one picture per can (as before).
+
+### Can IDs from the camera line (no sensor)
+
+Can rims › **Can IDs from** › **Camera line**: the camera counts the cans - each rim that crosses
+the line gets the next Can ID, so the sensor is not needed (bench tests, demos, a broken sensor).
+Nothing checks the camera's count: a can it misses is not inspected and every later Can ID moves
+up by one, which would make the Rejector Pi reject the wrong cans. Use **Sensor** on the line.
+
 ### Touching cans (no gap)
 
 Two cans with no gap block the sensor as one long can, so the sensor alone would give them one
@@ -365,6 +382,14 @@ Can ID. With Settings › Camera › **Touching cans** on (default), each can st
 
 Can rims is the most reliable mode for touching cans: each can is inspected in its own frame.
 The Diagnostics belt speed ignores touching-can blocks.
+
+### YOLO on the AI HAT: settings to match the team's bench app
+
+* Model: the Hailo export folder (`best.hef` **and** `metadata.yaml` together, e.g.
+  `/home/team3/best/best_hailo_model`). Without `metadata.yaml` the station says so: it holds the
+  class names and image size.
+* Confidence: the bench app counts detections from **25 %**; the station default is 60 %.
+  Settings › Detection › YOLO confidence - test on real cans before you settle on a value.
 
 The zone tracking is ported from Andrew Herman's bench app, the can-rim tracking from the team's
 `can_inspection_station_hailo_hough.py` (`tracking.py`).

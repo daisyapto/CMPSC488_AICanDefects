@@ -88,7 +88,9 @@ class CameraInspector(Inspector):
         from .vision import annotate
 
         if frame is None:                          # fixed-delay capture; camera-zone mode passes the frame
-            frame, _ = m.wait_frame_after(t_detect + s.camera_delay_ms / 1000, timeout=0.5)
+            # wait at least 3 frame times: at a low frame rate (standby, heat) frames are far apart
+            wait = max(0.5, 3.0 / max(1, m.fps_limit or 1))
+            frame, _ = m.wait_frame_after(t_detect + s.camera_delay_ms / 1000, timeout=wait)
 
         # ---- decision. To use a trained model, replace this line with code that
         # ---- returns a vision.VisionResult (or build an Outcome directly).
@@ -101,6 +103,35 @@ class CameraInspector(Inspector):
             m.store.save(path, frame, annotated if s.save_annotated else None)
         m.publish(can_id, result, annotated, path)
         return Outcome(result.passed, result.label, result.confidence, str(path) if path else "")
+
+    def inspect_frames(self, can_id, t_detect, frames, min_fail: int):
+        """Frames per can (the team's bench-app vote): inspect several frames of the same can and
+        FAIL it only if at least min_fail of them show a defect. One frame is saved and shown:
+        the most confident defect frame, or the middle frame when the can passes."""
+        m, s = self.m, self.s
+        if m is None:
+            raise RuntimeError(f"camera support not installed ({self.import_error})")
+        from .vision import annotate
+
+        results = [(m.vision.analyze(f, m.params), f) for f in frames]
+        bad = [(r, f) for r, f in results if not r.passed]
+        passed = len(bad) < max(1, min(min_fail, len(results)))
+        if passed:
+            good = [rf for rf in results if rf[0].passed]
+            result, frame = good[len(good) // 2]
+            label = ""
+            if bad:
+                label = f"{len(bad)}/{len(results)} frames showed a defect"
+        else:
+            result, frame = max(bad, key=lambda rf: rf[0].confidence)
+            label = f"{result.label} ({len(bad)}/{len(results)} frames)"
+        annotated = annotate(result)
+        path = None
+        if s.save_images == "all" or (s.save_images == "fails" and not passed):
+            path = m.store.plan(can_id, passed, result.label if not passed else "")
+            m.store.save(path, frame, annotated if s.save_annotated else None)
+        m.publish(can_id, result, annotated, path)
+        return Outcome(passed, label if not passed else "", result.confidence, str(path) if path else "")
 
 
 def build_inspectors(camera_manager, settings, import_error: str = "") -> dict[str, Inspector]:

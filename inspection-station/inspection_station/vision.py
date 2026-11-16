@@ -483,6 +483,10 @@ class YoloDetector:
         if path.suffix == ".hef":                  # Ultralytics loads the export folder, not the .hef
             path = path.parent
         hailo = is_hailo_model(path)
+        if hailo and path.is_dir() and not (path / "metadata.yaml").exists():
+            self.error = (f"metadata.yaml missing next to the .hef in {path} - copy it from the Hailo export "
+                          f"folder (it holds the class names and image size)")
+            raise RuntimeError(self.error)
         key = (str(path), path.stat().st_mtime, None if hailo else p.yolo_imgsz)
         if key == self._key and self._model is not None:
             return self._model

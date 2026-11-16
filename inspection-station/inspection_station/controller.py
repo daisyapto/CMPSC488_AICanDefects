@@ -209,6 +209,9 @@ class Controller:
         self._camera_only_logged = 0.0
         if self.tracker:
             self.tracker.claim_id = self._claim_touching
+            self.tracker.new_id = self._new_can_id
+            self.tracker.camera_ids = settings.rim_ids == "camera"
+            self.tracker.set_vote_frames(settings.vote_frames)
         if self.cammgr and self.tracker:
             self.cammgr.on_frame = self._on_camera_frame
             self.cammgr.zone_overlay = self._zone_overlay
@@ -411,6 +414,28 @@ class Controller:
         """Camera-zone or can-rim capture: needs the camera inspector and the tracking module."""
         return (self.settings.capture_mode in ("zone", "hough") and self.tracker is not None
                 and self.cammgr is not None and self.settings.inspector == "Camera")
+
+    @property
+    def camera_ids_active(self) -> bool:
+        """Can rims with Can IDs from the camera line: the sensor is not needed."""
+        return self.zone_mode and self.tracker.mode == "hough" and self.settings.rim_ids == "camera"
+
+    def set_rim_ids(self, source: str):
+        self.settings.rim_ids = source
+        if self.tracker:
+            self.tracker.camera_ids = source == "camera"
+            self.tracker.reset()
+        if source == "camera":
+            self.log("WARN" if (self.settings.reject_enabled and self.rejector_ready) else "INFO",
+                     "Can IDs from the camera line (no sensor) - a can the camera misses is not inspected and "
+                     "shifts the numbering; use the sensor for the rejector on the line")
+        else:
+            self.log("INFO", "Can IDs from the sensor")
+
+    def set_vote(self, frames: int, min_fail: int):
+        self.settings.vote_frames, self.settings.vote_min = frames, min_fail
+        if self.tracker:
+            self.tracker.set_vote_frames(frames)
 
     @property
     def rejector_ready(self) -> bool:
@@ -645,6 +670,10 @@ class Controller:
                 self.log("INFO", "Can detected while the line is stopped - ignored")
                 self._ignored_logged = True
             return
+        if self.camera_ids_active:
+            if self.cammgr:
+                self.cammgr.on_trigger()          # synthetic source: the next can (tests / demo)
+            return                                # Can IDs come from the camera line
         with self._lock:
             self._can_counter += 1
             can_id = self._can_counter
@@ -728,7 +757,7 @@ class Controller:
         """Can rims mode (#2): the camera saw a can with no sensor Can ID. If its leading edge
         passed the sensor while the beam was still blocked by the can ahead, it is a touching
         can: give it the next Can ID. Returns the Can ID, or None (really a camera-only can)."""
-        if not (self.running and not self.estop and self.settings.split_touching):
+        if not (self.running and not self.estop and self.settings.split_touching) or self.camera_ids_active:
             return None
         single = self.single_block_s()
         if single is None:
@@ -824,7 +853,12 @@ class Controller:
             outcome = Outcome(False, "Not seen by camera", 0.0)
         else:
             try:
-                outcome = self.inspectors[name].inspect(can_id, t_detect, frame=extra.get("frame"))
+                frames = extra.get("vote_frames")
+                insp = self.inspectors[name]
+                if frames and len(frames) > 1 and hasattr(insp, "inspect_frames"):
+                    outcome = insp.inspect_frames(can_id, t_detect, frames, s.vote_min)
+                else:
+                    outcome = insp.inspect(can_id, t_detect, frame=extra.get("frame"))
             except Exception as e:
                 outcome = Outcome(False, "Inspection error", 0.0)
                 self._log_inspector_error(can_id, e)

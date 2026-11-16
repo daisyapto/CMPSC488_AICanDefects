@@ -303,6 +303,7 @@ SETTING_RULES = {
     "capture_mode": _choice("delay", "zone", "hough"), "zone_level": _int_range(3, 150),
     "rim_min_px": _int_range(20, 320), "rim_max_px": _int_range(20, 320),
     "reject_output": _choice("gpio", "network"), "reject_port": _int_range(1, 65535),
+    "rim_ids": _choice("sensor", "camera"), "vote_frames": _int_range(1, 9), "vote_min": _int_range(1, 9),
     "camera_fps": _int_range(5, 30), "standby_after_min": _int_range(0, 120),
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
@@ -377,6 +378,14 @@ def apply_setting(ctl, key, value):
             ctl.set_defect_rate(value)
         elif key == "capture_mode":
             ctl.set_capture_mode(value)
+        elif key == "rim_ids":
+            ctl.set_rim_ids(value)
+        elif key in ("vote_frames", "vote_min"):
+            n = value if key == "vote_frames" else ctl.settings.vote_frames
+            k = value if key == "vote_min" else ctl.settings.vote_min
+            if key == "vote_min" and k > n:
+                raise ValueError("cannot need more defect frames than frames per can")
+            ctl.set_vote(n, min(k, n))
         elif key in ("rim_min_px", "rim_max_px"):
             lo = value if key == "rim_min_px" else ctl.settings.rim_min_px
             hi = value if key == "rim_max_px" else ctl.settings.rim_max_px

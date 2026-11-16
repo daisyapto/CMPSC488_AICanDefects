@@ -253,6 +253,7 @@ function renderZone(st) {
   $("#delayField")?.classList.toggle("hidden", zone);
   $("#zoneOnly")?.classList.toggle("hidden", rims);
   $("#rimFields")?.classList.toggle("hidden", !rims);
+  $("#voteMinField")?.classList.toggle("hidden", (s.vote_frames || 1) <= 1);
   if ($("#zonePosLabel")) {
     $("#zonePosLabel").textContent = rims ? "Line position" : "Zone position";
     $("#zonePosHint").textContent = rims ? "A can counts when its rim centre crosses this line (the zone's centre)." : "Centre of the zone across the image. Keep it narrower than a can.";
