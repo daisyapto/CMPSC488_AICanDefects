@@ -30,7 +30,7 @@ from .config import (CAM_MAX_C, CAM_WARN_C, CPU_CRITICAL_C, CPU_HOT_C, CPU_WARM_
                      DISK_MIN_MB, STANDBY_FPS, TEMP_HYSTERESIS_C)
 from .alarms import AlarmLog
 from .review import cleanup_images
-from .hardware import CameraLink, Rejector, SensorInput, StackLight
+from .hardware import CameraLink, NetworkRejector, Rejector, SensorInput, StackLight
 from .audit import Audit
 from .batches import BatchManager
 from .health import SystemHealth
@@ -47,8 +47,9 @@ except Exception as _e:                 # app still runs without them
 
 # reject status of a can
 PASS, PENDING, FIRED, MISSED, DISABLED, LOCKED = "-", "pending", "fired", "missed", "disabled", "locked"
+SENT, SEND_FAILED = "sent", "send failed"     # network rejector: message sent to the rejector Pi
 REJ_OFF = "off"                          # rejector option off: the can is only marked FAIL
-ESCAPED = {MISSED, DISABLED, LOCKED}     # failed can that was NOT blown off the line
+ESCAPED = {MISSED, DISABLED, LOCKED, SEND_FAILED}     # failed can that was NOT blown off the line
 
 
 @dataclass
@@ -64,7 +65,7 @@ class InspectionResult:
     image: str = ""          # saved image path (camera inspector)
     batch: str = ""          # batch id the can belongs to
     travel_ms: float | None = None   # camera-zone mode: sensor -> camera travel time
-    capture: str = ""        # "delay" | "zone" | "missed" (camera zone never saw the can)
+    capture: str = ""        # "delay" | "zone" | "hough" | "missed" (camera never saw the can)
 
     @property
     def escaped(self) -> bool:
@@ -202,12 +203,13 @@ class Controller:
             self.cammgr.on_ip_change = self._camera_ip_found
             self.recipes.load_reference(self.cammgr.vision)       # good-can reference of the recipe
         # camera-zone capture mode (tracking.py, from Andrew Herman's bench app)
-        self.tracker = CanTracker(settings.zone_box or DEFAULT_ZONE, settings.zone_level) if CanTracker else None
+        self.tracker = (CanTracker(settings.zone_box or DEFAULT_ZONE, settings.zone_level,
+                                   "hough" if settings.capture_mode == "hough" else "zone",
+                                   settings.rim_min_px, settings.rim_max_px) if CanTracker else None)
         self._camera_only_logged = 0.0
         if self.cammgr and self.tracker:
             self.cammgr.on_frame = self._on_camera_frame
-            self.cammgr.zone_overlay = lambda: ((self.tracker.zone, self.tracker.detector.present)
-                                                if self.zone_mode else None)
+            self.cammgr.zone_overlay = self._zone_overlay
         self.inspectors = build_inspectors(self.cammgr, settings, CAMERA_IMPORT_ERROR)
         self.inspectors[SimulatedInspector.name].defect_rate = settings.sim_defect_rate / 100
         if settings.inspector not in self.inspectors:
@@ -215,6 +217,7 @@ class Controller:
 
         self.lights = StackLight(io)
         self.rejector = Rejector(io)
+        self.netrej = NetworkRejector()             # reject_output = "network"
         self.scheduler = RejectScheduler(self.rejector, self._on_reject_done)
         self.sensor = SensorInput(io, self._on_sensor_edge, settings.sensor_backend, self.log)
 
@@ -298,7 +301,8 @@ class Controller:
             "faults": [msg for _, msg in self.faults()],
             "manual": self.manual_override,
             "lights": self.lights.state, "valve": self.rejector.on, "buzzer": self.lights.buzzer.on,
-            "rejector": self.settings.reject_enabled, "rejector_connected": self.rejector.connected,
+            "rejector": self.settings.reject_enabled, "rejector_connected": self.rejector_ready,
+            "reject_output": self.settings.reject_output,
             "locked": self.rejector.locked_out,
             "sensor": self.sensor.active, "sensor_mode": self.sensor.mode,
             "cam_ip": self.camera.ip, "cam_online": self.camera.online,
@@ -400,19 +404,40 @@ class Controller:
     # ------------------------------------------------------- camera-zone mode
     @property
     def zone_mode(self) -> bool:
-        """Camera-zone capture: needs the camera inspector and the tracking module."""
-        return (self.settings.capture_mode == "zone" and self.tracker is not None
+        """Camera-zone or can-rim capture: needs the camera inspector and the tracking module."""
+        return (self.settings.capture_mode in ("zone", "hough") and self.tracker is not None
                 and self.cammgr is not None and self.settings.inspector == "Camera")
+
+    @property
+    def rejector_ready(self) -> bool:
+        if self.settings.reject_output == "network":
+            return bool(self.settings.reject_host)
+        return self.rejector.connected
+
+    def _zone_overlay(self, frame_t=None):
+        if not self.zone_mode:
+            return None
+        tr = self.tracker
+        if tr.mode == "hough":
+            rims = tr.rims.overlay(frame_t)             # the rims found in the frame being shown
+            return tr.zone, bool(rims), "LINE", rims
+        return tr.zone, tr.detector.present
 
     def set_capture_mode(self, mode: str):
         self.settings.capture_mode = mode
         if self.tracker:
-            self.tracker.reset()
+            self.tracker.set_mode("hough" if mode == "hough" else "zone")
             self.tracker.capture_background()
-        self.log("INFO", "Capture: camera zone - each can is confirmed by a strip of the camera image"
-                 if mode == "zone" else "Capture: fixed delay after the sensor")
-        if mode == "zone" and self.settings.inspector != "Camera":
-            self.log("WARN", "Camera-zone capture works with the Camera inspector - select it in Settings")
+        self.log("INFO", {"zone": "Capture: camera zone - each can is confirmed by a strip of the camera image",
+                          "hough": "Capture: can rims - each can's rim is followed across the line in the image",
+                          }.get(mode, "Capture: fixed delay after the sensor"))
+        if mode in ("zone", "hough") and self.settings.inspector != "Camera":
+            self.log("WARN", "Camera capture modes work with the Camera inspector - select it in Settings")
+
+    def set_rim_size(self, r_min: int, r_max: int):
+        self.settings.rim_min_px, self.settings.rim_max_px = r_min, r_max
+        if self.tracker:
+            self.tracker.set_rim_size(r_min, r_max)
 
     def set_zone(self, box):
         self.settings.zone_box = box
@@ -429,15 +454,17 @@ class Controller:
     def _handle_track_events(self, events):
         for kind, can_id, info in events:
             if kind == "seen":
-                info["capture"] = "zone"
+                info["capture"] = self.tracker.mode
                 self._can_queue.put((can_id, info["sensor_t"], info))
             elif kind == "missed":
-                self.log("WARN", f"Can #{can_id}: passed the sensor but the camera zone never saw it")
+                self.log("WARN", f"Can #{can_id}: passed the sensor but the camera never saw it"
+                                 + (" (no rim crossed the line)" if self.tracker.mode == "hough" else ""))
                 self._can_queue.put((can_id, info, {"missed": True, "capture": "missed"}))
             elif kind == "camera_only" and time.monotonic() - self._camera_only_logged > 10:
                 self._camera_only_logged = time.monotonic()
-                self.log("WARN", "Camera zone saw a can the sensor did not count (camera only) - "
-                                 "check the sensor, or raise the zone trigger level")
+                self.log("WARN", "Camera saw a can the sensor did not count (camera only) - check the sensor, "
+                                 + ("or narrow the can rim size range" if self.tracker.mode == "hough"
+                                    else "or raise the zone trigger level"))
 
     def set_inspector(self, name: str):
         if name in self.inspectors and name != self.settings.inspector:
@@ -570,6 +597,11 @@ class Controller:
         threading.Thread(target=run, daemon=True).start()
 
     def test_burst(self):
+        if self.settings.reject_output == "network":
+            self.log("INFO", f"Network rejector: failed cans are sent to {self.settings.reject_host}:"
+                             f"{self.settings.reject_port} as [1, Can ID % 256] - the rejector Pi fires the "
+                             "air. Test the burst on the rejector Pi itself.")
+            return
         if not self.rejector.connected:
             self.log("WARN", "Rejector not connected - set REJECT_PIN in config.py when it is wired")
             return
@@ -599,6 +631,8 @@ class Controller:
             self._time_sensor(active, t)
         if initial or not active:
             return
+        if self.standby:                            # a can is coming: full frame rate again
+            self.wake_camera()
         if (t - self._last_trigger) * 1000 < self.settings.min_can_gap_ms:
             return                                  # bounce / same can
         self._last_trigger = t
@@ -728,7 +762,7 @@ class Controller:
         else:
             self._streak += 1
             self._defect_until = time.monotonic() + DEFECT_LAMP_S
-            if not s.reject_enabled or not self.rejector.connected:
+            if not s.reject_enabled or not self.rejector_ready:
                 result.reject = REJ_OFF               # pass / fail only
             elif self.estop or self.rejector.locked_out:
                 result.reject = LOCKED
@@ -736,6 +770,17 @@ class Controller:
                 result.reject = PENDING
         self._check_defect_trend(not outcome.passed)
 
+        if result.reject == PENDING and s.reject_output == "network":
+            # the rejector Pi times the air itself: tell it now which can to reject
+            if self.netrej.send(can_id, s.reject_host, s.reject_port):
+                result.reject = SENT
+                if s.single_shot and not self.rejector.locked_out:
+                    self.rejector.locked_out = True
+                    self.log("WARN", "Single-shot latch: rejector locked out - press RESET to re-arm")
+            else:
+                result.reject = SEND_FAILED
+                self.log("ERROR", f"Can #{can_id}: reject message to {s.reject_host}:{s.reject_port} "
+                                  f"failed ({self.netrej.last_error})")
         if result.reject == PENDING:
             self._pending[can_id] = result
         self.post("result", dataclasses.replace(result))      # UI gets its own copy

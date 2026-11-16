@@ -300,7 +300,9 @@ SETTING_RULES = {
     "active_cooler": _bool,
     "yolo_conf": _int_range(5, 95), "yolo_imgsz": _int_range(160, 1280), "yolo_crop": _bool,
     "yolo_empty_fails": _bool,
-    "capture_mode": _choice("delay", "zone"), "zone_level": _int_range(3, 150),
+    "capture_mode": _choice("delay", "zone", "hough"), "zone_level": _int_range(3, 150),
+    "rim_min_px": _int_range(20, 320), "rim_max_px": _int_range(20, 320),
+    "reject_output": _choice("gpio", "network"), "reject_port": _int_range(1, 65535),
     "camera_fps": _int_range(5, 30), "standby_after_min": _int_range(0, 120),
     "can_diameter_mm": _int_range(20, 200), "camera_distance_mm": _int_range(0, 5000),
     "nozzle_distance_mm": _int_range(0, 5000), "keep_images_days": _int_range(0, 365),
@@ -357,6 +359,13 @@ def apply_setting(ctl, key, value):
         if x1 - x0 < 0.01 or y1 - y0 < 0.1:
             raise ValueError("the zone is too small")
         ctl.set_zone([round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)])
+    elif key == "reject_host":
+        import ipaddress as _ip
+        try:
+            _ip.ip_address(str(value).strip())
+        except ValueError:
+            raise ValueError("not a valid IP address")
+        ctl.settings.reject_host = str(value).strip()
     elif key == "live_view":
         if m is None or value not in ("detect", "raw", "mask", "edges", "focus"):
             raise ValueError("unknown view")
@@ -368,6 +377,12 @@ def apply_setting(ctl, key, value):
             ctl.set_defect_rate(value)
         elif key == "capture_mode":
             ctl.set_capture_mode(value)
+        elif key in ("rim_min_px", "rim_max_px"):
+            lo = value if key == "rim_min_px" else ctl.settings.rim_min_px
+            hi = value if key == "rim_max_px" else ctl.settings.rim_max_px
+            if lo >= hi:
+                raise ValueError("the smallest rim must be smaller than the largest")
+            ctl.set_rim_size(lo, hi)
         elif key == "zone_level":
             ctl.settings.zone_level = value
             if ctl.tracker:

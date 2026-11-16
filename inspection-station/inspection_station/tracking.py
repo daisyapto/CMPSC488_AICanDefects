@@ -39,6 +39,16 @@ BACKGROUND_ADAPT = 0.02     # follow slow lighting drift while the zone is empty
 MAX_ZONE_FRAMES = 90        # frames kept per can while it is in the zone
 DEFAULT_ZONE = [0.47, 0.20, 0.53, 0.80]   # x0, y0, x1, y1 as fractions of the image
 
+# "Can rims" mode (Hough circles) - ported from the team's can_inspection_station_hailo_hough.py
+RIM_REF_W = 640             # all rim sizes are px in the image scaled to this width
+RIM_WORK_W = 320            # HoughCircles runs on an image this wide (4x fewer pixels = fast)
+RIM_CANNY_HIGH = 120        # HoughCircles param1 (upper Canny threshold)
+RIM_ACCUM = 35              # HoughCircles param2 (lower = more circles, more noise)
+RIM_GATE_NEW = 2.5          # 2nd sighting may be up to this x radius along the belt
+RIM_GATE_TRACKED = 0.8      # later sightings must be within this x radius of the prediction
+RIM_MAX_MISSED = 4          # frames a can may vanish before its track ends
+RIM_MIN_FRAMES = 2          # sightings needed before a can counts (one-frame circles are noise)
+
 
 class CanMatcher:
     """Cans reach the camera in the same order they passed the sensor (FIFO)."""
@@ -206,6 +216,124 @@ class ZoneDetector:
         return None
 
 
+def find_rims(gray, r_min: int, r_max: int):
+    """Can rims as [(x, y, r)] in reference px (image scaled to RIM_REF_W wide)."""
+    h, w = gray.shape[:2]
+    work_scale = RIM_WORK_W / w                      # working px per image px
+    small = cv2.resize(gray, (RIM_WORK_W, max(1, int(round(h * work_scale)))), interpolation=cv2.INTER_AREA)
+    k = RIM_WORK_W / RIM_REF_W                       # working px per reference px
+    lo = max(1, int(np.floor(r_min * k)))
+    hi = max(lo + 1, int(np.ceil(r_max * k)))
+    circles = cv2.HoughCircles(cv2.medianBlur(small, 5), cv2.HOUGH_GRADIENT, dp=1.2,
+                               minDist=max(1.0, 1.75 * r_min * k),
+                               param1=RIM_CANNY_HIGH, param2=RIM_ACCUM, minRadius=lo, maxRadius=hi)
+    if circles is None:
+        return []
+    return [(float(x / k), float(y / k), float(r / k)) for x, y, r in circles[0]]
+
+
+class RimTracker:
+    """Follows each can rim along the belt (constant-velocity prediction, so a can that moves most
+    of a diameter per frame keeps its track). A can counts when its centre crosses the line; when
+    its track ends, the frame where it was closest to the line is the one inspected.
+    Ported from HoughCanTracker in the team's can_inspection_station_hailo_hough.py."""
+
+    def __init__(self, line_frac: float = 0.5, r_min: int = 150, r_max: int = 180):
+        self.line_frac, self.r_min, self.r_max = line_frac, r_min, r_max
+        self.tracks = {}
+        self.next_id = 1
+        self.fno = 0
+        self.rims = []                  # last frame's rims (reference px), for the live view
+        self.ref_h = None
+        self._recent = deque(maxlen=30) # (t, rims) of recent frames: the live view draws its own frame's
+
+    def reset(self):
+        self.tracks.clear()
+        self.rims = []
+
+    def update(self, gray, frame, t: float) -> list:
+        """One camera frame -> events ("cross", track_id, t) and ("done", track_id, info)."""
+        self.fno += 1
+        h, w = gray.shape[:2]
+        self.ref_h = h * RIM_REF_W / w
+        line_x = RIM_REF_W * self.line_frac
+        circles = find_rims(gray, self.r_min, self.r_max)
+        self.rims = circles
+        self._recent.append((t, circles))
+        events, fno = [], self.fno
+
+        pairs = []
+        for tid, tr in self.tracks.items():
+            r = tr["r"]
+            px, py = tr["x"] + tr["vx"] * (fno - tr["fno"]), tr["y"] + tr["vy"] * (fno - tr["fno"])
+            for i, (x, y, _) in enumerate(circles):
+                if tr["frames"] >= 2:                         # speed known: tight gate
+                    ok = np.hypot(x - px, y - py) <= RIM_GATE_TRACKED * r
+                else:                                         # 2nd sighting: long jump allowed
+                    ok = abs(x - tr["x"]) <= RIM_GATE_NEW * r and abs(y - tr["y"]) <= 0.5 * r
+                if ok:
+                    pairs.append((float(np.hypot(x - px, y - py)), tid, i))
+        pairs.sort()
+        used_t, used_c = set(), set()
+        for _, tid, i in pairs:
+            if tid in used_t or i in used_c:
+                continue
+            used_t.add(tid); used_c.add(i)
+            x, y, r = circles[i]
+            tr = self.tracks[tid]
+            dt = max(1, fno - tr["fno"])
+            vx, vy = (x - tr["x"]) / dt, (y - tr["y"]) / dt
+            if tr["frames"] >= 2:
+                vx, vy = 0.5 * tr["vx"] + 0.5 * vx, 0.5 * tr["vy"] + 0.5 * vy
+            x_prev = tr["x"]
+            tr.update(x=x, y=y, r=r, vx=vx, vy=vy, fno=fno, missed=0, frames=tr["frames"] + 1)
+            d = abs(x - line_x)
+            if tr["best"] is None or d < tr["best"][0]:
+                tr["best"] = (d, t, frame)
+            if not tr["crossed"] and self._crossed(x_prev, x, line_x) and tr["frames"] >= RIM_MIN_FRAMES:
+                tr["crossed"] = True
+                events.append(("cross", tid, t))
+
+        for tid in list(self.tracks):
+            tr = self.tracks[tid]
+            if tid in used_t:
+                continue
+            tr["missed"] += 1
+            if tr["missed"] > RIM_MAX_MISSED:
+                if not tr["crossed"] and tr["frames"] >= RIM_MIN_FRAMES:
+                    px = tr["x"] + tr["vx"] * (fno - tr["fno"])
+                    if self._crossed(tr["x"], px, line_x):    # lost at the line: its motion carried it over
+                        tr["crossed"] = True
+                        events.append(("cross", tid, t))
+                if tr["crossed"]:
+                    _, bt, bf = tr["best"]
+                    events.append(("done", tid, {"camera_t": bt, "frame": bf, "frames": tr["frames"]}))
+                del self.tracks[tid]
+
+        for i, (x, y, r) in enumerate(circles):
+            if i in used_c:
+                continue
+            self.tracks[self.next_id] = dict(x=x, y=y, r=r, vx=0.0, vy=0.0, fno=fno, missed=0, frames=1,
+                                             crossed=False, best=(abs(x - line_x), t, frame))
+            self.next_id += 1
+        return events
+
+    @staticmethod
+    def _crossed(x0, x1, line_x):
+        return (x0 < line_x <= x1) or (x0 > line_x >= x1)     # either belt direction
+
+    def overlay(self, t=None):
+        """Rims as fractions of the image width/height, for the live view (of the frame taken at t)."""
+        if not self.ref_h:
+            return []
+        rims = self.rims
+        if t is not None:
+            recent = list(self._recent)
+            if recent:
+                rims = min(recent, key=lambda e: abs(e[0] - t))[1]
+        return [(x / RIM_REF_W, y / self.ref_h, r / RIM_REF_W) for x, y, r in rims]
+
+
 def to_gray(frame):
     return frame if frame.ndim == 2 else cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -214,18 +342,32 @@ class CanTracker:
     """Sensor IDs + camera zone -> one frame per can. Thread-safe: the sensor thread calls
     on_sensor, the camera thread calls on_frame."""
 
-    def __init__(self, zone=None, level: int = 25):
+    def __init__(self, zone=None, level: int = 25, mode: str = "zone", rim_min: int = 150, rim_max: int = 180):
         self.matcher = CanMatcher()
         self.detector = ZoneDetector(level)
         self.zone = list(zone or DEFAULT_ZONE)
         self._lock = threading.Lock()
         self._cur = None                     # can in the zone: {"id", "sensor_t", "enter_t", "frames"}
         self.last_travel_ms = None
+        self.mode = mode                     # "zone" (image strip) | "hough" (can rims, RimTracker)
+        self.rims = RimTracker(self._line_frac(), rim_min, rim_max)
+        self._rim_ids = {}                   # rim track id -> (can_id, sensor_t)
+
+    def _line_frac(self):
+        return (self.zone[0] + self.zone[2]) / 2         # rims mode: the line is the zone's centre
+
+    def set_mode(self, mode: str):
+        self.mode = mode
+        self.reset()
+
+    def set_rim_size(self, r_min: int, r_max: int):
+        self.rims.r_min, self.rims.r_max = r_min, r_max
 
     # ---- settings
     def set_zone(self, zone):
         self.zone = list(zone)
         self.detector.capture_requested = True
+        self.rims.line_frac = self._line_frac()
 
     def set_level(self, level: int):
         self.detector.on_level = level
@@ -237,6 +379,8 @@ class CanTracker:
         self.matcher.reset()
         with self._lock:
             self._cur = None
+            self.rims.reset()
+            self._rim_ids.clear()
         self.last_travel_ms = None
 
     # ---- events
@@ -249,6 +393,8 @@ class CanTracker:
             ("camera_only", None, t)           camera saw a can with no Can ID
             ("seen", can_id, info)             can left the zone: info has the frame to inspect
         """
+        if self.mode == "hough":
+            return self._on_frame_rims(frame, t, running)
         change = self.detector.update(to_gray(frame), self.zone)
         events = []
         with self._lock:
@@ -276,13 +422,39 @@ class CanTracker:
             events += [("missed", sid, sts) for sid, sts in self.matcher.check_timeouts(t)]
         return events
 
+    def _on_frame_rims(self, frame, t: float, running: bool) -> list:
+        events = []
+        with self._lock:
+            for kind, tid, info in self.rims.update(to_gray(frame), frame, t):
+                if kind == "cross" and running:
+                    ev = self.matcher.camera_can(info)
+                    events += [("missed", sid, sts) for sid, sts in ev["skipped"]]
+                    if ev["id"] is None:
+                        events.append(("camera_only", None, info))
+                    else:
+                        self.last_travel_ms = ev["travel"] * 1000
+                        self._rim_ids[tid] = (ev["id"], ev["sensor_t"])
+                elif kind == "done":
+                    m = self._rim_ids.pop(tid, None)
+                    if m is not None:
+                        can_id, sensor_t = m
+                        events.append(("seen", can_id, {"sensor_t": sensor_t, "camera_t": info["camera_t"],
+                                                        "frame": info["frame"], "frames": info["frames"],
+                                                        "travel_ms": (info["camera_t"] - sensor_t) * 1000}))
+        if running:
+            events += [("missed", sid, sts) for sid, sts in self.matcher.check_timeouts(t)]
+        return events
+
     def check_timeouts(self, now: float) -> list:
         return [("missed", sid, sts) for sid, sts in self.matcher.check_timeouts(now)]
 
     def stats(self) -> dict:
         m = self.matcher
         tt = m.typical_travel()
-        return {"present": self.detector.present, "score": round(self.detector.score, 1),
+        rims = self.mode == "hough"
+        return {"mode": self.mode, "rims": len(self.rims.rims) if rims else None,
+                "present": bool(self.rims.rims) if rims else self.detector.present,
+                "score": round(self.detector.score, 1),
                 "level": self.detector.on_level, "zone": self.zone,
                 "sensor": m.sensor_count, "camera": m.camera_count, "matched": m.matched,
                 "missed": m.missed, "camera_only": m.camera_only, "waiting": len(m.waiting),

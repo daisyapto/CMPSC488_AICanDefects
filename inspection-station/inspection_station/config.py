@@ -90,6 +90,11 @@ class Settings:
     reject_enabled: bool = False       # rejector fitted: off = only PASS / FAIL, nothing fires
     single_shot: bool = False          # lock the rejector after one fire (air testing)
     reject_delay_ms: int = 150         # sensor -> air nozzle travel time
+    reject_output: str = "gpio"        # "gpio": air valve on REJECT_PIN, timed here
+                                       # "network": UDP message [1, Can ID % 256] to the rejector Pi,
+                                       #            which times the air itself (team's rejector protocol)
+    reject_host: str = "192.168.50.10" # rejector Pi (network output)
+    reject_port: int = 5000
     pulses: int = 3                    # air burst profile
     pulse_on_ms: int = 40
     pulse_off_ms: int = 30
@@ -107,8 +112,11 @@ class Settings:
     camera_delay_ms: int = 30          # sensor -> can centred under the camera
     capture_mode: str = "delay"        # "delay": frame at camera_delay_ms after the sensor
                                        # "zone": a strip of the image confirms each can (tracking.py)
+                                       # "hough": can rims (Hough circles) confirm each can (tracking.py)
     zone_box: list = None              # [x0, y0, x1, y1] fractions; None = tracking.DEFAULT_ZONE
     zone_level: int = 25               # image change (0-255) that means "can in the zone"
+    rim_min_px: int = 150              # can rim radius range for "hough" mode, px at 640 px image width
+    rim_max_px: int = 180
     exposure_us: int = 2000
     gain_db: int = 0
     vision_engine: str = "team"        # "team" (team_vision.py: can rim + zones) | "builtin" (vision.py) | "yolo"
@@ -160,7 +168,9 @@ class Settings:
             default, value = getattr(s, f.name), data[f.name]
             if f.name == "vision_engine" and value not in ("team", "builtin", "yolo"):
                 continue                             # old "hailo" (AI HAT) setting -> default
-            if f.name == "capture_mode" and value not in ("delay", "zone"):
+            if f.name == "capture_mode" and value not in ("delay", "zone", "hough"):
+                continue
+            if f.name == "reject_output" and value not in ("gpio", "network"):
                 continue
             if f.name in ("inspect_area", "zone_box"):
                 if value is None or (isinstance(value, list) and len(value) == 4 and

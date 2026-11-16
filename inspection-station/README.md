@@ -304,16 +304,25 @@ plus a CSV of every can. Stored in `data/batches/`.
 | 16 | GPIO23 | Relay - buzzer |
 | 22 | GPIO25 | Sensor signal (through divider) |
 
-The rejector is not wired yet (`REJECT_PIN = None` in `config.py`): cans are
-marked PASS / FAIL only. When it is fitted, give it its own free GPIO there and
-turn on Settings › Rejector.
+Settings › Rejector › **Reject output** chooses how a failed can is rejected:
+
+* **Air valve (GPIO)** - a valve on this Pi, fired at the reject delay after the sensor.
+  Not wired yet (`REJECT_PIN = None` in `config.py`): give it its own free GPIO there.
+* **Rejector Pi** - the team's rejector protocol (from `can_inspection_station_hailo_hough.py`):
+  for every failed can, one UDP message `[1, Can ID % 256]` goes to the rejector Pi
+  (default `192.168.50.10`, port `5000`), which times the air burst itself. Each Can ID is sent
+  once; the Inspections table shows `sent`, or `SEND FAILED` (counted as not rejected). The
+  rejector Pi must number cans the same way as this station (Can #1 = the first can the
+  sensor counts after the station starts).
+
+Then turn on Settings › Rejector.
 
 The relay board is **active-low**: a LOW pin turns the relay ON.
 
 The Genie Nano camera connects to the Pi's Ethernet port - see **Camera
 (Teledyne DALSA Genie Nano)** below for the network setup.
 
-## Capture: fixed delay or camera zone
+## Capture: fixed delay, camera zone or can rims
 
 Settings › Camera › **Capture** chooses how the picture of each can is taken:
 
@@ -331,7 +340,16 @@ Settings › Camera › **Capture** chooses how the picture of each can is taken
   * Diagnostics › **Camera zone tracking** shows the counts and the travel time; the
     Inspections table shows each can's travel time.
 
-The zone tracking is ported from Andrew Herman's bench app (`tracking.py`).
+* **Can rims** - like Camera zone, but each can is found by its round rim (OpenCV Hough
+  circles on a 320 px copy of every frame) and followed along the belt. A can counts when its
+  rim centre crosses the **line** (the zone's centre, drawn on the live view with every rim found
+  in green), and the frame where it was closest to the line is inspected. Can IDs still come
+  from the sensor, so a missed or extra circle never shifts the IDs of the cans behind it.
+  * Setup: set **Smallest / Largest can rim** (radius in px at 640 px image width) tightly
+    around your can - the team measured about 160 px on the line.
+
+The zone tracking is ported from Andrew Herman's bench app, the can-rim tracking from the team's
+`can_inspection_station_hailo_hough.py` (`tracking.py`).
 
 ## Conveyor (KEYENCE)
 

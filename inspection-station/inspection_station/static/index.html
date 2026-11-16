@@ -433,13 +433,19 @@
         <div class="field"><label>Gain</label><div class="stepper" data-setting="gain_db" data-min="0" data-max="48" data-step="1" data-unit=""></div></div>
         <div class="field"><div><label>Image brightness</label><div class="hint" id="brightHint">—</div></div>
           <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" id="btnAutoExp">Auto-set exposure</button></div>
-        <div class="field"><div><label>Capture</label><div class="hint">Fixed delay: one picture at the capture delay after the sensor. Camera zone: a strip of the image confirms each can and follows it by Can ID (Camera inspector).</div></div><div class="seg" data-setting="capture_mode" data-options="delay:Fixed delay,zone:Camera zone"></div></div>
+        <div class="field"><div><label>Capture</label><div class="hint">Fixed delay: one picture at the capture delay after the sensor. Camera zone: a strip of the image confirms each can. Can rims: each can's round rim is followed across a line in the image. Zone and rims keep the sensor's Can ID (Camera inspector).</div></div><div class="seg" data-setting="capture_mode" data-options="delay:Fixed delay,zone:Camera zone,hough:Can rims"></div></div>
         <div id="zoneFields" class="hidden">
-          <div class="field"><div><label>Zone position</label><div class="hint">Centre of the zone across the image. Keep it narrower than a can.</div></div>
+          <div class="field"><div><label id="zonePosLabel">Zone position</label><div class="hint" id="zonePosHint">Centre of the zone across the image. Keep it narrower than a can.</div></div>
             <div class="zone-sliders"><label>Centre <input type="range" id="zoneCentre" min="5" max="95" step="1"><b id="zoneCentreV">50%</b></label>
             <label>Width <input type="range" id="zoneWidth" min="2" max="30" step="1"><b id="zoneWidthV">6%</b></label></div></div>
+          <div id="zoneOnly">
           <div class="field"><div><label>Zone trigger level</label><div class="hint" id="zoneHint">Image change that means "can in the zone". Set it between the values with and without a can.</div></div><div class="stepper" data-setting="zone_level" data-min="3" data-max="150" data-step="1" data-unit=""></div></div>
           <div class="field"><div><label>Empty belt</label><div class="hint">With no can in the zone. Again after the lighting changes.</div></div><button class="btn btn-sm btn-quiet" data-cmd="zone_background">Capture empty belt</button></div>
+          </div>
+          <div id="rimFields" class="hidden">
+            <div class="field"><div><label>Smallest can rim</label><div class="hint" id="rimHint">Rim radius in px at 640 px image width. The rims found are drawn green on the live view.</div></div><div class="stepper" data-setting="rim_min_px" data-min="20" data-max="320" data-step="5" data-unit="px"></div></div>
+            <div class="field"><div><label>Largest can rim</label><div class="hint">Keep the range tight around your can: wider finds more false circles.</div></div><div class="stepper" data-setting="rim_max_px" data-min="20" data-max="320" data-step="5" data-unit="px"></div></div>
+          </div>
         </div>
         <div class="field" id="delayField"><div><label>Capture delay</label><div class="hint">Time from the sensor to the can being centred under the camera.</div></div><div class="delay-set"><div class="stepper" data-setting="camera_delay_ms" data-min="0" data-max="1000" data-step="5" data-unit="ms"></div><button class="btn btn-sm btn-quiet" id="btnDelay" title="Pass one can, then pick the frame where it is centred">Find with a can…</button></div></div>
       </section>
@@ -470,8 +476,14 @@
         <h3>Rejector</h3>
         <p class="group-intro">What happens to a can that fails.</p>
         <div class="field"><div><label>Rejector</label><div class="hint" id="rejHint">off = cans are only marked PASS / FAIL, nothing fires · on = failed cans are rejected by the rejector output</div></div><label class="switch"><input type="checkbox" data-setting="reject_enabled" id="rejToggle"><span></span></label></div>
+        <div class="field"><div><label>Reject output</label><div class="hint">Air valve: a GPIO on this Pi, timed by the reject delay. Rejector Pi: a UDP message [1, Can ID] per failed can; the rejector Pi times the air.</div></div><div class="seg" data-setting="reject_output" data-options="gpio:Air valve (GPIO),network:Rejector Pi"></div></div>
+        <div id="netRejFields" class="hidden">
+          <div class="field col"><label>Rejector Pi address</label>
+            <div class="input-row"><input id="rejHostInput" class="input mono" spellcheck="false" placeholder="192.168.50.10"><button class="btn btn-sm btn-primary" id="rejHostApply">Apply</button></div></div>
+          <div class="field"><label>Rejector Pi port</label><div class="stepper" data-setting="reject_port" data-min="1" data-max="65535" data-step="1" data-unit=""></div></div>
+        </div>
         <div class="field"><div><label>Single-shot latch</label><div class="hint">Lock the rejector after one shot (for testing).</div></div><label class="switch amber"><input type="checkbox" data-setting="single_shot"><span></span></label></div>
-        <div class="field"><div><label>Reject delay</label><div class="hint">Time from the sensor to the can reaching the rejector.</div></div><div class="stepper" data-setting="reject_delay_ms" data-min="0" data-max="5000" data-step="5" data-unit="ms"></div></div>
+        <div class="field" id="rejDelayField"><div><label>Reject delay</label><div class="hint">Time from the sensor to the can reaching the rejector.</div></div><div class="stepper" data-setting="reject_delay_ms" data-min="0" data-max="5000" data-step="5" data-unit="ms"></div></div>
         <div class="field"><label>Air pulses</label><div class="stepper" data-setting="pulses" data-min="1" data-max="10" data-step="1" data-unit=""></div></div>
         <div class="field"><label>Pulse on</label><div class="stepper" data-setting="pulse_on_ms" data-min="5" data-max="500" data-step="5" data-unit="ms"></div></div>
         <div class="field"><label>Pulse off</label><div class="stepper" data-setting="pulse_off_ms" data-min="5" data-max="500" data-step="5" data-unit="ms"></div></div>

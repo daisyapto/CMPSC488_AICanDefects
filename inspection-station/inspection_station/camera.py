@@ -844,12 +844,21 @@ class ImageStore:
 # =============================================================================
 # Camera manager
 # =============================================================================
-def draw_zone(img, box, present, label="ZONE"):
-    """Camera-zone box on the live view: amber while a can is in it, cyan when clear."""
+def draw_zone(img, box, present, label="ZONE", rims=None):
+    """Camera-zone box on the live view: amber while a can is in it, cyan when clear.
+    Can-rim mode (rims given): the trigger line at the zone's centre and every rim found."""
     out = img.copy() if img.ndim == 3 else cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     h, w = out.shape[:2]
     x0, y0, x1, y1 = int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h)
     col = (0, 190, 255) if present else (255, 210, 0)
+    if rims is not None:
+        for cx, cy, r in rims:
+            cv2.circle(out, (int(cx * w), int(cy * h)), int(r * w), (80, 220, 80), max(2, w // 400), cv2.LINE_AA)
+        xm = (x0 + x1) // 2
+        cv2.line(out, (xm, 0), (xm, h), col, max(2, w // 400), cv2.LINE_AA)
+        cv2.putText(out, label, (xm + 6, max(14, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, max(0.45, w / 1600), col,
+                    max(1, w // 800), cv2.LINE_AA)
+        return out
     cv2.rectangle(out, (x0, y0), (x1, y1), col, max(2, w // 400), cv2.LINE_AA)
     cv2.putText(out, label, (x0, max(14, y0 - 6)), cv2.FONT_HERSHEY_SIMPLEX, max(0.45, w / 1600), col,
                 max(1, w // 800), cv2.LINE_AA)
@@ -1133,7 +1142,7 @@ class CameraManager:
                     pass
             src = self.source
             if hasattr(src, "belt"):
-                src.belt = self.s.capture_mode == "zone"
+                src.belt = self.s.capture_mode in ("zone", "hough")
             if self.fps_limit != self._applied_fps:
                 self._applied_fps = self.fps_limit
                 if hasattr(src, "set_fps"):
@@ -1196,6 +1205,7 @@ class CameraManager:
                 self._stop.wait(0.02)
                 continue
             shown = seq
+            frame_t = self._ts
             t0 = time.monotonic()
             try:
                 view = "raw" if mode == "raw" else self.live_view     # hot: no live detection
@@ -1214,7 +1224,7 @@ class CameraManager:
                 continue
             if self.zone_overlay is not None:
                 try:
-                    z = self.zone_overlay()
+                    z = self.zone_overlay(frame_t)
                     if z:
                         img = draw_zone(img, *z)
                 except Exception:

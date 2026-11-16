@@ -69,8 +69,8 @@ const S = {
   rev: { status: "todo", result: "fail", date: "", items: [], total: 0, offset: 0, idx: -1, view: "ann", stats: null },
 };
 const MAX_ROWS = 300;
-const REJECT_LABEL = { "-": "", pending: "pending…", fired: "fired", missed: "MISSED", disabled: "reject off", locked: "LOCKED", off: "" };
-const ESCAPED = new Set(["missed", "disabled", "locked"]);
+const REJECT_LABEL = { "-": "", pending: "pending…", fired: "fired", sent: "sent", "send failed": "SEND FAILED", missed: "MISSED", disabled: "reject off", locked: "LOCKED", off: "" };
+const ESCAPED = new Set(["missed", "disabled", "locked", "send failed"]);
 const RANK = { viewer: 0, operator: 1, engineer: 2 };
 const can = (role) => RANK[S.role] >= RANK[role];
 const RECIPE_KEYS = ["camera_delay_ms", "reject_delay_ms", "exposure_us", "gain_db", "vision_sensitivity",
@@ -248,9 +248,16 @@ function onStatus(st) {
 /* camera-zone capture mode: settings readout + Diagnostics card */
 function renderZone(st) {
   const tr = st.track, s = st.settings || S.settings || {};
-  const zone = (s.capture_mode || st.capture_mode) === "zone";
+  const cm = s.capture_mode || st.capture_mode, rims = cm === "hough", zone = cm === "zone" || rims;
   $("#zoneFields")?.classList.toggle("hidden", !zone);
   $("#delayField")?.classList.toggle("hidden", zone);
+  $("#zoneOnly")?.classList.toggle("hidden", rims);
+  $("#rimFields")?.classList.toggle("hidden", !rims);
+  if ($("#zonePosLabel")) {
+    $("#zonePosLabel").textContent = rims ? "Line position" : "Zone position";
+    $("#zonePosHint").textContent = rims ? "A can counts when its rim centre crosses this line (the zone's centre)." : "Centre of the zone across the image. Keep it narrower than a can.";
+  }
+  if (tr && rims && $("#rimHint")) $("#rimHint").innerHTML = `Rim radius in px at 640 px image width. Now: <b>${tr.rims ?? 0}</b> rim(s) found - drawn green on the live view.`;
   if (!tr) return;
   const box = tr.zone || [0.47, 0.2, 0.53, 0.8];
   const c = Math.round((box[0] + box[2]) * 50), w = Math.round((box[2] - box[0]) * 100);
@@ -258,17 +265,17 @@ function renderZone(st) {
   if (ce && document.activeElement !== ce && !fresh("zone_box")) { ce.value = c; $("#zoneCentreV").textContent = c + "%"; }
   if (we && document.activeElement !== we && !fresh("zone_box")) { we.value = w; $("#zoneWidthV").textContent = w + "%"; }
   const h = $("#zoneHint");
-  if (h && zone) h.innerHTML = `Now: <b>${tr.present ? "can in zone" : "clear"}</b> · image change <b>${tr.score}</b> (trigger ${tr.level}). Set the level between the values with and without a can.`;
+  if (h && zone && !rims) h.innerHTML = `Now: <b>${tr.present ? "can in zone" : "clear"}</b> · image change <b>${tr.score}</b> (trigger ${tr.level}). Set the level between the values with and without a can.`;
   const card = $("#dgZoneCard");
   if (!card) return;
   card.classList.toggle("hidden", !zone);
   if (!zone) return;
-  $("#dgZoneState").textContent = !st.zone_mode ? "needs Camera inspector" : tr.present ? "can in zone" : "clear";
+  $("#dgZoneState").textContent = !st.zone_mode ? "needs Camera inspector" : rims ? `${tr.rims ?? 0} rim(s) in view` : tr.present ? "can in zone" : "clear";
   const tt = tr.travel_ms == null ? "learning…" : tr.travel_ms + " ms";
   $("#dgZoneFacts").innerHTML = `<dt>Sensor counted</dt><dd>${tr.sensor}</dd><dt>Camera saw</dt><dd>${tr.camera}</dd>
     <dt>Matched</dt><dd>${tr.matched}</dd><dt>Missed</dt><dd class="${tr.missed ? "bad" : ""}">${tr.missed}</dd>
     <dt>Camera only</dt><dd class="${tr.camera_only ? "warn" : ""}">${tr.camera_only}</dd><dt>On the way</dt><dd>${tr.waiting}</dd>
-    <dt>Sensor → camera</dt><dd>${tt}</dd><dt>Image change</dt><dd>${tr.score} / ${tr.level}</dd>`;
+    <dt>Sensor → camera</dt><dd>${tt}</dd>` + (rims ? `<dt>Mode</dt><dd>can rims</dd>` : `<dt>Image change</dt><dd>${tr.score} / ${tr.level}</dd>`);
 }
 
 function wireZone() {
@@ -398,8 +405,9 @@ function renderTower(st) {
   v.classList.toggle("open", st.valve);
   v.classList.toggle("locked", !st.valve && st.locked);
   $("#valveState").textContent = st.valve ? "Air on" : st.locked ? "Locked out" : "Closed";
+  const rjWhere = st.reject_output === "network" ? `Rejector Pi ${(st.settings || S.settings || {}).reject_host || ""}` : `GPIO ${S.pins ? S.pins.reject : ""}`;
   if (S.pins) $("#valvePins").textContent = !st.rejector_connected ? "Not connected yet - cans are only marked PASS / FAIL"
-    : st.rejector ? `GPIO ${S.pins.reject}` : `GPIO ${S.pins.reject} · off in Settings - cans are only marked PASS / FAIL`;
+    : st.rejector ? rjWhere : `${rjWhere} · off in Settings - cans are only marked PASS / FAIL`;
   if (S.pins) $("#buzzerPins").textContent = `GPIO ${S.pins.buzzer}`;
   const bz = $("#btnBuzzer");
   $("#buzzerRow").classList.toggle("open", !!st.buzzer);
@@ -539,7 +547,7 @@ function rowHtml(r) {
   const escaped = !r.pass && ESCAPED.has(r.reject);
   const tag = r.pass ? `<span class="tag pass">PASS</span>` : `<span class="tag ${escaped ? "escaped" : "fail"}">DEFECT</span>`;
   const rl = REJECT_LABEL[r.reject] ?? r.reject;
-  const rcls = escaped ? "bad" : r.reject === "fired" ? "fired" : "";
+  const rcls = escaped ? "bad" : (r.reject === "fired" || r.reject === "sent") ? "fired" : "";
   const img = r.img ? `<svg class="img-ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-8 8"/></svg>` : "";
   return `<td class="id">#${r.id}</td><td>${esc(r.t)}</td><td>${tag}</td><td>${esc(r.defect || "—")}</td>
     <td class="num">${Math.round(r.conf * 100)}%</td><td class="num">${Math.round(r.ms)} ms</td>
@@ -743,6 +751,9 @@ function initSettingWidgets() {
   });
   // camera IP / folder
   $("#ipApply").addEventListener("click", () => setSetting("camera_ip", $("#ipInput").value.trim()));
+  $("#rejHostApply").addEventListener("click", () => setSetting("reject_host", $("#rejHostInput").value.trim()));
+  $("#rejHostInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#rejHostApply").click(); });
+  $("#rejHostInput").addEventListener("input", () => (S.editing.reject_host = Date.now()));
   $("#ipInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("#ipApply").click(); });
   $("#ipInput").addEventListener("input", () => (S.editing.camera_ip = Date.now()));
   $("#webcamFind").addEventListener("click", findWebcams);
@@ -787,6 +798,11 @@ function syncSettings(st) {
   $$("#sourceSeg button").forEach((b) => b.classList.toggle("on", b.dataset.v === s.camera_backend));
   const ip = $("#ipInput");
   if (document.activeElement !== ip && !fresh("camera_ip")) ip.value = s.camera_ip;
+  const net = s.reject_output === "network";
+  $("#netRejFields").classList.toggle("hidden", !net);
+  $("#rejDelayField").classList.toggle("hidden", net);
+  const rh = $("#rejHostInput");
+  if (document.activeElement !== rh && !fresh("reject_host")) rh.value = s.reject_host || "";
   const fi = $("#folderInput");
   if (document.activeElement !== fi && !fresh("image_folder")) fi.value = s.image_folder;
   $("#folderField").classList.toggle("hidden", s.camera_backend !== "folder");
@@ -840,7 +856,7 @@ function applyPermissions() {
   $("#setupBanner").classList.toggle("hidden", !(S.canControl && S.setupNeeded));
   $("#loginBanner").classList.toggle("hidden", !(S.canControl && !S.setupNeeded && S.role === "viewer"));
   $$("#drawer input, #drawer select, #drawer button.radio-card, #drawer .stepper button, #drawer .seg button, " +
-     "#ipApply, #folderApply, #recipeSave, #recipeCreate, #recipeDelete, #nuAdd").forEach((el) => (el.disabled = !eng));
+     "#ipApply, #rejHostApply, #folderApply, #recipeSave, #recipeCreate, #recipeDelete, #nuAdd").forEach((el) => (el.disabled = !eng));
   if (eng) loadUsers(); else { S.users = []; renderUsers(); }
   $("#drawerLock").classList.toggle("hidden", eng || !S.canControl);
   $$("#viewSeg button, #btnPause, #btnWake").forEach((el) => (el.disabled = !op));
@@ -1403,7 +1419,7 @@ function renderDiag() {
     x.classList.toggle("lit", !!(st && (x.dataset.key === "buzzer" ? st.buzzer : st.lights[x.dataset.key])));
   });
   $('#pageDiag [data-cmd="test_burst"]').disabled = !eng || !stopped || !(st && st.rejector_connected);
-  $("#dgRejPin").textContent = st && st.rejector_connected && S.pins ? `\u00a0· GPIO ${S.pins.reject}` : "\u00a0· not connected";
+  $("#dgRejPin").textContent = st && st.reject_output === "network" ? `\u00a0· Rejector Pi (network)` : st && st.rejector_connected && S.pins ? `\u00a0· GPIO ${S.pins.reject}` : "\u00a0· not connected";
   // camera
   const c = d.camera;
   $("#dgCamera").innerHTML = `<dt>Source</dt><dd>${esc(c.source)}</dd>

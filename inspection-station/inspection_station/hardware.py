@@ -13,6 +13,7 @@ back to polling with pinctrl if gpiozero is not available.
 from __future__ import annotations
 
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -145,6 +146,36 @@ class Rejector:
                     time.sleep(off_s)
             finally:
                 self.safe()
+        return True
+
+
+class NetworkRejector:
+    """Reject output over the network (the team's rejector protocol, from
+    can_inspection_station_hailo_hough.py): one UDP packet [1, Can ID % 256] per failed can to the
+    rejector Pi, which times the air burst itself. Each Can ID is sent at most once."""
+
+    def __init__(self):
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sent = {}                  # can_id -> time sent (last 1000 kept)
+        self.last_error = ""
+
+    @staticmethod
+    def packet(can_id: int) -> bytes:
+        return bytes([1, can_id % 256])
+
+    def send(self, can_id: int, host: str, port: int) -> bool:
+        if can_id in self._sent:
+            return True
+        try:
+            self._sock.sendto(self.packet(can_id), (host, port))
+        except OSError as e:
+            self.last_error = str(e)
+            return False
+        self.last_error = ""
+        self._sent[can_id] = time.time()
+        if len(self._sent) > 1000:
+            for k in list(self._sent)[:500]:
+                del self._sent[k]
         return True
 
 
