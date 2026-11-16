@@ -434,6 +434,7 @@
         <div class="field"><div><label>Image brightness</label><div class="hint" id="brightHint">—</div></div>
           <button class="btn btn-sm btn-quiet" data-cmd="auto_exposure" id="btnAutoExp">Auto-set exposure</button></div>
         <div class="field"><div><label>Capture</label><div class="hint">Fixed delay: one picture at the capture delay after the sensor. Camera zone: a strip of the image confirms each can. Can rims: each can's round rim is followed across a line in the image. Zone and rims keep the sensor's Can ID (Camera inspector).</div></div><div class="seg" data-setting="capture_mode" data-options="delay:Fixed delay,zone:Camera zone,hough:Can rims"></div></div>
+        <div class="field"><div><label>Touching cans</label><div class="hint">Cans with no gap block the sensor as one long can. On: each can still gets its own Can ID - from the length of the sensor block, or in Can rims mode from the camera, which sees each rim.</div></div><label class="switch"><input type="checkbox" data-setting="split_touching"><span></span></label></div>
         <div id="zoneFields" class="hidden">
           <div class="field"><div><label id="zonePosLabel">Zone position</label><div class="hint" id="zonePosHint">Centre of the zone across the image. Keep it narrower than a can.</div></div>
             <div class="zone-sliders"><label>Centre <input type="range" id="zoneCentre" min="5" max="95" step="1"><b id="zoneCentreV">50%</b></label>

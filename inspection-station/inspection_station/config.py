@@ -102,6 +102,8 @@ class Settings:
     warn_rate_pct: int = 20            # defect rate (%) over the last cans -> yellow flashing warning
     warn_window: int = 50              # how many recent cans the defect rate looks at
     min_can_gap_ms: int = 50           # debounce: ignore sensor re-triggers closer than this
+    split_touching: bool = True        # touching cans: one long sensor block -> one Can ID per can
+                                       # (Can rims mode: the camera confirms each extra can)
     sensor_backend: str = "auto"       # "auto" (gpiozero, else pinctrl) | "gpiozero" | "pinctrl"
     log_to_disk: bool = True           # write data/inspections_YYYY-MM-DD.csv + event log
 

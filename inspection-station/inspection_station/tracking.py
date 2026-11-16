@@ -352,6 +352,7 @@ class CanTracker:
         self.mode = mode                     # "zone" (image strip) | "hough" (can rims, RimTracker)
         self.rims = RimTracker(self._line_frac(), rim_min, rim_max)
         self._rim_ids = {}                   # rim track id -> (can_id, sensor_t)
+        self.claim_id = None                 # controller hook: touching can -> new Can ID or None
 
     def _line_frac(self):
         return (self.zone[0] + self.zone[2]) / 2         # rims mode: the line is the zone's centre
@@ -430,7 +431,15 @@ class CanTracker:
                     ev = self.matcher.camera_can(info)
                     events += [("missed", sid, sts) for sid, sts in ev["skipped"]]
                     if ev["id"] is None:
-                        events.append(("camera_only", None, info))
+                        tt = self.matcher.typical_travel()
+                        cid = self.claim_id(info - tt, info) if (self.claim_id and tt is not None) else None
+                        if cid is not None:                  # touching can: the camera gave it an ID
+                            with self.matcher._lock:
+                                self.matcher.camera_only -= 1
+                                self.matcher.matched += 1
+                            self._rim_ids[tid] = (cid, info - tt)
+                        else:
+                            events.append(("camera_only", None, info))
                     else:
                         self.last_travel_ms = ev["travel"] * 1000
                         self._rim_ids[tid] = (ev["id"], ev["sensor_t"])

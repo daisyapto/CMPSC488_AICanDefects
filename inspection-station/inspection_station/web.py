@@ -287,7 +287,7 @@ def _choice(*options):
 
 
 SETTING_RULES = {
-    "reject_enabled": _bool, "single_shot": _bool, "save_annotated": _bool,
+    "reject_enabled": _bool, "single_shot": _bool, "split_touching": _bool, "save_annotated": _bool,
     "reject_delay_ms": _int_range(0, 5000), "pulses": _int_range(1, 10),
     "pulse_on_ms": _int_range(5, 500), "pulse_off_ms": _int_range(5, 500),
     "alarm_after": _int_range(1, 50), "warn_rate_pct": _int_range(5, 100),

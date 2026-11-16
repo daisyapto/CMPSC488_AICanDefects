@@ -207,6 +207,8 @@ class Controller:
                                    "hough" if settings.capture_mode == "hough" else "zone",
                                    settings.rim_min_px, settings.rim_max_px) if CanTracker else None)
         self._camera_only_logged = 0.0
+        if self.tracker:
+            self.tracker.claim_id = self._claim_touching
         if self.cammgr and self.tracker:
             self.cammgr.on_frame = self._on_camera_frame
             self.cammgr.zone_overlay = self._zone_overlay
@@ -245,6 +247,8 @@ class Controller:
         self._sensor_on_t = None
         self._sensor_last_t = None
         self._sensor_hist: deque = deque(maxlen=30)    # (time, block_ms, gap_ms or None)
+        # touching cans (no gap): the last sensor blocks, to split or let the camera fill in
+        self._blocks: deque = deque(maxlen=4)          # {"t_on", "t_off", "first", "split", "cam", "checked"}
         self._reset_at = -1e9
         self._idle_since = time.monotonic()  # line stopped since...
 
@@ -644,6 +648,7 @@ class Controller:
         with self._lock:
             self._can_counter += 1
             can_id = self._can_counter
+        self._blocks.append({"t_on": t, "t_off": None, "first": can_id, "split": 0, "cam": 0, "checked": False})
         if self.cammgr:
             self.cammgr.on_trigger()              # synthetic / folder sources show the next can
         if self.zone_mode:
@@ -662,15 +667,88 @@ class Controller:
             self._sensor_gap = gap
             self.sensor_count += 1
         elif self._sensor_on_t is not None:
+            if self._blocks and self._blocks[-1]["t_off"] is None:
+                self._blocks[-1]["t_off"] = t
             block = (t - self._sensor_on_t) * 1000
             if 2 <= block <= 5000:                      # ignore glitches and a hand left in the beam
                 self._sensor_hist.append((time.time(), block, getattr(self, "_sensor_gap", None)))
             self._sensor_on_t = None
 
+    # ------------------------------------------------- touching cans (no gap)
+    def single_block_s(self):
+        """How long ONE can blocks the sensor at the current belt speed (s), learned from recent
+        cans: a low percentile, so touching cans (long blocks) don't pull it up. None until 5 cans."""
+        blocks = sorted(b for ts, b, _ in self._sensor_hist if time.time() - ts < 600)
+        if len(blocks) < 5:
+            return None
+        return blocks[int(len(blocks) * 0.3)] / 1000
+
+    def _new_can_id(self) -> int:
+        with self._lock:
+            self._can_counter += 1
+            return self._can_counter
+
+    def _check_touching(self, now: float):
+        """Light loop (20 Hz). Sensor split (#1): a block longer than k + 1/2 cans holds k + 1
+        touching cans -> each extra can gets the next Can ID, timed where its leading edge passed.
+        In Can rims mode the camera gives those IDs instead (_claim_touching) and this only
+        cross-checks the two counts once the cans have passed the camera."""
+        single = self.single_block_s()
+        if single is None or not self.settings.split_touching:
+            return
+        rims = self.zone_mode and self.tracker.mode == "hough"
+        for b in list(self._blocks):
+            end = b["t_off"] if b["t_off"] is not None else now
+            length = end - b["t_on"]
+            if not rims:
+                while b["split"] < 4 and length >= (b["split"] + 1.5) * single:
+                    b["split"] += 1
+                    can_id = self._new_can_id()
+                    t_k = b["t_on"] + b["split"] * single
+                    self.log("INFO", f"Can #{can_id}: touching can #{b['first'] + b['split'] - 1} "
+                                     f"(no gap at the sensor) - own Can ID from the sensor block length")
+                    if self.zone_mode:
+                        self.tracker.on_sensor(can_id, t_k)
+                    else:
+                        self._can_queue.put((can_id, t_k))
+                if length > 6 * single and not b.get("jam"):
+                    b["jam"] = True
+                    self.log("WARN", f"Sensor blocked {length:.1f} s (more than 5 cans) - jam or something in the beam?")
+            elif b["t_off"] is not None and not b["checked"]:
+                tt = self.tracker.matcher.typical_travel() or 0.5
+                if now > b["t_off"] + tt + 1.0:              # all of this block has passed the camera
+                    b["checked"] = True
+                    n_sensor = max(1, round(length / single))
+                    n_cam = 1 + b["cam"]
+                    if n_sensor != n_cam and (n_sensor > 1 or n_cam > 1):
+                        self.log("WARN", f"Touching cans at Can #{b['first']}: the sensor block looks like "
+                                         f"{n_sensor} can(s), the camera found {n_cam} - the camera count was used")
+
+    def _claim_touching(self, virtual_t: float, t: float):
+        """Can rims mode (#2): the camera saw a can with no sensor Can ID. If its leading edge
+        passed the sensor while the beam was still blocked by the can ahead, it is a touching
+        can: give it the next Can ID. Returns the Can ID, or None (really a camera-only can)."""
+        if not (self.running and not self.estop and self.settings.split_touching):
+            return None
+        single = self.single_block_s()
+        if single is None:
+            return None
+        for b in reversed(self._blocks):
+            end = b["t_off"] if b["t_off"] is not None else time.monotonic()
+            if b["t_on"] + 0.5 * single <= virtual_t <= end + 0.3 * single and b["cam"] < 4:
+                b["cam"] += 1
+                can_id = self._new_can_id()
+                self.log("INFO", f"Can #{can_id}: touching can #{b['first'] + b['cam'] - 1} (no gap at the sensor) "
+                                 f"- Can ID given by the camera")
+                return can_id
+        return None
+
     def belt_stats(self) -> dict:
         """Belt speed from how long cans block the sensor (speed = can diameter / blocked time)."""
         s = self.settings
-        hist = [h for h in self._sensor_hist if time.time() - h[0] < 600][-10:]
+        single = self.single_block_s()
+        hist = [h for h in self._sensor_hist if time.time() - h[0] < 600
+                and (single is None or h[1] < 1.5 * single * 1000)][-10:]      # touching cans: not one can
         out = {"count": self.sensor_count, "n": len(hist), "active": self.sensor.active,
                "last_block_ms": hist[-1][1] if hist else None,
                "last_age_s": time.time() - hist[-1][0] if hist else None}
@@ -915,6 +993,8 @@ class Controller:
                     self.log("INFO", f"Fault cleared: {msg}")
                     self.alarms.cleared(k, "Reset" if time.monotonic() - self._reset_at < 1 else "cleared itself")
             self._fault_keys = now_faults
+            if self.running:
+                self._check_touching(time.monotonic())
             if self.zone_mode and self.running:      # camera silent: cans still time out as missed
                 self._handle_track_events(self.tracker.check_timeouts(time.monotonic()))
             if not self.manual_override and not self.selftest_running:

@@ -348,6 +348,24 @@ Settings › Camera › **Capture** chooses how the picture of each can is taken
   * Setup: set **Smallest / Largest can rim** (radius in px at 640 px image width) tightly
     around your can - the team measured about 160 px on the line.
 
+### Touching cans (no gap)
+
+Two cans with no gap block the sensor as one long can, so the sensor alone would give them one
+Can ID. With Settings › Camera › **Touching cans** on (default), each can still gets its own ID:
+
+* **Sensor split** (Fixed delay and Camera zone) - the station learns how long one can blocks the
+  sensor (from the last cans, after 5 cans). A block longer than 1.5 cans holds 2 cans, longer
+  than 2.5 holds 3, and so on: each extra can gets the next Can ID, timed where its leading edge
+  passed the sensor. A block longer than 6 cans is reported as a possible jam.
+* **Camera fill-in** (Can rims) - the camera sees each rim, so it decides: a can the camera sees
+  whose leading edge passed the sensor while the beam was still blocked by the can ahead gets the
+  next Can ID. The sensor split only cross-checks: if the block length and the camera disagree
+  (for example a slow can that only looked like two), the event log says so and the camera's
+  count is used.
+
+Can rims is the most reliable mode for touching cans: each can is inspected in its own frame.
+The Diagnostics belt speed ignores touching-can blocks.
+
 The zone tracking is ported from Andrew Herman's bench app, the can-rim tracking from the team's
 `can_inspection_station_hailo_hough.py` (`tracking.py`).
 
